@@ -14,11 +14,12 @@ register_activation_hook('student_sponsor_portal', 'student_sponsor_portal_activ
 
 // Register deactivation hook  
 register_deactivation_hook('student_sponsor_portal', 'student_sponsor_portal_deactivation_hook');
-
+require_once(__DIR__ . '/install.php'); // ✅ Load the function
 // Module activation function
 function student_sponsor_portal_activation_hook() {
-    log_activity('Student Sponsor Portal Module Activated');
+    student_sponsor_portal_module_install(); // ✅ call function
 }
+
 
 // Module deactivation function
 function student_sponsor_portal_deactivation_hook() {
@@ -87,4 +88,7 @@ function student_sponsor_portal_permissions($permissions) {
     
     return $permissions;
 }
+
+
+
 ?>
