@@ -59,7 +59,7 @@ function student_sponsor_portal_admin_menu() {
         $CI->app_menu->add_sidebar_children_item('student-sponsor-portal', [
             'slug'     => 'sponsor-registration',
             'name'     => 'Sponsors',
-            'href'     => admin_url('student_sponsor_portal/sponsor_form'),
+            'href'     => admin_url('student_sponsor_portal/sponsors'),
             'position' => 3,
         ]);
         

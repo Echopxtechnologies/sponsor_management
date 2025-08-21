@@ -36,9 +36,10 @@ class University_model extends App_Model
         return $student_id;
     }
 
+
     public function get_all()
     {
-        return $this->db->get(db_prefix() . 'university_students')->result();
+        return $this->db->get(db_prefix() . 'university_students')->result_array(); // ✅ Array
     }
 
     public function count_all()

@@ -34,9 +34,10 @@ class Sponsor_model extends App_Model
         return $sponsor_id;
     }
 
+
     public function get_all()
     {
-        return $this->db->get(db_prefix() . 'sponsor_records')->result();
+        return $this->db->get(db_prefix() . 'sponsor_records')->result_array(); // ✅ Array
     }
 
     public function count_all()
@@ -47,5 +48,30 @@ class Sponsor_model extends App_Model
     public function get_by_id($id)
     {
         return $this->db->get_where(db_prefix() . 'sponsor_records', ['id' => $id])->row();
+
     }
+
+    /**
+     * Update sponsor
+     */
+public function update_sponsor($data, $sponsor_id)
+    {
+        // Combine phone code and contact number if provided
+        if (!empty($data['phone_code']) && !empty($data['contact_no'])) {
+            $data['phone'] = $data['phone_code'] . ' ' . $data['contact_no'];
+        }
+
+        $this->db->where('id', $sponsor_id);
+        return $this->db->update(db_prefix() . 'sponsor_records', $data);
+    }
+
+    /**
+     * Delete sponsor
+     */
+    public function delete_sponsor($sponsor_id)
+    {
+        $this->db->where('id', $sponsor_id);
+        return $this->db->delete(db_prefix() . 'sponsor_records');
+    }
+    
 }
