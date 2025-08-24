@@ -1,0 +1,360 @@
+-- ===========================
+-- Master: Countries
+-- ===========================
+CREATE TABLE country (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(100) NOT NULL,
+    phone_code VARCHAR(10) NOT NULL,            -- e.g. +91, +1
+    created_on DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+-- ===========================
+-- Master: Banks
+-- ===========================
+CREATE TABLE bank (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    created_on DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+-- ===========================
+-- Master: School Names
+-- ===========================
+CREATE TABLE school_name (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    created_on DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+-- ===========================
+-- Master: University Names
+-- ===========================
+CREATE TABLE university_name (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    created_on DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+-- ===========================
+-- Master: University Programs
+-- ===========================
+CREATE TABLE university_program (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    created_on DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+-- ===========================
+-- Master: Membership Products (plans)
+-- ===========================
+CREATE TABLE product (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(255),
+    description TEXT,
+    price FLOAT,
+    type VARCHAR(50),                           -- e.g. Monthly, Yearly, Custom
+    status VARCHAR(20),                         -- Active / Inactive
+    created_on DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+-- ===========================
+-- Sponsor Master
+-- ===========================
+CREATE TABLE sponsor_records (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    entity_type ENUM('sponsor') NOT NULL DEFAULT 'sponsor',
+
+    name VARCHAR(255),
+    sponsor_type VARCHAR(20),
+    sponsor_occupation VARCHAR(255),
+
+    contact_no VARCHAR(20),                     -- raw number; combine with country.phone_code in app
+    email VARCHAR(255) UNIQUE,                  -- UNIQUE email
+    address TEXT,
+    city VARCHAR(100),
+    state_id INT,
+    zip VARCHAR(20),
+    country_id INT,
+
+    bank_id INT,
+    sponsor_bank_branch_info VARCHAR(255),
+    sponsor_bank_branch_number VARCHAR(100),
+    sponsor_bank_account_no VARCHAR(100) UNIQUE, -- UNIQUE bank account
+    sponsor_frequency VARCHAR(20),
+    state VARCHAR(20),
+
+    -- Membership details (selected on sponsor form)
+    product_id INT,                             -- membership plan selected
+    membership_start_date DATE,                 -- set on sponsor form
+    membership_end_date DATE,                   -- set on sponsor form (renewal/expiry)
+
+    -- Multiple selections of student INTERNAL IDs (from School/University tables)
+    school_internal_ids JSON,                   -- e.g. ["SCH001","SCH002"]
+    university_internal_ids JSON,               -- e.g. ["UNI100","UNI200"]
+
+    created_on DATETIME DEFAULT CURRENT_TIMESTAMP,
+
+    FOREIGN KEY (bank_id) REFERENCES bank(id),
+    FOREIGN KEY (country_id) REFERENCES country(id),
+    FOREIGN KEY (product_id) REFERENCES product(id)
+);
+
+-- ===========================
+-- Student: School Students
+-- ===========================
+CREATE TABLE school_students (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    entity_type ENUM('school') NOT NULL DEFAULT 'school',
+
+    name VARCHAR(255),
+    profile_photo VARCHAR(255),                 -- path/URL to profile image
+    contact_no VARCHAR(20),
+    email VARCHAR(255) UNIQUE,                  -- UNIQUE email
+
+    address TEXT,
+    city VARCHAR(100),
+    zip VARCHAR(20),
+    country_id INT,
+
+    school_internal_id VARCHAR(100) UNIQUE,     -- UNIQUE code used in sponsor JSON
+    school_id VARCHAR(100),
+    school_type VARCHAR(20),
+    school_name_id INT,
+
+    school_grade_year INT,
+    school_grade VARCHAR(20),
+    grade_mismatch_reason TEXT,                 -- reason for grade mismatch
+    school_student_dob DATE,
+    school_age INT,
+
+    bank_id INT,
+    school_bank_branch_number VARCHAR(100),
+    school_bank_branch_info VARCHAR(255),
+    school_bank_account_no VARCHAR(100) UNIQUE, -- UNIQUE bank account
+
+    school_sponsorship_start_date DATE,
+    school_sponsorship_end_date DATE,
+    school_introducedby VARCHAR(255),
+    school_introducedph VARCHAR(50),
+
+    school_father_name VARCHAR(255),
+    school_mother_name VARCHAR(255),
+    school_father_income FLOAT,
+    school_mother_income FLOAT,
+    school_guardian_name VARCHAR(255),
+    school_guardian_income FLOAT,
+
+    sponsor_id INT,                             -- link to main sponsor (optional)
+    background_info TEXT,
+    internal_comment TEXT,
+    external_comment TEXT,
+
+    created_on DATETIME DEFAULT CURRENT_TIMESTAMP,
+
+    FOREIGN KEY (school_name_id) REFERENCES school_name(id),
+    FOREIGN KEY (bank_id) REFERENCES bank(id),
+    FOREIGN KEY (country_id) REFERENCES country(id),
+    FOREIGN KEY (sponsor_id) REFERENCES sponsor_records(id) ON DELETE SET NULL
+);
+
+-- ===========================
+-- Student: University Students
+-- ===========================
+CREATE TABLE university_students (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    entity_type ENUM('university') NOT NULL DEFAULT 'university',
+
+    name VARCHAR(255),
+    profile_photo VARCHAR(255),                 -- path/URL to profile image
+    contact_no VARCHAR(20),
+    email VARCHAR(255) UNIQUE,                  -- UNIQUE email
+
+    address TEXT,
+    city VARCHAR(100),
+    zip VARCHAR(20),
+    country_id INT,
+
+    university_internal_id VARCHAR(100) UNIQUE, -- UNIQUE code used in sponsor JSON
+    university_id VARCHAR(100),
+    university_name_id INT,
+    university_program_id INT,
+
+    -- year of study format like 1Y1S..5Y2S
+    university_year_of_study ENUM(
+        '1Y1S','1Y2S',
+        '2Y1S','2Y2S',
+        '3Y1S','3Y2S',
+        '4Y1S','4Y2S',
+        '5Y1S','5Y2S'
+    ),
+
+    university_student_dob DATE,
+    university_age INT,
+
+    bank_id INT,
+    university_bank_branch_info VARCHAR(255),
+    university_bank_branch_number VARCHAR(100),
+    university_bank_account_no VARCHAR(100) UNIQUE, -- UNIQUE bank account
+
+    university_sponsorship_start_date DATE,
+    university_sponsorship_end_date DATE,
+    university_introducedby VARCHAR(255),
+    university_introducedph VARCHAR(50),
+
+    university_father_name VARCHAR(255),
+    university_mother_name VARCHAR(255),
+    university_father_income FLOAT,
+    university_mother_income FLOAT,
+    university_guardian_name VARCHAR(255),
+    university_guardian_income FLOAT,
+
+    sponsor_id INT,                             -- link to main sponsor (optional)
+    background_info TEXT,
+    internal_comment TEXT,
+    external_comment TEXT,
+
+    created_on DATETIME DEFAULT CURRENT_TIMESTAMP,
+
+    FOREIGN KEY (university_name_id) REFERENCES university_name(id),
+    FOREIGN KEY (university_program_id) REFERENCES university_program(id),
+    FOREIGN KEY (bank_id) REFERENCES bank(id),
+    FOREIGN KEY (country_id) REFERENCES country(id),
+    FOREIGN KEY (sponsor_id) REFERENCES sponsor_records(id) ON DELETE SET NULL
+);
+
+-- ===========================
+-- Payment Table
+-- ===========================
+CREATE TABLE sponsor_payment (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    
+    -- Relationship Fields
+    sponsor_id INT NOT NULL,
+    external_reference_id VARCHAR(100),          -- optional external/system ref (renamed for clarity)
+    student_school_id INT,                       -- FK to school_students.id
+    student_university_id INT,                   -- FK to university_students.id
+
+    -- Amount Information
+    total_amount DECIMAL(12,2) NOT NULL,         -- total amount to be paid
+    amount_paid DECIMAL(12,2) NOT NULL DEFAULT 0,
+    balance_amount DECIMAL(12,2) GENERATED ALWAYS AS (total_amount - amount_paid) STORED,
+    currency_code CHAR(3) NOT NULL DEFAULT 'USD', -- ISO currency code
+
+    -- Payment Dates
+    payment_date DATE NOT NULL,
+    payment_type ENUM('one_time', 'installment', 'recurring', 'other') NOT NULL,
+    last_payment_date DATE,
+    next_payment_date DATE,
+
+    -- Status and Communication
+    payment_status ENUM('pending', 'partial', 'completed', 'overdue', 'cancelled') NOT NULL DEFAULT 'pending',
+    email_subject VARCHAR(255),
+    email_body TEXT,
+
+    -- Audit Fields
+    created_on DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_on DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+
+    -- Foreign Key Constraints (FIXED)
+    FOREIGN KEY (sponsor_id) REFERENCES sponsor_records(id) ON DELETE CASCADE,
+    FOREIGN KEY (student_school_id) REFERENCES school_students(id) ON DELETE SET NULL,
+    FOREIGN KEY (student_university_id) REFERENCES university_students(id) ON DELETE SET NULL,
+
+    -- Check Constraints
+    CHECK (amount_paid <= total_amount),
+    CHECK (amount_paid >= 0),
+    CHECK (total_amount > 0),
+
+    -- Indexes for better performance
+    INDEX idx_sponsor_payment_sponsor (sponsor_id),
+    INDEX idx_sponsor_payment_school (student_school_id),
+    INDEX idx_sponsor_payment_university (student_university_id),
+    INDEX idx_payment_dates (payment_date, next_payment_date),
+    INDEX idx_payment_status (payment_status),
+    INDEX idx_external_reference (external_reference_id)
+);
+-- ===========================
+-- Payment History Table (with currency)
+-- ===========================
+CREATE TABLE payment_history (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    sponsor_payment_id INT,
+    amount FLOAT,
+    currency_paid VARCHAR(5),                   -- currency type
+    date DATE,
+    cumulative_paid FLOAT,
+    balance_after FLOAT,
+    note TEXT,
+    created_on DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (sponsor_payment_id) REFERENCES sponsor_payment(id)
+);
+
+-- ===========================
+-- Sponsor Reminder Table (status-based)
+-- ===========================
+CREATE TABLE sponsor_reminder (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    sponsor_id INT NOT NULL,
+    student_school_id INT NULL,                 -- optional: tie to a specific school student
+    student_university_id INT NULL,             -- optional: tie to a specific university student
+
+    -- Sponsorship window (kept here)
+    sponsorship_start_date DATE,
+    sponsorship_end_date DATE,
+
+    -- Reminder status & schedule
+    reminder_status ENUM('not_sent','sent') DEFAULT 'not_sent',
+    reminder_days_before INT,
+    reminder_date DATE,
+
+    -- Renewal reminder status & schedule
+    renewal_reminder_status ENUM('not_sent','sent') DEFAULT 'not_sent',
+    renewal_reminder_days_before INT,
+    renewal_reminder_date DATE,
+
+    notes TEXT,
+    created_on DATETIME DEFAULT CURRENT_TIMESTAMP,
+
+    FOREIGN KEY (sponsor_id) REFERENCES sponsor_records(id) ON DELETE CASCADE,
+    FOREIGN KEY (student_school_id) REFERENCES school_students(id) ON DELETE SET NULL,
+    FOREIGN KEY (student_university_id) REFERENCES university_students(id) ON DELETE SET NULL
+);
+
+-- ===========================
+-- School Report Card
+-- ===========================
+CREATE TABLE school_report_card (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    student_school_id INT NOT NULL,                 -- FK to school.id
+
+    filename VARCHAR(255) NOT NULL,                 -- "Filename"
+    term ENUM('Term1','Term2','Term3') NOT NULL,    -- "Term"
+    upload_date DATE NOT NULL,                      -- "Upload Date"
+    report_card_file VARCHAR(255) NOT NULL,         -- "Report Card File" (path/URL)
+
+    created_on DATETIME DEFAULT CURRENT_TIMESTAMP,
+
+    FOREIGN KEY (student_school_id) REFERENCES school_students(id) ON DELETE CASCADE
+);
+
+-- ===========================
+-- University Report Card
+-- ===========================
+CREATE TABLE university_report_card (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    student_university_id INT NOT NULL,             -- FK to university.id
+
+    filename VARCHAR(255) NOT NULL,                 -- "Filename"
+    upload_date DATE NOT NULL,                      -- "Upload Date"
+
+    report_card_term ENUM('1Y1S','1Y2S','2Y1S','2Y2S','3Y1S','3Y2S','4Y1S','4Y2S','5Y1S','5Y2S') NOT NULL,
+    current_term     ENUM('1Y1S','1Y2S','2Y1S','2Y2S','3Y1S','3Y2S','4Y1S','4Y2S','5Y1S','5Y2S') NOT NULL,
+
+    semester_end_month TINYINT UNSIGNED NOT NULL,    -- 1..12
+    semester_end_year  YEAR NOT NULL,                -- e.g. 2025
+
+    report_card_file VARCHAR(255) NOT NULL,          -- "Report Card File" (path/URL)
+    created_on DATETIME DEFAULT CURRENT_TIMESTAMP,
+
+    FOREIGN KEY (student_university_id) REFERENCES university_students(id) ON DELETE CASCADE
+);

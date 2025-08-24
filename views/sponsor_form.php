@@ -23,7 +23,7 @@
                         
                         <?php echo form_open(admin_url('student_sponsor_portal/sponsor_form'), ['id' => 'sponsor-form']); ?>
                         <?php if(isset($sponsor)): ?>
-                            <input type="hidden" name="sponsor_id" value="<?php echo $sponsor['id']; ?>">
+                            <input type="hidden" name="sponsor_id" value="<?= isset($sponsor['id']) ? (int)$sponsor['id'] : 0; ?>">
                         <?php endif; ?>
                         
                         <!-- Navigation tabs -->
@@ -49,6 +49,11 @@
                                         <i class="fa fa-calendar"></i> Sponsorship Details
                                     </a>
                                 </li>
+                                <li role="presentation">
+                                <a href="#staff-account" aria-controls="staff-account" role="tab" data-toggle="tab">
+                                    <i class="fa fa-user-circle"></i> Staff Account
+                                </a>
+                            </li>
                             </ul>
                         </div>
 
@@ -228,18 +233,18 @@
                                 <div class="row">
                                     <div class="col-md-6">
                                         <div class="form-group">
-                                            <label for="sponsor_sponsorship_start_date" class="control-label">Membership Start Date</label>
-                                            <input type="date" name="sponsor_sponsorship_start_date" 
-                                                   id="sponsor_sponsorship_start_date" class="form-control"
-                                                   value="<?php echo isset($sponsor) ? $sponsor['sponsor_sponsorship_start_date'] : ''; ?>">
+                                            <label for="membership_start_date" class="control-label">Membership Start Date</label>
+                                            <input type="date" name="membership_start_date" 
+                                                   id="membership_start_date" class="form-control"
+                                                   value="<?php echo isset($sponsor) ? $sponsor['membership_start_date'] : ''; ?>">
                                         </div>
                                     </div>
                                     <div class="col-md-6">
                                         <div class="form-group">
-                                            <label for="sponsor_sponsorship_reneval_date" class="control-label">Membership Renewal Date</label>
-                                            <input type="date" name="sponsor_sponsorship_reneval_date" 
-                                                   id="sponsor_sponsorship_reneval_date" class="form-control"
-                                                   value="<?php echo isset($sponsor) ? $sponsor['sponsor_sponsorship_reneval_date'] : ''; ?>">
+                                            <label for="membership_end_date" class="control-label">Membership Renewal Date</label>
+                                            <input type="date" name="membership_end_date" 
+                                                   id="membership_end_date" class="form-control"
+                                                   value="<?php echo isset($sponsor) ? $sponsor['membership_end_date'] : ''; ?>">
                                         </div>
                                     </div>
                                 </div>
@@ -259,17 +264,98 @@
                                     </div>
                                 </div>
                             </div>
+
+                            <!-- Staff Account Tab -->
+                            <div role="tabpanel" class="tab-pane" id="staff-account">
+                            <div class="row">
+                                <div class="col-md-12">
+                                <div class="checkbox checkbox-primary">
+                                    <input type="checkbox" id="create_staff" name="create_staff" value="1"
+                                    <?= (isset($sponsor) && !empty($sponsor['staff_id'])) ? 'checked' : ''; ?>>
+                                    <label for="create_staff">Create a Perfex Staff login for this student</label>
+                                </div>
+                                </div>
+                            </div>
+
+                            <!-- Login Email / Names / Password -->
+                            <div class="row">
+                                <div class="col-md-4">
+                                <div class="form-group">
+                                    <label class="control-label">Login Email</label>
+                                    <input type="email" name="staff_email" id="staff_email" class="form-control"
+                                        value="<?= isset($sponsor) ? htmlspecialchars($sponsor['email']) : ''; ?>"
+                                        placeholder="email@domain.com">
+                                </div>
+                                </div>
+                                <div class="col-md-4">
+                                <div class="form-group">
+                                    <label class="control-label">First Name</label>
+                                    <input type="text" name="staff_firstname" id="staff_firstname" class="form-control"
+                                        value="<?= isset($sponsor) ? htmlspecialchars($sponsor['name']) : ''; ?>">
+                                </div>
+                                </div>
+                                <div class="col-md-4">
+                                <div class="form-group">
+                                    <label class="control-label">Last Name</label>
+                                    <input type="text" name="staff_lastname" id="staff_lastname" class="form-control" require>
+                                </div>
+                                </div>
+                            </div>
+
+                            <div class="row">
+                                <div class="col-md-4">
+                                <div class="form-group">
+                                    <label class="control-label">Password </label>
+                                    <input type="text" name="staff_password" id="staff_password" class="form-control" require>
+                                </div>
+                                </div>
+                                <div class="col-md-4">
+                                <div class="checkbox checkbox-primary" style="margin-top:28px;">
+                                    <input type="checkbox" id="staff_active" name="staff_active" value="1" checked>
+                                    <label for="staff_active">Allow this user to login (Active)</label>
+                                </div>
+                                </div>
+                                <!-- <div class="col-md-4">
+                                <div class="checkbox checkbox-primary" style="margin-top:28px;">
+                                    <input type="checkbox" id="send_staff_welcome" name="send_staff_welcome" value="1">
+                                    <label for="send_staff_welcome">Send welcome email</label>
+                                </div>
+                                </div> -->
+                            </div>
+
+                            <?php if (!empty($sponsor['id'])): ?>
+                                <button type="submit"
+                                        class="btn btn-success"
+                                        formaction="<?= admin_url('student_sponsor_portal/grant_sponsor_access'); ?>"
+                                        formmethod="post">
+                                    Grant Portal Access
+                                </button>
+
+                                <button type="submit"
+                                        class="btn btn-danger"
+                                        formaction="<?= admin_url('student_sponsor_portal/revoke_sponsor_access'); ?>"
+                                        formmethod="post">
+                                    Revoke Portal Access
+                                </button>
+                                <?php endif; ?>
+
+                            </div>
+
+
+
+
                         </div>
 
                         <!-- Form Actions -->
-                        <div class="form-group" style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #ddd;">
+                            <div class="form-group" style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #ddd;">
                             <button type="submit" class="btn btn-primary btn-lg">
-                                <i class="fa fa-save"></i> <?php echo isset($sponsor) ? 'Update Sponsor' : 'Save Sponsor'; ?>
+                                <i class="fa fa-save"></i> <?= isset($sponsor) ? 'Update Sponsor' : 'Save Sponsor'; ?>
                             </button>
-                            <a href="<?php echo admin_url('student_sponsor_portal/sponsors'); ?>" class="btn btn-default btn-lg">
+                            <a href="<?= admin_url('student_sponsor_portal/sponsors'); ?>" class="btn btn-default btn-lg">
                                 <i class="fa fa-arrow-left"></i> Cancel
                             </a>
-                        </div>
+                            </div>
+
                         
                         <?php echo form_close(); ?>
                     </div>

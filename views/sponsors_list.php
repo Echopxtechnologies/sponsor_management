@@ -112,15 +112,15 @@
                                                 <?php 
                                                 // Calculate status based on sponsorship dates
                                                 $status = 'inactive';
-                                                if(!empty($sponsor['sponsor_sponsorship_start_date'])) {
-                                                    $start_date = strtotime($sponsor['sponsor_sponsorship_start_date']);
+                                                if(!empty($sponsor['membership_start_date'])) {
+                                                    $start_date = strtotime($sponsor['membership_start_date']);
                                                     $current_date = time();
                                                     
                                                     if($start_date <= $current_date) {
-                                                        if(empty($sponsor['sponsor_sponsorship_reneval_date'])) {
+                                                        if(empty($sponsor['membership_end_date'])) {
                                                             $status = 'active';
                                                         } else {
-                                                            $end_date = strtotime($sponsor['sponsor_sponsorship_reneval_date']);
+                                                            $end_date = strtotime($sponsor['membership_end_date']);
                                                             if($end_date >= $current_date) {
                                                                 $status = 'active';
                                                             }

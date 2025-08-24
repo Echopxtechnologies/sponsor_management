@@ -91,7 +91,7 @@
                                                 <?php endif; ?>
                                             </td>
                                             <td>
-                                                <span class="label label-info">Grade <?php echo htmlspecialchars($student['grade']); ?></span>
+                                                <span class="label label-info">Grade <?php echo htmlspecialchars($student['school_grade']); ?></span>
                                             </td>
                                             <td><?php echo htmlspecialchars($student['school_name']); ?></td>
                                             <td><?php echo htmlspecialchars($student['email'] ?? 'Not provided'); ?></td>

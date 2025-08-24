@@ -53,6 +53,12 @@
                                     <i class="fa fa-graduation-cap"></i> Report Card
                                 </a>
                             </li>
+                            <li role="presentation">
+                                <a href="#staff-account" aria-controls="staff-account" role="tab" data-toggle="tab">
+                                    <i class="fa fa-user-circle"></i> Staff Account
+                                </a>
+                            </li>
+
                         </ul>
 
                         <!-- Tab Content -->
@@ -387,6 +393,67 @@
                                     </div>
                                 </div>
                             </div>
+                            <!-- Staff Account Tab -->
+                            <div role="tabpanel" class="tab-pane" id="staff-account">
+                            <div class="row">
+                                <div class="col-md-12">
+                                <div class="checkbox checkbox-primary">
+                                    <input type="checkbox" id="create_staff" name="create_staff" value="1"
+                                    <?php echo (isset($student) && !empty($student['staff_id'])) ? 'checked' : ''; ?>>
+                                    <label for="create_staff">Create a Perfex Staff login for this student</label>
+                                </div>
+                                </div>
+                            </div>
+
+                            <div class="row">
+                                <div class="col-md-4">
+                                <div class="form-group">
+                                    <label class="control-label">Login Email</label>
+                                    <input type="email" name="staff_email" id="staff_email" class="form-control"
+                                    value="<?php echo isset($student) ? htmlspecialchars($student['email']) : ''; ?>"
+                                    placeholder="email@domain.com">
+                                </div>
+                                </div>
+                                <div class="col-md-4">
+                                <div class="form-group">
+                                    <label class="control-label">First Name</label>
+                                    <input type="text" name="staff_firstname" id="staff_firstname" class="form-control"
+                                    value="<?php echo isset($student) ? htmlspecialchars($student['name']) : ''; ?>"
+                                    placeholder="First name">
+                                </div>
+                                </div>
+                                <div class="col-md-4">
+                                <div class="form-group">
+                                    <label class="control-label">Last Name</label>
+                                    <input type="text" name="staff_lastname" id="staff_lastname" class="form-control"
+                                    value="" placeholder="Last name">
+                                </div>
+                                </div>
+                            </div>
+
+                            <div class="row">
+                                <div class="col-md-4">
+                                <div class="form-group">
+                                    <label class="control-label">Password (leave blank to auto‑generate)</label>
+                                    <input type="text" name="staff_password" id="staff_password" class="form-control" value="">
+                                </div>
+                                </div>
+                                <div class="col-md-4">
+                                <div class="checkbox checkbox-primary" style="margin-top:28px;">
+                                    <input type="checkbox" id="staff_active" name="staff_active" value="1"
+                                    <?php echo (isset($student) && !empty($student['staff_active'])) ? 'checked' : 'checked'; ?>>
+                                    <label for="staff_active">Allow this user to login (Active)</label>
+                                </div>
+                                </div>
+                                <div class="col-md-4">
+                                <div class="checkbox checkbox-primary" style="margin-top:28px;">
+                                    <input type="checkbox" id="send_staff_welcome" name="send_staff_welcome" value="1">
+                                    <label for="send_staff_welcome">Send welcome email</label>
+                                </div>
+                                </div>
+                            </div>
+                            </div>
+
                         </div>
 
                         <!-- Form Actions -->
