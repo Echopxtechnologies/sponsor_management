@@ -78,6 +78,9 @@
                   <i class="fa fa-file-text"></i> Report Cards
                 </a>
               </li>
+                                              <li><a href="#tab_staff" data-toggle="tab"><i class="fa fa-user-circle"></i> Staff Account</a></li>
+
+
             </ul>
 
             <!-- Tab panes -->
@@ -550,6 +553,43 @@
                 </div>
                 <?php endif; ?>
               </div>
+                  <!-- Staff Account Tab -->
+                            <div class="tab-pane" id="tab_staff">
+                                <div class="checkbox checkbox-primary">
+                                    <input type="checkbox" id="create_staff" name="create_staff" value="1" <?= !empty($university['staff_id']) ? 'checked' : ''; ?>>
+                                    <label for="create_staff">Create a Staff login</label>
+                                </div>
+                                <div class="row">
+                                    <div class="col-md-4"><?= render_input('staff_email', 'Login Email', html_escape($university['email'] ?? ''), 'email'); ?></div>
+                                    <div class="col-md-4"><?= render_input('staff_firstname', 'First Name', html_escape($university['name'] ?? '')); ?></div>
+                                    <div class="col-md-4"><?= render_input('staff_lastname', 'Last Name'); ?></div>
+                                </div>
+                                <div class="row">
+                                    <div class="col-md-4"><?= render_input('staff_password', 'Password', '', 'password'); ?></div>
+                                    <div class="col-md-4">
+                                        <div class="checkbox checkbox-primary" style="margin-top:28px;">
+                                            <input type="checkbox" id="staff_active" name="staff_active" value="1" checked>
+                                            <label for="staff_active">Active Login</label>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <?php if (!empty($university['id'])): ?>
+                                    <button type="submit" class="btn btn-success"
+                                            formaction="<?= admin_url('student_sponsor_portal/grant_university_access'); ?>"
+                                            formmethod="post">
+                                        Grant Portal Access
+                                    </button>
+                                    <button type="submit" class="btn btn-danger"
+                                            formaction="<?= admin_url('student_sponsor_portal/revoke_university_access'); ?>"
+                                            formmethod="post">
+                                        Revoke Portal Access
+                                    </button>
+                                <?php endif; ?>
+                            </div>
+
+
+
             </div>
 
             <button type="submit" id="btn-save-student" class="btn btn-primary btn-lg" form="university-student-form">

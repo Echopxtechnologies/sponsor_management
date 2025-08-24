@@ -177,6 +177,8 @@ class School_model extends App_Model
             'school_father_name' => $result['school_father_name'] ?? '',
             'school_mother_name' => $result['school_mother_name'] ?? '',
             'school_guardian_name' => $result['school_guardian_name'] ?? '',
+            'staff_id'     => $result['staff_id']     ?? null,
+            'staff_active' => $result['staff_active'] ?? null,
         ];
     }
     
@@ -281,6 +283,8 @@ public function get_by_id($student_id)
         'school_guardian_name' => $result['school_guardian_name'] ?? '',
         'school_guardian_income' => $result['school_guardian_income'] ?? '',
         'background_info' => $result['background_info'] ?? '',
+        'staff_id'      => $result['staff_id']      ?? null,
+        'staff_active'  => $result['staff_active']  ?? null,
     ];
     
     return $mapped_result;
@@ -288,80 +292,108 @@ public function get_by_id($student_id)
 
 public function update($data, $id)
 {
-    // Prepare update data carefully
+    // Map form keys -> DB columns (keep this list in sync with add())
+    $map = [
+        // basics
+        'name'                   => 'name',
+        'email'                  => 'email',
+        'phone'                  => 'contact_no',
+        'address'                => 'address',
+        'city'                   => 'city',                 // also used as "district" in UI
+        'district'               => 'city',                 // accept either one
+        'postal_code'            => 'zip',
+        'zip'                    => 'zip',
+
+        // school identity
+        'school_id'              => 'school_id',
+        'school_type'            => 'school_type',
+        // school_name is special → school_name_id
+
+        // academics / personal
+        'grade'                  => 'school_grade',
+        'dob'                    => 'school_student_dob',
+
+        // sponsorship
+        'sponsorship_start'      => 'school_sponsorship_start_date',
+        'sponsorship_end'        => 'school_sponsorship_end_date',
+
+        // introduced by
+        'introduced_by'          => 'school_introducedby',
+        'introduced_phone'       => 'school_introducedph',
+
+        // bank
+        'bank_account_number'    => 'school_bank_account_no',
+
+        // family
+        'father_name'            => 'school_father_name',
+        'mother_name'            => 'school_mother_name',
+        'guardian_name'          => 'school_guardian_name',
+
+        // incomes (numeric)
+        'father_income'          => 'school_father_income',
+        'mother_income'          => 'school_mother_income',
+        'guardian_income'        => 'school_guardian_income',
+
+        // comments/info
+        'background_information' => 'background_info',
+        'internal_comment'       => 'internal_comment',
+        'external_comment'       => 'external_comment',
+    ];
+
     $update_data = [];
-    
-    // Text fields - only update if provided or explicitly empty
-    $text_fields = [
-        'name', 'email', 'contact_no', 'address', 'city', 'zip',
-        'school_id', 'school_type', 'school_grade',
-        'school_introducedby', 'school_introducedph',
-        'school_father_name', 'school_mother_name', 'school_guardian_name',
-        'background_info', 'internal_comment', 'external_comment'
-    ];
-    
-    foreach ($text_fields as $field) {
-        if (isset($data[$field])) {
-            $update_data[$field] = !empty($data[$field]) ? $data[$field] : null;
+
+    // Handle school_name → school_name_id
+    if (array_key_exists('school_name', $data)) {
+        $update_data['school_name_id'] = $this->get_or_create_school_name_id(
+            trim((string)$data['school_name'])
+        );
+    }
+
+    // Apply mapping (trim strings, set null for empty strings)
+    foreach ($map as $form_key => $db_col) {
+        if (!array_key_exists($form_key, $data)) {
+            continue; // not posted → don't touch existing DB value
         }
-    }
-    
-    // Special handling for school_name_id
-    if (isset($data['school_name'])) {
-        $update_data['school_name_id'] = $this->get_or_create_school_name_id($data['school_name']);
-    }
-    
-    // Date fields
-    $date_fields = [
-        'school_student_dob' => 'dob',
-        'school_sponsorship_start_date' => 'sponsorship_start',
-        'school_sponsorship_end_date' => 'sponsorship_end'
-    ];
-    
-    foreach ($date_fields as $db_field => $form_field) {
-        if (isset($data[$form_field])) {
-            $update_data[$db_field] = !empty($data[$form_field]) ? $data[$form_field] : null;
+
+        $val = $data[$form_key];
+
+        // Numeric fields: store 0 when empty
+        if (in_array($form_key, ['father_income','mother_income','guardian_income'], true)) {
+            $update_data[$db_col] = ($val === '' || $val === null) ? 0 : (float)$val;
+            continue;
         }
-    }
-    
-    // Numeric fields - ensure they're properly cast
-    $numeric_fields = [
-        'school_father_income' => 'father_income',
-        'school_mother_income' => 'mother_income',
-        'school_guardian_income' => 'guardian_income'
-    ];
-    
-    foreach ($numeric_fields as $db_field => $form_field) {
-        if (isset($data[$form_field])) {
-            $update_data[$db_field] = !empty($data[$form_field]) ? (float)$data[$form_field] : 0;
+
+        // All other fields: trim strings; store NULL when empty
+        if (is_string($val)) {
+            $val = trim($val);
         }
+        $update_data[$db_col] = ($val === '' ? null : $val);
     }
-    
-    // Bank account field
-    if (isset($data['bank_account_number'])) {
-        $update_data['school_bank_account_no'] = !empty($data['bank_account_number']) ? $data['bank_account_number'] : null;
+
+    // NOTHING to update?
+    if (empty($update_data)) {
+        log_activity('No update data provided for school student. ID: '.$id);
+        return false;
     }
-    
-    // Debug: Check what's being updated
-    log_activity('School Student Update Data: ' . json_encode($update_data));
-    
-    if (!empty($update_data)) {
-        $this->db->where('id', $id);
-        $result = $this->db->update(db_prefix() . 'school_students', $update_data);
-        
-        // Check if update was successful
+
+    // Debug to see exactly what is being written
+    log_activity('School Student Update Data (ID '.$id.'): '.json_encode($update_data));
+
+    $this->db->where('id', (int)$id);
+    $ok = $this->db->update(db_prefix().'school_students', $update_data);
+
+    // affected_rows() can be 0 if values are identical — still a successful update statement.
+    if ($ok) {
         if ($this->db->affected_rows() > 0) {
-            log_activity('School student updated successfully. ID: ' . $id);
+            log_activity('School student updated successfully. ID: '.$id);
         } else {
-            log_activity('No changes detected in school student update. ID: ' . $id);
+            log_activity('School student update executed but no changes detected. ID: '.$id);
         }
-        
-        return $result;
     }
-    
-    log_activity('No update data provided for school student. ID: ' . $id);
-    return false;
+
+    return $ok;
 }
+
 
     public function update_student($data, $student_id)
     {

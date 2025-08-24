@@ -6,364 +6,161 @@
             <div class="col-md-10 col-md-offset-1">
                 <div class="panel_s">
                     <div class="panel-body">
-                        <!-- Header Section -->
+                        <!-- Header -->
                         <div class="row">
                             <div class="col-md-8">
                                 <h4 class="customer-profile-group-heading">
-                                    <i class="fa fa-user-plus"></i> <?php echo isset($sponsor) ? 'Edit Sponsor' : 'Add New Sponsor'; ?>
+                                    <i class="fa fa-user-plus"></i>
+                                    <?= isset($sponsor) ? 'Edit Sponsor' : 'Add New Sponsor'; ?>
                                 </h4>
                             </div>
                             <div class="col-md-4 text-right">
-                                <a href="<?php echo admin_url('student_sponsor_portal/sponsors'); ?>" class="btn btn-default">
+                                <a href="<?= admin_url('student_sponsor_portal/sponsors'); ?>" class="btn btn-default">
                                     <i class="fa fa-arrow-left"></i> Back to List
                                 </a>
                             </div>
                         </div>
                         <hr class="hr-panel-heading">
-                        
-                        <?php echo form_open(admin_url('student_sponsor_portal/sponsor_form'), ['id' => 'sponsor-form']); ?>
-                        <?php if(isset($sponsor)): ?>
-                            <input type="hidden" name="sponsor_id" value="<?= isset($sponsor['id']) ? (int)$sponsor['id'] : 0; ?>">
+
+                        <?= form_open(admin_url('student_sponsor_portal/sponsor_form'), ['id' => 'sponsor-form']); ?>
+                        <?php if (!empty($sponsor['id'])): ?>
+                            <input type="hidden" name="sponsor_id" value="<?= (int)$sponsor['id']; ?>">
                         <?php endif; ?>
-                        
-                        <!-- Navigation tabs -->
+
+                        <!-- Tabs -->
                         <div class="horizontal-tabs">
                             <ul class="nav nav-tabs nav-tabs-horizontal" role="tablist">
-                                <li role="presentation" class="active">
-                                    <a href="#tab_basic_info" aria-controls="tab_basic_info" role="tab" data-toggle="tab">
-                                        <i class="fa fa-user"></i> Basic Information
-                                    </a>
-                                </li>
-                                <li role="presentation">
-                                    <a href="#tab_contact_info" aria-controls="tab_contact_info" role="tab" data-toggle="tab">
-                                        <i class="fa fa-phone"></i> Contact Details
-                                    </a>
-                                </li>
-                                <li role="presentation">
-                                    <a href="#tab_bank_info" aria-controls="tab_bank_info" role="tab" data-toggle="tab">
-                                        <i class="fa fa-bank"></i> Banking Information
-                                    </a>
-                                </li>
-                                <li role="presentation">
-                                    <a href="#tab_sponsorship_info" aria-controls="tab_sponsorship_info" role="tab" data-toggle="tab">
-                                        <i class="fa fa-calendar"></i> Sponsorship Details
-                                    </a>
-                                </li>
-                                <li role="presentation">
-                                <a href="#staff-account" aria-controls="staff-account" role="tab" data-toggle="tab">
-                                    <i class="fa fa-user-circle"></i> Staff Account
-                                </a>
-                            </li>
+                                <li class="active"><a href="#tab_basic" data-toggle="tab"><i class="fa fa-user"></i> Basic Info</a></li>
+                                <li><a href="#tab_contact" data-toggle="tab"><i class="fa fa-phone"></i> Contact</a></li>
+                                <li><a href="#tab_bank" data-toggle="tab"><i class="fa fa-bank"></i> Banking</a></li>
+                                <li><a href="#tab_sponsorship" data-toggle="tab"><i class="fa fa-calendar"></i> Sponsorship</a></li>
+                                <li><a href="#tab_staff" data-toggle="tab"><i class="fa fa-user-circle"></i> Staff Account</a></li>
                             </ul>
                         </div>
 
                         <div class="tab-content">
-                            <!-- Basic Information Tab -->
-                            <div role="tabpanel" class="tab-pane active" id="tab_basic_info">
+                            <!-- Basic Tab -->
+                            <div class="tab-pane active" id="tab_basic">
                                 <div class="row">
                                     <div class="col-md-6">
-                                        <div class="form-group">
-                                            <label for="name" class="control-label">
-                                                <span class="text-danger">*</span> Sponsor Name
-                                            </label>
-                                            <input type="text" name="name" id="name" required class="form-control" 
-                                                   value="<?php echo isset($sponsor) ? htmlspecialchars($sponsor['name']) : ''; ?>"
-                                                   placeholder="Enter full name or organization name">
-                                        </div>
+                                        <?= render_input('name', 'Sponsor Name *', html_escape($sponsor['name'] ?? ''), 'text', ['required' => true]); ?>
                                     </div>
                                     <div class="col-md-6">
-                                        <div class="form-group">
-                                            <label for="sponsor_type" class="control-label">
-                                                <span class="text-danger">*</span> Sponsor Type
-                                            </label>
-                                            <select name="sponsor_type" id="sponsor_type" required class="form-control selectpicker">
-                                                <option value="">Select Sponsor Type</option>
-                                                <option value="individual" <?php echo (isset($sponsor) && $sponsor['sponsor_type'] == 'individual') ? 'selected' : ''; ?>>Individual</option>
-                                                <option value="company" <?php echo (isset($sponsor) && $sponsor['sponsor_type'] == 'company') ? 'selected' : ''; ?>>Company</option>
-                                            </select>
-                                        </div>
+                                        <?= render_select('sponsor_type', [
+                                            ['id'=>'individual','name'=>'Individual'],
+                                            ['id'=>'company','name'=>'Company']
+                                        ], ['id','name'], 'Sponsor Type *', $sponsor['sponsor_type'] ?? '', ['required' => true]); ?>
                                     </div>
                                 </div>
-                                
-                                <div class="row">
-                                    <div class="col-md-12">
-                                        <div class="form-group">
-                                            <label for="sponsor_occupation" class="control-label">Occupation</label>
-                                            <input type="text" name="sponsor_occupation" id="sponsor_occupation" 
-                                                   class="form-control" 
-                                                   value="<?php echo isset($sponsor) ? htmlspecialchars($sponsor['sponsor_occupation']) : ''; ?>"
-                                                   placeholder="Enter occupation or business type">
-                                        </div>
-                                    </div>
-                                </div>
+                                <?= render_input('sponsor_occupation', 'Occupation', html_escape($sponsor['sponsor_occupation'] ?? '')); ?>
                             </div>
 
-                            <!-- Contact Information Tab -->
-                            <div role="tabpanel" class="tab-pane" id="tab_contact_info">
+                            <!-- Contact Tab -->
+                            <div class="tab-pane" id="tab_contact">
                                 <div class="row">
                                     <div class="col-md-6">
-                                        <div class="form-group">
-                                            <label for="email" class="control-label">Email Address</label>
-                                            <input type="email" name="email" id="email" class="form-control" 
-                                                   value="<?php echo isset($sponsor) ? htmlspecialchars($sponsor['email']) : ''; ?>"
-                                                   placeholder="Enter email address">
-                                        </div>
+                                        <?= render_input('email', 'Email', html_escape($sponsor['email'] ?? ''), 'email'); ?>
                                     </div>
                                     <div class="col-md-6">
-                                        <div class="form-group">
-                                            <label for="country_id" class="control-label">Country</label>
-                                            <select name="country_id" id="country_id" class="form-control selectpicker" 
-                                                    data-live-search="true" onchange="updatePhoneCode()">
-                                                <option value="">Select Country</option>
-                                                <option value="US" data-code="US">United States</option>
-                                                <option value="IN" data-code="IN">India</option>
-                                                <option value="GB" data-code="GB">United Kingdom</option>
-                                                <option value="CA" data-code="CA">Canada</option>
-                                                <option value="AU" data-code="AU">Australia</option>
-                                            </select>
-                                        </div>
+                                        <?= render_select('country_id', [], [], 'Country', $sponsor['country_id'] ?? ''); ?>
                                     </div>
                                 </div>
-
                                 <div class="row">
                                     <div class="col-md-3">
-                                        <div class="form-group">
-                                            <label for="phone_code" class="control-label">Country Code</label>
-                                            <input type="text" name="phone_code" id="phone_code" class="form-control" 
-                                                   value="<?php echo isset($sponsor) ? htmlspecialchars($sponsor['phone_code']) : '+1'; ?>"
-                                                   placeholder="+1">
-                                        </div>
+                                        <?= render_input('phone_code', 'Country Code', html_escape($sponsor['phone_code'] ?? ''), 'text'); ?>
                                     </div>
                                     <div class="col-md-9">
-                                        <div class="form-group">
-                                            <label for="contact_no" class="control-label">Phone Number</label>
-                                            <input type="tel" name="contact_no" id="contact_no" class="form-control" 
-                                                   value="<?php echo isset($sponsor) ? htmlspecialchars($sponsor['contact_no']) : ''; ?>"
-                                                   placeholder="Enter phone number">
-                                        </div>
+                                        <?= render_input('contact_no', 'Phone', html_escape($sponsor['contact_no'] ?? ''), 'tel'); ?>
                                     </div>
                                 </div>
-
+                                <?= render_textarea('address', 'Address', html_escape($sponsor['address'] ?? '')); ?>
                                 <div class="row">
-                                    <div class="col-md-12">
-                                        <div class="form-group">
-                                            <label for="address" class="control-label">Address</label>
-                                            <textarea name="address" id="address" class="form-control" rows="3" 
-                                                    placeholder="Enter complete address"><?php echo isset($sponsor) ? htmlspecialchars($sponsor['address']) : ''; ?></textarea>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <div class="row">
-                                    <div class="col-md-4">
-                                        <div class="form-group">
-                                            <label for="city" class="control-label">City</label>
-                                            <input type="text" name="city" id="city" class="form-control" 
-                                                   value="<?php echo isset($sponsor) ? htmlspecialchars($sponsor['city']) : ''; ?>"
-                                                   placeholder="Enter city">
-                                        </div>
-                                    </div>
-                                    <div class="col-md-4">
-                                        <div class="form-group">
-                                            <label for="state_id" class="control-label">State/Province</label>
-                                            <select name="state_id" id="state_id" class="form-control selectpicker" 
-                                                    data-live-search="true">
-                                                <option value="">Select State/Province</option>
-                                            </select>
-                                        </div>
-                                    </div>
-                                    <div class="col-md-4">
-                                        <div class="form-group">
-                                            <label for="zip" class="control-label">ZIP/Postal Code</label>
-                                            <input type="text" name="zip" id="zip" class="form-control" 
-                                                   value="<?php echo isset($sponsor) ? htmlspecialchars($sponsor['zip']) : ''; ?>"
-                                                   placeholder="Enter ZIP/Postal code">
-                                        </div>
-                                    </div>
+                                    <div class="col-md-4"><?= render_input('city', 'City', html_escape($sponsor['city'] ?? '')); ?></div>
+                                    <div class="col-md-4"><?= render_select('state_id', [], [], 'State/Province', $sponsor['state_id'] ?? ''); ?></div>
+                                    <div class="col-md-4"><?= render_input('zip', 'Postal Code', html_escape($sponsor['zip'] ?? '')); ?></div>
                                 </div>
                             </div>
 
-                            <!-- Banking Information Tab -->
-                            <div role="tabpanel" class="tab-pane" id="tab_bank_info">
+                            <!-- Bank Tab -->
+                            <div class="tab-pane" id="tab_bank">
                                 <div class="row">
-                                    <div class="col-md-6">
-                                        <div class="form-group">
-                                            <label for="sponsor_name_of_the_bank_id" class="control-label">Bank Name</label>
-                                            <select name="sponsor_name_of_the_bank_id" id="sponsor_name_of_the_bank_id" 
-                                                    class="form-control selectpicker" data-live-search="true">
-                                                <option value="">Select Bank</option>
-                                            </select>
-                                        </div>
-                                    </div>
-                                    <div class="col-md-6">
-                                        <div class="form-group">
-                                            <label for="sponsor_bank_branch_info" class="control-label">Branch Name</label>
-                                            <input type="text" name="sponsor_bank_branch_info" id="sponsor_bank_branch_info" 
-                                                   class="form-control" 
-                                                   value="<?php echo isset($sponsor) ? htmlspecialchars($sponsor['sponsor_bank_branch_info']) : ''; ?>"
-                                                   placeholder="Enter branch name">
-                                        </div>
-                                    </div>
+                                    <div class="col-md-6"><?= render_select('bank_id', [], [], 'Bank', $sponsor['bank_id'] ?? ''); ?></div>
+                                    <div class="col-md-6"><?= render_input('sponsor_bank_branch_info', 'Branch Name', html_escape($sponsor['sponsor_bank_branch_info'] ?? '')); ?></div>
                                 </div>
-
                                 <div class="row">
-                                    <div class="col-md-6">
-                                        <div class="form-group">
-                                            <label for="sponsor_bank_branch_number" class="control-label">IFSC Code / Branch Number</label>
-                                            <input type="text" name="sponsor_bank_branch_number" id="sponsor_bank_branch_number" 
-                                                   class="form-control" 
-                                                   value="<?php echo isset($sponsor) ? htmlspecialchars($sponsor['sponsor_bank_branch_number']) : ''; ?>"
-                                                   placeholder="Enter IFSC code or branch number">
-                                        </div>
-                                    </div>
-                                    <div class="col-md-6">
-                                        <div class="form-group">
-                                            <label for="sponsor_bank_account_no" class="control-label">Bank Account Number</label>
-                                            <input type="text" name="sponsor_bank_account_no" id="sponsor_bank_account_no" 
-                                                   class="form-control" 
-                                                   value="<?php echo isset($sponsor) ? htmlspecialchars($sponsor['sponsor_bank_account_no']) : ''; ?>"
-                                                   placeholder="Enter bank account number">
-                                        </div>
-                                    </div>
+                                    <div class="col-md-6"><?= render_input('sponsor_bank_branch_number', 'Branch/IFSC', html_escape($sponsor['sponsor_bank_branch_number'] ?? '')); ?></div>
+                                    <div class="col-md-6"><?= render_input('sponsor_bank_account_no', 'Account Number', html_escape($sponsor['sponsor_bank_account_no'] ?? '')); ?></div>
                                 </div>
                             </div>
 
-                            <!-- Sponsorship Details Tab -->
-                            <div role="tabpanel" class="tab-pane" id="tab_sponsorship_info">
+                            <!-- Sponsorship Tab -->
+                            <div class="tab-pane" id="tab_sponsorship">
                                 <div class="row">
-                                    <div class="col-md-6">
-                                        <div class="form-group">
-                                            <label for="membership_start_date" class="control-label">Membership Start Date</label>
-                                            <input type="date" name="membership_start_date" 
-                                                   id="membership_start_date" class="form-control"
-                                                   value="<?php echo isset($sponsor) ? $sponsor['membership_start_date'] : ''; ?>">
-                                        </div>
-                                    </div>
-                                    <div class="col-md-6">
-                                        <div class="form-group">
-                                            <label for="membership_end_date" class="control-label">Membership Renewal Date</label>
-                                            <input type="date" name="membership_end_date" 
-                                                   id="membership_end_date" class="form-control"
-                                                   value="<?php echo isset($sponsor) ? $sponsor['membership_end_date'] : ''; ?>">
-                                        </div>
-                                    </div>
+                                    <div class="col-md-6"><?= render_date_input('membership_start_date', 'Start Date', $sponsor['membership_start_date'] ?? ''); ?></div>
+                                    <div class="col-md-6"><?= render_date_input('membership_end_date', 'Renewal Date', $sponsor['membership_end_date'] ?? ''); ?></div>
                                 </div>
-
-                                <div class="row">
-                                    <div class="col-md-6">
-                                        <div class="form-group">
-                                            <label for="sponsor_frequency" class="control-label">Sponsor Frequency</label>
-                                            <select name="sponsor_frequency" id="sponsor_frequency" class="form-control selectpicker">
-                                                <option value="">Select Frequency</option>
-                                                <option value="one_time" <?php echo (isset($sponsor) && $sponsor['sponsor_frequency'] == 'one_time') ? 'selected' : ''; ?>>One-time</option>
-                                                <option value="monthly" <?php echo (isset($sponsor) && $sponsor['sponsor_frequency'] == 'monthly') ? 'selected' : ''; ?>>Monthly</option>
-                                                <option value="half_yearly" <?php echo (isset($sponsor) && $sponsor['sponsor_frequency'] == 'half_yearly') ? 'selected' : ''; ?>>Half-yearly</option>
-                                                <option value="yearly" <?php echo (isset($sponsor) && $sponsor['sponsor_frequency'] == 'yearly') ? 'selected' : ''; ?>>Yearly</option>
-                                            </select>
-                                        </div>
-                                    </div>
-                                </div>
+                                <?= render_select('sponsor_frequency', [
+                                    ['id'=>'one_time','name'=>'One-time'],
+                                    ['id'=>'monthly','name'=>'Monthly'],
+                                    ['id'=>'half_yearly','name'=>'Half-yearly'],
+                                    ['id'=>'yearly','name'=>'Yearly']
+                                ], ['id','name'], 'Frequency', $sponsor['sponsor_frequency'] ?? ''); ?>
                             </div>
 
                             <!-- Staff Account Tab -->
-                            <div role="tabpanel" class="tab-pane" id="staff-account">
-                            <div class="row">
-                                <div class="col-md-12">
+                            <div class="tab-pane" id="tab_staff">
                                 <div class="checkbox checkbox-primary">
-                                    <input type="checkbox" id="create_staff" name="create_staff" value="1"
-                                    <?= (isset($sponsor) && !empty($sponsor['staff_id'])) ? 'checked' : ''; ?>>
-                                    <label for="create_staff">Create a Perfex Staff login for this student</label>
+                                    <input type="checkbox" id="create_staff" name="create_staff" value="1" <?= !empty($sponsor['staff_id']) ? 'checked' : ''; ?>>
+                                    <label for="create_staff">Create a Staff login</label>
                                 </div>
+                                <div class="row">
+                                    <div class="col-md-4"><?= render_input('staff_email', 'Login Email', html_escape($sponsor['email'] ?? ''), 'email'); ?></div>
+                                    <div class="col-md-4"><?= render_input('staff_firstname', 'First Name', html_escape($sponsor['name'] ?? '')); ?></div>
+                                    <div class="col-md-4"><?= render_input('staff_lastname', 'Last Name'); ?></div>
                                 </div>
-                            </div>
+                                <div class="row">
+                                    <div class="col-md-4"><?= render_input('staff_password', 'Password', '', 'password'); ?></div>
+                                    <div class="col-md-4">
+                                        <div class="checkbox checkbox-primary" style="margin-top:28px;">
+                                            <input type="checkbox" id="staff_active" name="staff_active" value="1" checked>
+                                            <label for="staff_active">Active Login</label>
+                                        </div>
+                                    </div>
+                                </div>
 
-                            <!-- Login Email / Names / Password -->
-                            <div class="row">
-                                <div class="col-md-4">
-                                <div class="form-group">
-                                    <label class="control-label">Login Email</label>
-                                    <input type="email" name="staff_email" id="staff_email" class="form-control"
-                                        value="<?= isset($sponsor) ? htmlspecialchars($sponsor['email']) : ''; ?>"
-                                        placeholder="email@domain.com">
-                                </div>
-                                </div>
-                                <div class="col-md-4">
-                                <div class="form-group">
-                                    <label class="control-label">First Name</label>
-                                    <input type="text" name="staff_firstname" id="staff_firstname" class="form-control"
-                                        value="<?= isset($sponsor) ? htmlspecialchars($sponsor['name']) : ''; ?>">
-                                </div>
-                                </div>
-                                <div class="col-md-4">
-                                <div class="form-group">
-                                    <label class="control-label">Last Name</label>
-                                    <input type="text" name="staff_lastname" id="staff_lastname" class="form-control" require>
-                                </div>
-                                </div>
-                            </div>
-
-                            <div class="row">
-                                <div class="col-md-4">
-                                <div class="form-group">
-                                    <label class="control-label">Password </label>
-                                    <input type="text" name="staff_password" id="staff_password" class="form-control" require>
-                                </div>
-                                </div>
-                                <div class="col-md-4">
-                                <div class="checkbox checkbox-primary" style="margin-top:28px;">
-                                    <input type="checkbox" id="staff_active" name="staff_active" value="1" checked>
-                                    <label for="staff_active">Allow this user to login (Active)</label>
-                                </div>
-                                </div>
-                                <!-- <div class="col-md-4">
-                                <div class="checkbox checkbox-primary" style="margin-top:28px;">
-                                    <input type="checkbox" id="send_staff_welcome" name="send_staff_welcome" value="1">
-                                    <label for="send_staff_welcome">Send welcome email</label>
-                                </div>
-                                </div> -->
-                            </div>
-
-                            <?php if (!empty($sponsor['id'])): ?>
-                                <button type="submit"
-                                        class="btn btn-success"
-                                        formaction="<?= admin_url('student_sponsor_portal/grant_sponsor_access'); ?>"
-                                        formmethod="post">
-                                    Grant Portal Access
-                                </button>
-
-                                <button type="submit"
-                                        class="btn btn-danger"
-                                        formaction="<?= admin_url('student_sponsor_portal/revoke_sponsor_access'); ?>"
-                                        formmethod="post">
-                                    Revoke Portal Access
-                                </button>
+                                <?php if (!empty($sponsor['id'])): ?>
+                                    <button type="submit" class="btn btn-success"
+                                            formaction="<?= admin_url('student_sponsor_portal/grant_sponsor_access'); ?>"
+                                            formmethod="post">
+                                        Grant Portal Access
+                                    </button>
+                                    <button type="submit" class="btn btn-danger"
+                                            formaction="<?= admin_url('student_sponsor_portal/revoke_sponsor_access'); ?>"
+                                            formmethod="post">
+                                        Revoke Portal Access
+                                    </button>
                                 <?php endif; ?>
-
                             </div>
-
-
-
-
                         </div>
 
-                        <!-- Form Actions -->
-                            <div class="form-group" style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #ddd;">
-                            <button type="submit" class="btn btn-primary btn-lg">
+                        <!-- Actions -->
+                        <div class="form-group" style="margin-top:20px; border-top:1px solid #eee; padding-top:20px;">
+                            <button type="submit" class="btn btn-primary">
                                 <i class="fa fa-save"></i> <?= isset($sponsor) ? 'Update Sponsor' : 'Save Sponsor'; ?>
                             </button>
-                            <a href="<?= admin_url('student_sponsor_portal/sponsors'); ?>" class="btn btn-default btn-lg">
-                                <i class="fa fa-arrow-left"></i> Cancel
-                            </a>
-                            </div>
+                            <a href="<?= admin_url('student_sponsor_portal/sponsors'); ?>" class="btn btn-default">Cancel</a>
+                        </div>
 
-                        
-                        <?php echo form_close(); ?>
+                        <?= form_close(); ?>
                     </div>
                 </div>
             </div>
         </div>
     </div>
 </div>
+
+<?php init_tail(); ?>
+
 
 <script>
 // Country to phone code mapping
