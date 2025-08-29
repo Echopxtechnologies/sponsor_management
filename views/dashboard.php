@@ -49,7 +49,7 @@
                                                 <span class="text-muted">Active: <?php echo isset($active_school_count) ? $active_school_count : 0; ?></span>
                                             </div>
                                             <div class="col-xs-6 text-right">
-                                                <a href="<?php echo admin_url('student_sponsor_portal/school_form'); ?>" class="btn btn-xs btn-primary">
+                                                <a href="<?php echo admin_url('student_sponsor_portal/school_student_form'); ?>" class="btn btn-xs btn-primary">
                                                     <i class="fa fa-plus"></i> Add New
                                                 </a>
                                             </div>
@@ -133,7 +133,7 @@
                                                 <span class="text-muted">Active: <?php echo isset($active_sponsorship_count) ? $active_sponsorship_count : 0; ?></span>
                                             </div>
                                             <div class="col-xs-6 text-right">
-                                                <a href="<?php echo admin_url('student_sponsor_portal/sponsorship_form'); ?>" class="btn btn-xs btn-warning">
+                                                <a href="<?php echo admin_url('student_sponsor_portal/sponsor_form'); ?>" class="btn btn-xs btn-warning">
                                                     <i class="fa fa-plus"></i> Create
                                                 </a>
                                             </div>
@@ -582,7 +582,7 @@
                                         </select>
                                     </div>
                                     <div class="col-md-2">
-                                        <a href="<?php echo admin_url('student_sponsor_portal/sponsorship_form'); ?>" class="btn btn-success btn-block">
+                                        <a href="<?php echo admin_url('student_sponsor_portal/sponsor_form'); ?>" class="btn btn-success btn-block">
                                             <i class="fa fa-plus"></i> New Sponsorship
                                         </a>
                                     </div>
@@ -1195,7 +1195,79 @@ $(document).on('change', 'input[type="checkbox"][name^="selected_"]', function()
         $('.bulk-actions').hide();
     }
 });
+
+function initializeCharts() {
+  if (typeof Chart === 'undefined') {
+    console.error('Chart.js not loaded'); 
+    return;
+  }
+
+  // Student Distribution
+  var el1 = document.getElementById('studentChart');
+  if (el1) {
+    var ctx1 = el1.getContext('2d');
+    new Chart(ctx1, {
+      type: 'doughnut',
+      data: {
+        labels: ['School Students', 'University Students'],
+        datasets: [{
+          data: [<?php echo (int)$school_count; ?>, <?php echo (int)$university_count; ?>],
+          backgroundColor: ['#337ab7', '#5cb85c'],
+          borderWidth: 2
+        }]
+      },
+      options: { responsive: true, plugins: { legend: { position: 'bottom' } } }
+    });
+  }
+
+  // Sponsorship Status
+  var el2 = document.getElementById('sponsorshipChart');
+  if (el2) {
+    var ctx2 = el2.getContext('2d');
+    new Chart(ctx2, {
+      type: 'bar',
+      data: {
+        labels: ['Active', 'Pending', 'Completed', 'Cancelled'],
+        datasets: [{
+          label: 'Sponsorships',
+          data: [
+            <?php echo (int)($active_sponsorship_count ?? 0); ?>,
+            <?php echo (int)($pending_sponsorship_count ?? 0); ?>,
+            <?php echo (int)($completed_sponsorship_count ?? 0); ?>,
+            <?php echo (int)($cancelled_sponsorship_count ?? 0); ?>
+          ],
+          backgroundColor: ['#5cb85c', '#f0ad4e', '#5bc0de', '#d9534f'],
+          borderWidth: 1
+        }]
+      },
+      options: { responsive: true, scales: { y: { beginAtZero: true } } }
+    });
+  }
+}
 </script>
+<script>
+$(function () {
+  // Guard datepicker init (page doesn't load jQuery UI here)
+  if ($.fn.datepicker) {
+    $('.datepicker').datepicker({
+      dateFormat: 'yy-mm-dd',
+      changeMonth: true,
+      changeYear: true
+    });
+  } else {
+    // Avoid breaking the rest of the JS
+    console.warn('datepicker not available on this page – skipping init');
+  }
+
+  // Initialize charts (with safety guards)
+  try { initializeCharts(); } catch (e) { console.error('Chart init error:', e); }
+
+  initializeAdvancedFiltering();
+  initializeSorting();
+  initializePagination();
+});
+</script>
+
 
 <style>
 .stats-box {

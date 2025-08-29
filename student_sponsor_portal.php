@@ -24,43 +24,92 @@ function student_sponsor_portal_deactivation_hook() {
     log_activity('Student Sponsor Portal Module Deactivated');
 }
 
+hooks()->add_action('app_admin_head', function () {
+    echo '<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css">';
+    echo '<style>
+      .select2-results__option .text-muted{color:#777}
+      .select2-container--default .select2-selection--single{
+        height:38px;padding:5px 8px;border:1px solid #d1d5db;border-radius:4px
+      }
+      .select2-selection__rendered{line-height:26px}
+      .select2-selection__arrow{height:36px}
+    </style>';
+});
+
 /* ---------------- Admin Menu ---------------- */
 hooks()->add_action('admin_init', 'student_sponsor_portal_admin_menu');
-function student_sponsor_portal_admin_menu() {
-    $CI = &get_instance();
-    if (has_permission('student_sponsor_portal', '', 'view')) {
-        $CI->app_menu->add_sidebar_menu_item('student-sponsor-portal', [
-            'name'     => 'Student Portal',
-            'href'     => admin_url('student_sponsor_portal'),
-            'position' => 36,
-            'icon'     => 'fa fa-graduation-cap',
-        ]);
-        $CI->app_menu->add_sidebar_children_item('student-sponsor-portal', [
-            'slug'     => 'school-registration',
-            'name'     => 'School Students',
-            'href'     => admin_url('student_sponsor_portal/school_form'),
-            'position' => 1,
-        ]);
-        $CI->app_menu->add_sidebar_children_item('student-sponsor-portal', [
-            'slug'     => 'university-registration',
-            'name'     => 'University Students',
-            'href'     => admin_url('student_sponsor_portal/university_form'),
-            'position' => 2,
-        ]);
-        $CI->app_menu->add_sidebar_children_item('student-sponsor-portal', [
-            'slug'     => 'sponsor-registration',
-            'name'     => 'Sponsors',
-            'href'     => admin_url('student_sponsor_portal/sponsors'),
-            'position' => 3,
-        ]);
-        $CI->app_menu->add_sidebar_children_item('student-sponsor-portal', [
-            'slug'     => 'portal-dashboard',
-            'name'     => 'Dashboard',
-            'href'     => admin_url('student_sponsor_portal'),
-            'position' => 4,
-        ]);
+function student_sponsor_portal_admin_menu()
+{
+    if (!has_permission('student_sponsor_portal', '', 'view')) {
+        return;
     }
+
+    $CI = &get_instance();
+
+    // Parent (only once)
+    $CI->app_menu->add_sidebar_menu_item('student-sponsor-portal', [
+        'name'     => 'Student Portal',
+        'href'     => admin_url('student_sponsor_portal'), // dashboard/index
+        'position' => 36,
+        'icon'     => 'fa fa-graduation-cap',
+    ]);
+
+    // Children (unique slugs, all under the parent)
+    $CI->app_menu->add_sidebar_children_item('student-sponsor-portal', [
+        'slug'     => 'ssp-transactions',
+        'name'     => 'Sponsor Transactions',
+        'href'     => admin_url('student_sponsor_portal/transactions'),
+        'position' => 1,
+    ]);
+
+    $CI->app_menu->add_sidebar_children_item('student-sponsor-portal', [
+        'slug'     => 'ssp-payments',
+        'name'     => 'Sponsor Payments',
+        'href'     => admin_url('student_sponsor_portal/payments'),
+        'position' => 2,
+    ]);
+
+    $CI->app_menu->add_sidebar_children_item('student-sponsor-portal', [
+        'slug'     => 'ssp-school',
+        'name'     => 'School Students',
+        'href'     => admin_url('student_sponsor_portal/school_students'),
+        'position' => 3,
+    ]);
+
+    $CI->app_menu->add_sidebar_children_item('student-sponsor-portal', [
+        'slug'     => 'ssp-university',
+        'name'     => 'University Students',
+        'href'     => admin_url('student_sponsor_portal/university_students'),
+        'position' => 4,
+    ]);
+
+    $CI->app_menu->add_sidebar_children_item('student-sponsor-portal', [
+        'slug'     => 'ssp-sponsors',
+        'name'     => 'Sponsors',
+        'href'     => admin_url('student_sponsor_portal/sponsors'),
+        'position' => 5,
+    ]);
+
+    $CI->app_menu->add_sidebar_children_item('student-sponsor-portal', [
+        'slug'     => 'ssp-dashboard',
+        'name'     => 'Dashboard',
+        'href'     => admin_url('student_sponsor_portal'),
+        'position' => 6,
+    ]);
 }
+
+hooks()->add_filter('staff_permissions', function($permissions){
+    $permissions['student_sponsor_portal'] = [
+        'name' => 'Student Sponsor Portal',
+        'capabilities' => [
+            'view'   => 'View',
+            'create' => 'Create',
+            'edit'   => 'Edit',
+            'delete' => 'Delete',
+        ],
+    ];
+    return $permissions;
+});
 
 /* ---------------- Permissions ---------------- */
 hooks()->add_filter('staff_permissions', 'student_sponsor_portal_permissions');

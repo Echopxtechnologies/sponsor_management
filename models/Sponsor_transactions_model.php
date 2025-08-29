@@ -1,0 +1,472 @@
+<?php defined('BASEPATH') or exit('No direct script access allowed');
+
+class Sponsor_transactions_model extends App_Model
+{
+    /** @var string fully-qualified table names (with db_prefix) */
+    protected $txn_tbl;
+    protected $pay_tbl;
+
+
+    public function __construct()
+    {
+        parent::__construct();
+        $this->txn_tbl = db_prefix() . 'sponsor_transactions';
+        $this->pay_tbl = db_prefix() . 'sponsor_payments';
+        $this->ensure_tables();
+    }
+
+    /** Compute next due date from an anchor date and a frequency */
+private function compute_next_due($type, $anchorYmd)
+{
+    if (!$anchorYmd) return null;
+    switch ($type) {
+        case 'monthly':   return date('Y-m-d', strtotime($anchorYmd . ' +1 month'));
+        case 'quarterly': return date('Y-m-d', strtotime($anchorYmd . ' +3 month'));
+        case 'yearly':    return date('Y-m-d', strtotime($anchorYmd . ' +1 year'));
+        case 'one_time':  return null;
+        // 'custom' (or unknown): do not auto-calc; let user set manually
+        default:          return null;
+    }
+}
+
+/** Recalc totals + last/next dates after any payment change */
+public function recompute_after_payment($txn_id)
+{
+    $txn_id = (int)$txn_id;
+
+    $txn = $this->db->where('id', $txn_id)->get($this->txn_tbl)->row();
+    if (!$txn) return false;
+
+    $agg = $this->db->select('SUM(amount) AS paid, MAX(payment_date) AS last_dt', false)
+                    ->where('transaction_id', $txn_id)
+                    ->get($this->pay_tbl)->row();
+    $paid = $agg && $agg->paid ? (float)$agg->paid : 0.0;
+    $last = $agg && $agg->last_dt ? $agg->last_dt : null;
+
+    // Anchor for next due: prefer last payment, else sponsorship start
+    $anchor = $last ?: ($txn->sponsorship_start ?: null);
+    $next   = ($txn->payment_type === 'custom') ? $txn->next_payment_due
+                                                : $this->compute_next_due($txn->payment_type, $anchor);
+
+    $update = [
+        'amount_paid'       => $paid,
+        'last_payment_date' => $last,
+        'next_payment_due'  => $next,
+    ];
+
+    // Optional: pre-schedule the due reminder
+    if ($next && (int)$txn->due_reminder_active === 1 && (int)$txn->due_reminder_days_before > 0) {
+        $update['scheduled_due_reminder_date'] =
+            date('Y-m-d', strtotime($next . ' -' . (int)$txn->due_reminder_days_before . ' days'));
+    } else {
+        $update['scheduled_due_reminder_date'] = null;
+    }
+
+    return $this->db->where('id', $txn_id)->update($this->txn_tbl, $update);
+}
+
+/** Recalc only next_payment_due after changing payment_type/sponsorship dates */
+public function recompute_next_due_from_type($txn_id)
+{
+    $txn_id = (int)$txn_id;
+
+    $txn = $this->db->where('id', $txn_id)->get($this->txn_tbl)->row();
+    if (!$txn) return false;
+
+    if ($txn->payment_type === 'custom') {
+        // Respect manually-entered next_payment_due for custom
+        return true;
+    }
+
+    $anchor = $txn->last_payment_date ?: ($txn->sponsorship_start ?: null);
+    $next   = $this->compute_next_due($txn->payment_type, $anchor);
+
+    $update = ['next_payment_due' => $next];
+
+    if ($next && (int)$txn->due_reminder_active === 1 && (int)$txn->due_reminder_days_before > 0) {
+        $update['scheduled_due_reminder_date'] =
+            date('Y-m-d', strtotime($next . ' -' . (int)$txn->due_reminder_days_before . ' days'));
+    } else {
+        $update['scheduled_due_reminder_date'] = null;
+    }
+
+    return $this->db->where('id', $txn_id)->update($this->txn_tbl, $update);
+}
+
+    public function list_payments(array $f, int $limit = 25, int $offset = 0)
+{
+    $db = $this->db;
+
+    $db->select("
+        p.id,
+        p.transaction_id,
+        p.sponsor_id,
+        p.payment_date,
+        p.amount,
+        p.currency,
+        p.note,
+        p.created_at,
+        p.created_by,
+        s.name AS sponsor_name,
+        t.total_amount,
+        t.currency AS txn_currency,
+        t.school_student_id,
+        t.university_student_id,
+        COALESCE(ss.name, us.name) AS student_name,
+        CASE WHEN t.school_student_id IS NOT NULL THEN 'school'
+             WHEN t.university_student_id IS NOT NULL THEN 'university'
+             ELSE '' END AS student_type
+    ");
+    $db->from("$this->pay_tbl p");
+    $db->join("$this->txn_tbl t", "t.id = p.transaction_id", "left");
+    $db->join("tblsponsor_records s", "s.id = p.sponsor_id", "left");
+    $db->join(db_prefix().'school_students ss', "ss.id = t.school_student_id", "left");
+    $db->join(db_prefix().'university_students us', "us.id = t.university_student_id", "left");
+
+    // filters
+    if (!empty($f['date_from'])) $db->where('p.payment_date >=', $f['date_from']);
+    if (!empty($f['date_to']))   $db->where('p.payment_date <=', $f['date_to']);
+    if (!empty($f['sponsor_id']))   $db->where('p.sponsor_id', (int)$f['sponsor_id']);
+    if (!empty($f['currency']))     $db->where('p.currency', $f['currency']);
+    if (!empty($f['min_amount']))   $db->where('p.amount >=', (float)$f['min_amount']);
+    if (!empty($f['max_amount']))   $db->where('p.amount <=', (float)$f['max_amount']);
+    if (!empty($f['has_note']))     $db->where("p.note <> ''");
+    if (!empty($f['q']))            $db->group_start()
+                                         ->like('p.note', $f['q'])
+                                         ->or_like('s.name', $f['q'])
+                                         ->or_like('ss.name', $f['q'])
+                                         ->or_like('us.name', $f['q'])
+                                       ->group_end();
+    if (!empty($f['created_by']))   $db->where('p.created_by', (int)$f['created_by']);
+    if ($f['student_type'] === 'school')     $db->where('t.school_student_id IS NOT NULL', null, false);
+    if ($f['student_type'] === 'university') $db->where('t.university_student_id IS NOT NULL', null, false);
+
+    $db->order_by('p.payment_date', 'DESC');
+    $db->limit($limit, $offset);
+
+    return $db->get()->result();
+}
+
+public function count_payments(array $f): int
+{
+    $db = $this->db;
+
+    $db->from("$this->pay_tbl p");
+    $db->join("$this->txn_tbl t", "t.id = p.transaction_id", "left");
+    $db->join("tblsponsor_records s", "s.id = p.sponsor_id", "left");
+    $db->join(db_prefix().'school_students ss', "ss.id = t.school_student_id", "left");
+    $db->join(db_prefix().'university_students us', "us.id = t.university_student_id", "left");
+
+    if (!empty($f['date_from'])) $db->where('p.payment_date >=', $f['date_from']);
+    if (!empty($f['date_to']))   $db->where('p.payment_date <=', $f['date_to']);
+    if (!empty($f['sponsor_id']))   $db->where('p.sponsor_id', (int)$f['sponsor_id']);
+    if (!empty($f['currency']))     $db->where('p.currency', $f['currency']);
+    if (!empty($f['min_amount']))   $db->where('p.amount >=', (float)$f['min_amount']);
+    if (!empty($f['max_amount']))   $db->where('p.amount <=', (float)$f['max_amount']);
+    if (!empty($f['has_note']))     $db->where("p.note <> ''");
+    if (!empty($f['q']))            $db->group_start()
+                                         ->like('p.note', $f['q'])
+                                         ->or_like('s.name', $f['q'])
+                                         ->or_like('ss.name', $f['q'])
+                                         ->or_like('us.name', $f['q'])
+                                       ->group_end();
+    if (!empty($f['created_by']))   $db->where('p.created_by', (int)$f['created_by']);
+    if ($f['student_type'] === 'school')     $db->where('t.school_student_id IS NOT NULL', null, false);
+    if ($f['student_type'] === 'university') $db->where('t.university_student_id IS NOT NULL', null, false);
+
+    return (int)$db->count_all_results();
+}
+/** Treat '' and null as NULL; otherwise cast to int. */
+private function to_int_or_null($in, string $key)
+{
+    if (!array_key_exists($key, $in)) return null;
+    $v = $in[$key];
+    if ($v === '' || $v === null) return null;
+    $v = (int)$v;
+    return $v > 0 ? $v : null; // avoid 0 which breaks FKs
+}
+
+/** Treat '' and null as NULL for date-like fields. */
+private function to_date_or_null($v)
+{
+    return ($v === '' || $v === null) ? null : $v;
+}
+
+/** Exactly one of school_student_id or university_student_id must be set. */
+private function has_exactly_one_student(array $row): bool
+{
+    $s = isset($row['school_student_id']) ? (int)$row['school_student_id'] : 0;
+    $u = isset($row['university_student_id']) ? (int)$row['university_student_id'] : 0;
+    $s = $s > 0 ? 1 : 0;
+    $u = $u > 0 ? 1 : 0;
+    return ($s + $u) === 1;
+}
+
+private function clean($in)
+{
+    $row = [
+        'sponsor_id'               => (int)($in['sponsor_id'] ?? 0),
+        'school_student_id'        => $this->to_int_or_null($in, 'school_student_id'),
+        'university_student_id'    => $this->to_int_or_null($in, 'university_student_id'),
+        'total_amount'             => (float)($in['total_amount'] ?? 0),
+        'amount_paid'              => (float)($in['amount_paid'] ?? 0),
+        'currency'                 => $in['currency'] ?? 'INR',
+        'last_payment_date'        => $this->to_date_or_null($in['last_payment_date'] ?? null),
+        'next_payment_due'         => $this->to_date_or_null($in['next_payment_due'] ?? null),
+        'payment_type'             => $in['payment_type'] ?? 'one_time',
+        'due_reminder_active'      => !empty($in['due_reminder_active']) ? 1 : 0,
+        'due_reminder_days_before' => (int)($in['due_reminder_days_before'] ?? 15),
+        'scheduled_due_reminder_date' => $this->to_date_or_null($in['scheduled_due_reminder_date'] ?? null),
+        'due_reminder_sent'        => !empty($in['due_reminder_sent']) ? 1 : 0,
+        'sponsorship_start'        => $this->to_date_or_null($in['sponsorship_start'] ?? null),
+        'sponsorship_end'          => $this->to_date_or_null($in['sponsorship_end'] ?? null),
+        'renewal_reminder_active'  => !empty($in['renewal_reminder_active']) ? 1 : 0,
+        'renewal_reminder_days_before' => (int)($in['renewal_reminder_days_before'] ?? 15),
+        'scheduled_renewal_reminder'   => $this->to_date_or_null($in['scheduled_renewal_reminder'] ?? null),
+        'renewal_reminder_sent'    => !empty($in['renewal_reminder_sent']) ? 1 : 0,
+    ];
+
+    // Optional: enforce the XOR here as an extra safety net.
+    // If you already enforce it in the controller, you can keep or remove this.
+    if (!$this->has_exactly_one_student($row)) {
+        // Make sure we don't accidentally write 0 into either FK
+        if (empty($row['school_student_id']))     $row['school_student_id'] = null;
+        if (empty($row['university_student_id'])) $row['university_student_id'] = null;
+    }
+
+    return $row;
+}
+
+
+
+    /* ---------------------------- Public API ---------------------------- */
+
+    /**
+     * Get single transaction (with joins) or list (newest first).
+     * Returns object (single) or array of objects (list) to match Perfex style.
+     */
+    public function get($id = null)
+    {
+        $this->db
+            ->select("
+                t.*,
+                s.name            AS sponsor_name,
+                ss.name           AS school_student_name,
+                us.name           AS university_student_name
+            ")
+            ->from($this->txn_tbl . ' t')
+            ->join(db_prefix() . 'sponsor_records   s',  's.id  = t.sponsor_id',           'left')
+            ->join(db_prefix() . 'school_students   ss', 'ss.id = t.school_student_id',     'left')
+            ->join(db_prefix() . 'university_students us','us.id = t.university_student_id','left');
+
+        if ($id) {
+            $this->db->where('t.id', (int)$id);
+            return $this->db->get()->row();
+        }
+
+        $this->db->order_by('t.id', 'DESC');
+        return $this->db->get()->result();
+    }
+
+    /** Insert and return new ID */
+    public function create(array $data)
+    {
+        $clean = $this->clean($data);
+
+        // require sponsor and exactly one student type
+        if (!$clean['sponsor_id'] || !$this->has_exactly_one_student($clean)) {
+            return false;
+        }
+
+        // timestamps if columns exist
+        if ($this->db->field_exists('created_at', $this->txn_tbl)) {
+            $clean['created_at'] = date('Y-m-d H:i:s');
+        }
+        if ($this->db->field_exists('updated_at', $this->txn_tbl)) {
+            $clean['updated_at'] = date('Y-m-d H:i:s');
+        }
+
+        $this->db->insert($this->txn_tbl, $clean);
+        return (int)$this->db->insert_id();
+    }
+
+    /** Update by ID */
+    public function update($id, array $data)
+    {
+        $clean = $this->clean($data);
+
+        if (!$clean['sponsor_id'] || !$this->has_exactly_one_student($clean)) {
+            return false;
+        }
+
+        if ($this->db->field_exists('updated_at', $this->txn_tbl)) {
+            $clean['updated_at'] = date('Y-m-d H:i:s');
+        }
+
+        $this->db->where('id', (int)$id)->update($this->txn_tbl, $clean);
+        return $this->db->affected_rows() > 0;
+    }
+
+    /** Hard-delete a transaction and its payments */
+    public function delete($id)
+    {
+        $id = (int)$id;
+        // delete children first
+        $this->db->where('transaction_id', $id)->delete($this->pay_tbl);
+        $this->db->where('id', $id)->delete($this->txn_tbl);
+        return $this->db->affected_rows() > 0;
+    }
+    
+
+    /**
+     * Add a payment and auto-recompute amount_paid on parent.
+     * Returns inserted payment ID or false.
+     */
+    public function add_payment(array $in)
+    {
+        $row = [
+            'transaction_id' => (int)($in['transaction_id'] ?? 0),
+            'sponsor_id'     => (int)($in['sponsor_id'] ?? 0),
+            'student_id'     => !empty($in['student_id']) ? (int)$in['student_id'] : null,
+            'payment_date'   => $this->to_date_or_null($in['payment_date'] ?? null),
+            'amount'         => (float)($in['amount'] ?? 0),
+            'currency'       => trim($in['currency'] ?? 'INR'),
+            'note'           => trim($in['note'] ?? ''),
+            'created_by'     => (int)($in['created_by'] ?? 0),
+            'created_at'     => date('Y-m-d H:i:s'),
+        ];
+
+        if ($row['transaction_id'] <= 0 || $row['amount'] <= 0) {
+            return false;
+        }
+
+        $this->db->insert($this->pay_tbl, $row);
+        $pid = (int)$this->db->insert_id();
+
+        // recompute paid total
+        $this->recompute_amount_paid($row['transaction_id']);
+
+        return $pid;
+    }
+
+    /** Force recompute of amount_paid from payments table */
+    public function recompute_amount_paid(int $transaction_id): void
+    {
+        $sum = $this->db->select_sum('amount')
+                        ->from($this->pay_tbl)
+                        ->where('transaction_id', $transaction_id)
+                        ->get()->row();
+        $paid = (float)($sum->amount ?? 0);
+
+        $this->db->where('id', $transaction_id)
+                 ->update($this->txn_tbl, [
+                     'amount_paid' => $paid,
+                     'last_payment_date' => $this->latest_payment_date($transaction_id),
+                     'updated_at' => date('Y-m-d H:i:s'),
+                 ]);
+    }
+
+    public function get_payment(int $payment_id)
+{
+    return $this->db->where('id', $payment_id)->get($this->pay_tbl)->row();
+}
+
+public function update_payment(int $payment_id, array $in): bool
+{
+    $row = [
+        'payment_date' => $this->to_date_or_null($in['payment_date'] ?? null),
+        'amount'       => (float)($in['amount'] ?? 0),
+        'currency'     => trim($in['currency'] ?? 'INR'),
+        'note'         => trim($in['note'] ?? ''),
+    ];
+    $this->db->where('id', $payment_id)->update($this->pay_tbl, $row);
+    return $this->db->affected_rows() > 0;
+}
+
+public function delete_payment(int $payment_id): bool
+{
+    $this->db->where('id', $payment_id)->delete($this->pay_tbl);
+    return $this->db->affected_rows() > 0;
+}
+
+
+    /* ---------------------------- Internals ---------------------------- */
+
+    
+
+    
+    private function latest_payment_date(int $transaction_id)
+    {
+        $row = $this->db->select_max('payment_date')
+                        ->from($this->pay_tbl)
+                        ->where('transaction_id', $transaction_id)
+                        ->get()->row();
+        $d = $row && !empty($row->payment_date) ? $row->payment_date : null;
+        return $d ? $d : null;
+    }
+
+    /* ---------------------- Install / Ensure Tables --------------------- */
+
+    private function ensure_tables(): void
+    {
+        // transactions
+        if (!$this->db->table_exists($this->txn_tbl)) {
+            $this->db->query("
+                CREATE TABLE IF NOT EXISTS `{$this->txn_tbl}` (
+                    `id` int(11) NOT NULL AUTO_INCREMENT,
+                    `sponsor_id` int(11) NOT NULL,
+                    `school_student_id` int(11) DEFAULT NULL,
+                    `university_student_id` int(11) DEFAULT NULL,
+                    `total_amount` decimal(15,2) NOT NULL DEFAULT 0,
+                    `amount_paid` decimal(15,2) NOT NULL DEFAULT 0,
+                    `currency` varchar(10) NOT NULL DEFAULT 'INR',
+
+                    `payment_type` varchar(30) NOT NULL DEFAULT 'one_time',
+                    `last_payment_date` date DEFAULT NULL,
+                    `next_payment_due` date DEFAULT NULL,
+
+                    `due_reminder_active` tinyint(1) NOT NULL DEFAULT 0,
+                    `due_reminder_days_before` int(11) NOT NULL DEFAULT 15,
+                    `scheduled_due_reminder_date` date DEFAULT NULL,
+                    `due_reminder_sent` tinyint(1) NOT NULL DEFAULT 0,
+
+                    `sponsorship_start` date DEFAULT NULL,
+                    `sponsorship_end` date DEFAULT NULL,
+
+                    `renewal_reminder_active` tinyint(1) NOT NULL DEFAULT 0,
+                    `renewal_reminder_days_before` int(11) NOT NULL DEFAULT 15,
+                    `scheduled_renewal_reminder` date DEFAULT NULL,
+                    `renewal_reminder_sent` tinyint(1) NOT NULL DEFAULT 0,
+
+                    `created_at` datetime DEFAULT NULL,
+                    `updated_at` datetime DEFAULT NULL,
+
+                    PRIMARY KEY (`id`),
+                    KEY `sponsor_id` (`sponsor_id`),
+                    KEY `school_student_id` (`school_student_id`),
+                    KEY `university_student_id` (`university_student_id`)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8
+            ");
+        }
+
+        // payments
+        if (!$this->db->table_exists($this->pay_tbl)) {
+            $this->db->query("
+                CREATE TABLE IF NOT EXISTS `{$this->pay_tbl}` (
+                    `id` int(11) NOT NULL AUTO_INCREMENT,
+                    `transaction_id` int(11) NOT NULL,
+                    `sponsor_id` int(11) NOT NULL,
+                    `student_id` int(11) DEFAULT NULL,
+                    `payment_date` date DEFAULT NULL,
+                    `amount` decimal(15,2) NOT NULL DEFAULT 0,
+                    `currency` varchar(10) NOT NULL DEFAULT 'INR',
+                    `note` text,
+                    `created_by` int(11) DEFAULT NULL,
+                    `created_at` datetime DEFAULT NULL,
+                    PRIMARY KEY (`id`),
+                    KEY `transaction_id` (`transaction_id`)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8
+            ");
+        }
+    }
+}

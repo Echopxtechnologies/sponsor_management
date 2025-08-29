@@ -6,428 +6,441 @@ class School_model extends App_Model
     public function __construct()
     {
         parent::__construct();
+        $this->ensure_required_tables();
     }
+
+    /* ----------------- TABLE CHECK HELPERS (no seeding) ----------------- */
+
+    private function ensure_required_tables()
+    {
+        $this->ensure_school_name_table();
+        $this->ensure_school_report_card_table();
+        $this->ensure_bank_table();
+        $this->ensure_school_students_photo_column(); // make sure photo column is present/compatible
+        // do NOT create/seed tblcountries (Perfex core or your custom tblcountry)
+    }
+
+    private function ensure_school_students_photo_column()
+    {
+        $table = db_prefix().'school_students';
+        if (!$this->db->table_exists($table)) return;
+
+        if (!$this->db->field_exists('profile_photo', $table)) {
+            $this->db->query("ALTER TABLE `{$table}` ADD COLUMN `profile_photo` LONGBLOB NULL AFTER `name`");
+        } else {
+            // align nullability/type (safe no-op if already correct)
+            $this->db->query("ALTER TABLE `{$table}` MODIFY COLUMN `profile_photo` LONGBLOB NULL");
+        }
+    }
+
+    private function ensure_school_name_table()
+    {
+        $table = db_prefix() . 'school_name';
+        if (!$this->db->table_exists($table)) {
+            // Match your dump: latin1_swedish_ci, DATETIME default current_timestamp(), no UNIQUE(name)
+            $this->db->query("
+                CREATE TABLE IF NOT EXISTS `{$table}` (
+                    `id` int(11) NOT NULL AUTO_INCREMENT,
+                    `name` varchar(255) COLLATE latin1_swedish_ci NOT NULL,
+                    `created_on` datetime DEFAULT current_timestamp(),
+                    PRIMARY KEY (`id`)
+                ) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci
+            ");
+        } else {
+            // Align types/collation if table exists (safe no-ops if already correct)
+            $this->db->query("ALTER TABLE `{$table}` MODIFY `name` varchar(255) COLLATE latin1_swedish_ci NOT NULL");
+            $this->db->query("ALTER TABLE `{$table}` MODIFY `created_on` datetime DEFAULT current_timestamp()");
+        }
+    }
+
+    private function ensure_school_report_card_table()
+    {
+        $table = db_prefix().'school_report_card';
+        if (!$this->db->table_exists($table)) {
+            // Match your dump exactly (latin1 cols, created_on datetime nullable, no default)
+            $this->db->query("
+                CREATE TABLE IF NOT EXISTS `{$table}` (
+                    `id` int(11) NOT NULL AUTO_INCREMENT,
+                    `student_school_id` int(11) NOT NULL,
+                    `filename` varchar(255) COLLATE latin1_swedish_ci NOT NULL,
+                    `term` enum('Term1','Term2','Term3') COLLATE latin1_swedish_ci NOT NULL,
+                    `upload_date` date NOT NULL,
+                    `report_card_file` varchar(255) COLLATE latin1_swedish_ci NOT NULL,
+                    `file_blob` mediumblob NOT NULL,
+                    `mime_type` varchar(100) COLLATE latin1_swedish_ci NOT NULL,
+                    `file_size` int(10) UNSIGNED NOT NULL,
+                    `sha256` char(64) COLLATE latin1_swedish_ci NOT NULL,
+                    `created_on` datetime NULL,
+                    PRIMARY KEY (`id`),
+                    KEY `student_school_id` (`student_school_id`)
+                ) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci
+            ");
+            return;
+        }
+
+        // If exists, ensure the important columns are present with proper nullability/collation (no destructive changes)
+        if (!$this->db->field_exists('file_blob', $table)) {
+            $this->db->query("ALTER TABLE `{$table}` ADD COLUMN `file_blob` mediumblob NOT NULL AFTER `report_card_file`");
+        }
+        $ensure = [
+            'mime_type' => "varchar(100) COLLATE latin1_swedish_ci NOT NULL",
+            'file_size' => "int(10) UNSIGNED NOT NULL",
+            'sha256'    => "char(64) COLLATE latin1_swedish_ci NOT NULL",
+        ];
+        foreach ($ensure as $col => $def) {
+            if (!$this->db->field_exists($col, $table)) {
+                $this->db->query("ALTER TABLE `{$table}` ADD COLUMN `{$col}` {$def}");
+            } else {
+                $this->db->query("ALTER TABLE `{$table}` MODIFY `{$col}` {$def}");
+            }
+        }
+
+        // filename/report_card_file not null + latin1 collation
+        $this->db->query("ALTER TABLE `{$table}` MODIFY `filename` varchar(255) COLLATE latin1_swedish_ci NOT NULL");
+        $this->db->query("ALTER TABLE `{$table}` MODIFY `report_card_file` varchar(255) COLLATE latin1_swedish_ci NOT NULL");
+
+        // created_on nullable, no default
+        $this->db->query("ALTER TABLE `{$table}` MODIFY `created_on` datetime NULL");
+    }
+
+    private function ensure_bank_table()
+    {
+        $table = db_prefix().'bank';
+        if (!$this->db->table_exists($table)) {
+            $this->db->query("
+                CREATE TABLE IF NOT EXISTS `{$table}` (
+                    `id` int(11) NOT NULL AUTO_INCREMENT,
+                    `name` varchar(255) COLLATE latin1_swedish_ci NOT NULL,
+                    `created_on` datetime DEFAULT current_timestamp(),
+                    PRIMARY KEY (`id`),
+                    UNIQUE KEY `name` (`name`)
+                ) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci
+            ");
+        }
+    }
+
+    /* ----------------- PROFILE PHOTO HELPERS ----------------- */
+
+    private function handle_profile_photo_upload()
+    {
+        if (!isset($_FILES['profile_photo'])) {
+            return null; // nothing uploaded
+        }
+
+        $err = $_FILES['profile_photo']['error'];
+        if ($err === UPLOAD_ERR_NO_FILE) return null;
+        if ($err !== UPLOAD_ERR_OK) {
+            throw new Exception('Upload failed (code '.$err.')');
+        }
+
+        $tmp  = $_FILES['profile_photo']['tmp_name'];
+        $size = (int)$_FILES['profile_photo']['size'];
+
+        // size cap (5MB)
+        if ($size <= 0 || $size > 5 * 1024 * 1024) {
+            throw new Exception('File size too large. Max 5MB.');
+        }
+
+        // detect MIME from content (don’t trust $_FILES[type])
+        $mime = 'application/octet-stream';
+        if (function_exists('finfo_open')) {
+            $finfo = finfo_open(FILEINFO_MIME_TYPE);
+            if ($finfo) {
+                $det = @finfo_file($finfo, $tmp);
+                if ($det) $mime = strtolower($det);
+                finfo_close($finfo);
+            }
+        } elseif (function_exists('getimagesize')) {
+            $gi = @getimagesize($tmp);
+            if ($gi && !empty($gi['mime'])) $mime = strtolower($gi['mime']);
+        }
+
+        $allowed = ['image/jpeg','image/jpg','image/png','image/gif','image/webp'];
+        if (!in_array($mime, $allowed, true)) {
+            throw new Exception('Invalid file type. Only JPG/PNG/GIF/WebP allowed.');
+        }
+
+        $bytes = @file_get_contents($tmp);
+        if ($bytes === false) {
+            throw new Exception('Could not read uploaded file.');
+        }
+
+        return $bytes; // raw blob for LONGBLOB column
+    }
+
+    public function get_profile_photo($student_id)
+    {
+        $this->db->select('profile_photo');
+        $this->db->where('id', (int)$student_id);
+        $row = $this->db->get(db_prefix().'school_students')->row();
+        return $row ? $row->profile_photo : null;
+    }
+
+    /* ----------------- CREATE ----------------- */
 
     public function add($data)
-{
-    // Get default country ID or null
-    $country_id = $this->get_default_country_id();
-    
-    $insert_data = [
-        'entity_type' => 'school',
-        'name' => $data['name'] ?? '', // Only required field
-        'email' => !empty(trim($data['email'] ?? '')) ? trim($data['email']) : null, // Set to null if empty or blank
-        'contact_no' => !empty(trim($data['phone'] ?? '')) ? trim($data['phone']) : null,
-        'address' => !empty(trim($data['address'] ?? '')) ? trim($data['address']) : null,
-        'city' => !empty(trim($data['city'] ?? '')) ? trim($data['city']) : null,
-        'zip' => !empty(trim($data['postal_code'] ?? '')) ? trim($data['postal_code']) : null,
-        'country_id' => $country_id,
-        'school_internal_id' => $this->generate_internal_id(),
-        'school_id' => !empty(trim($data['school_id'] ?? '')) ? trim($data['school_id']) : null,
-        'school_type' => !empty(trim($data['school_type'] ?? '')) ? trim($data['school_type']) : null,
-        'school_name_id' => $this->get_or_create_school_name_id($data['school_name'] ?? ''),
-        'school_grade' => !empty(trim($data['grade'] ?? '')) ? trim($data['grade']) : null,
-        'school_student_dob' => !empty(trim($data['dob'] ?? '')) ? trim($data['dob']) : null,
-        'school_bank_account_no' => !empty(trim($data['bank_account_number'] ?? '')) ? trim($data['bank_account_number']) : null,
-        'school_sponsorship_start_date' => !empty(trim($data['sponsorship_start'] ?? '')) ? trim($data['sponsorship_start']) : null,
-        'school_sponsorship_end_date' => !empty(trim($data['sponsorship_end'] ?? '')) ? trim($data['sponsorship_end']) : null,
-        'school_introducedby' => !empty(trim($data['introduced_by'] ?? '')) ? trim($data['introduced_by']) : null,
-        'school_introducedph' => !empty(trim($data['introduced_phone'] ?? '')) ? trim($data['introduced_phone']) : null,
-        'school_father_name' => !empty(trim($data['father_name'] ?? '')) ? trim($data['father_name']) : null,
-        'school_mother_name' => !empty(trim($data['mother_name'] ?? '')) ? trim($data['mother_name']) : null,
-        'school_father_income' => $data['father_income'] ?? 0,
-        'school_mother_income' => $data['mother_income'] ?? 0,
-        'school_guardian_name' => !empty(trim($data['guardian_name'] ?? '')) ? trim($data['guardian_name']) : null,
-        'school_guardian_income' => $data['guardian_income'] ?? 0,
-        'background_info' => !empty(trim($data['background_information'] ?? '')) ? trim($data['background_information']) : null,
-        'internal_comment' => !empty(trim($data['internal_comment'] ?? '')) ? trim($data['internal_comment']) : null,
-        'external_comment' => !empty(trim($data['external_comment'] ?? '')) ? trim($data['external_comment']) : null
-    ];
-
-    $this->db->insert(db_prefix() . 'school_students', $insert_data);
-    $student_id = $this->db->insert_id();
-    
-    // Only create client if basic info is provided
-    if (!empty(trim($data['name'] ?? ''))) {
-        $this->load->model('clients_model');
-        
-        // Prepare client data - don't include email if it's empty
-        $client_data = [
-            'firstname' => trim($data['name']),
-            'phonenumber' => !empty(trim($data['phone'] ?? '')) ? trim($data['phone']) : '',
-        ];
-        
-        // Only add email if it's not empty
-        if (!empty(trim($data['email'] ?? ''))) {
-            $client_data['email'] = trim($data['email']);
-        }
-        
-        $client_data['custom_fields'] = [
-            'contact_type' => 'school_student'
-        ];
-        
-        $this->clients_model->add($client_data);
-    }
-
-    return $student_id;
-}
-        public function get_cities()
     {
-        $this->db->select('city');
-        $this->db->from(db_prefix() . 'school_students');
-        $this->db->where('city !=', '');
-        $this->db->where('city IS NOT NULL');
-        $this->db->group_by('city');
-        $this->db->order_by('city', 'ASC');
-        $query = $this->db->get();
-        
-        $cities = [];
-        foreach ($query->result_array() as $row) {
-            $cities[] = $row['city'];
+        try {
+            $photo = null;
+            try { $photo = $this->handle_profile_photo_upload(); } catch (Exception $e) { log_message('error','School photo upload: '.$e->getMessage()); }
+
+            $country_id = !empty($data['country_id']) ? (int)$data['country_id'] : null;
+            $school_name_id = $this->get_or_create_school_name_id($data['school_name'] ?? ($data['school_name_id'] ?? ''));
+
+            $insert = [
+                'entity_type'                   => 'school',
+                'name'                          => $data['name'] ?? '',
+                'profile_photo'                 => $photo,
+                'contact_no'                    => $this->toNullIfEmpty($data['phone'] ?? ''),
+                'email'                         => $this->toNullIfEmpty($data['email'] ?? ''),
+                'address'                       => $this->toNullIfEmpty($data['address'] ?? ''),
+                'city'                          => $this->toNullIfEmpty($data['city'] ?? ''),
+                'zip'                           => $this->toNullIfEmpty($data['postal_code'] ?? ''),
+                'country_id'                    => $country_id,
+
+                'school_internal_id'            => $this->generate_internal_id(),
+                'school_id'                     => $this->toNullIfEmpty($data['school_id'] ?? ''),
+                'school_type'                   => $this->toNullIfEmpty($data['school_type'] ?? ''),
+                'school_name_id'                => $school_name_id,
+
+                'school_grade_year'             => $this->toIntOrNull($data['school_grade_year'] ?? ''),
+                'school_grade'                  => $this->toNullIfEmpty($data['grade'] ?? ''),
+                'grade_mismatch_reason'         => $this->toNullIfEmpty($data['grade_mismatch_reason'] ?? ''),
+
+                'school_student_dob'            => $this->toNullIfEmpty($data['dob'] ?? ''),
+                'school_age'                    => $this->calc_age_int($data['dob'] ?? null),
+
+                'bank_id'                       => $this->toIntOrNull($data['bank_id'] ?? ''),
+                'school_bank_branch_number'     => $this->toNullIfEmpty($data['bank_branch_number'] ?? ''),
+                'school_bank_branch_info'       => $this->toNullIfEmpty($data['bank_branch_info'] ?? ''),
+                'school_bank_account_no'        => $this->toNullIfEmpty($data['bank_account_number'] ?? ''),
+
+                'school_sponsorship_start_date' => $this->toNullIfEmpty($data['sponsorship_start'] ?? ''),
+                'school_sponsorship_end_date'   => $this->toNullIfEmpty($data['sponsorship_end'] ?? ''),
+
+                'school_introducedby'           => $this->toNullIfEmpty($data['introduced_by'] ?? ''),
+                'school_introducedph'           => $this->toNullIfEmpty($data['introduced_phone'] ?? ''),
+
+                'school_father_name'            => $this->toNullIfEmpty($data['father_name'] ?? ''),
+                'school_mother_name'            => $this->toNullIfEmpty($data['mother_name'] ?? ''),
+                'school_father_income'          => $this->toFloatOrNull($data['father_income'] ?? null),
+                'school_mother_income'          => $this->toFloatOrNull($data['mother_income'] ?? null),
+                'school_guardian_name'          => $this->toNullIfEmpty($data['guardian_name'] ?? ''),
+                'school_guardian_income'        => $this->toFloatOrNull($data['guardian_income'] ?? null),
+
+                'sponsor_id'                    => $this->toIntOrNull($data['sponsor_id'] ?? ''),
+                'background_info'               => $this->toNullIfEmpty($data['background_information'] ?? ''),
+                'internal_comment'              => $this->toNullIfEmpty($data['internal_comment'] ?? ''),
+                'external_comment'              => $this->toNullIfEmpty($data['external_comment'] ?? ''),
+            ];
+
+            $this->db->insert(db_prefix().'school_students', $insert);
+            $id = (int)$this->db->insert_id();
+            return $id ?: false;
+
+        } catch (Exception $e) {
+            log_message('error','Error adding school student: '.$e->getMessage());
+            return false;
         }
-        
-        return $cities;
     }
 
-    // Backward compatibility - since district column doesn't exist, return cities instead
-    public function get_districts()
-    {
-        return $this->get_cities();
-    }
-
-    private function get_default_country_id()
-    {
-        // Try to get the first available country
-        $this->db->select('id');
-        $this->db->limit(1);
-        $country = $this->db->get(db_prefix() . 'country')->row();
-        
-        return $country ? $country->id : null;
-    }
-
-    private function generate_internal_id()
-    {
-        $this->db->select('MAX(CAST(SUBSTRING(school_internal_id, 4) AS UNSIGNED)) as max_id');
-        $this->db->like('school_internal_id', 'SCH', 'after');
-        $result = $this->db->get(db_prefix() . 'school_students')->row();
-        
-        $next_id = 1;
-        if ($result && $result->max_id) {
-            $next_id = $result->max_id + 1;
-        }
-        
-        return 'SCH' . str_pad($next_id, 3, '0', STR_PAD_LEFT);
-    }
-
-    private function get_or_create_school_name_id($school_name)
-    {
-        if (empty($school_name)) {
-            return null;
-        }
-        
-        // Check if school name exists
-        $this->db->where('name', $school_name);
-        $school = $this->db->get(db_prefix() . 'school_name')->row();
-        
-        if ($school) {
-            return $school->id;
-        }
-        
-        // Create new school name
-        $this->db->insert(db_prefix() . 'school_name', ['name' => $school_name]);
-        return $this->db->insert_id();
-    }
+    /* ----------------- READ ----------------- */
 
     public function get_all()
-{
-    $this->db->select('ss.*, sn.name as school_name, c.name as country_name, b.name as bank_name');
-    $this->db->from(db_prefix() . 'school_students ss');
-    $this->db->join(db_prefix() . 'school_name sn', 'sn.id = ss.school_name_id', 'left');
-    $this->db->join(db_prefix() . 'country c', 'c.id = ss.country_id', 'left');
-    $this->db->join(db_prefix() . 'bank b', 'b.id = ss.bank_id', 'left');
-    $results = $this->db->get()->result_array();
-    
-    // Map each result to expected field names
-    $mapped_results = [];
-    foreach ($results as $result) {
-        $mapped_results[] = [
-            'id' => $result['id'] ?? '',
-            'name' => $result['name'] ?? '',
-            'email' => $result['email'] ?? '',
-            'phone' => $result['contact_no'] ?? '', // contact_no -> phone
-            'grade' => $result['school_grade'] ?? '', // school_grade -> grade
-            'school_name' => $result['school_name'] ?? '',
-            'district' => $result['city'] ?? '', // Using city as district
-            'dob' => $result['school_student_dob'] ?? '',
-            'father_name' => $result['school_father_name'] ?? '',
-            'mother_name' => $result['school_mother_name'] ?? '',
-            'guardian_name' => $result['school_guardian_name'] ?? '',
-            'sponsors' => '', // This field doesn't exist in DB
-            'sponsorship_start' => $result['school_sponsorship_start_date'] ?? '',
-            'sponsorship_end' => $result['school_sponsorship_end_date'] ?? '',
-            'address' => $result['address'] ?? '',
-            'city' => $result['city'] ?? '',
-            
-            // Keep original database fields for backward compatibility
-            'contact_no' => $result['contact_no'] ?? '',
-            'school_grade' => $result['school_grade'] ?? '',
-            'school_student_dob' => $result['school_student_dob'] ?? '',
-            'school_sponsorship_start_date' => $result['school_sponsorship_start_date'] ?? '',
-            'school_sponsorship_end_date' => $result['school_sponsorship_end_date'] ?? '',
-            'school_father_name' => $result['school_father_name'] ?? '',
-            'school_mother_name' => $result['school_mother_name'] ?? '',
-            'school_guardian_name' => $result['school_guardian_name'] ?? '',
-            'staff_id'     => $result['staff_id']     ?? null,
-            'staff_active' => $result['staff_active'] ?? null,
-        ];
+    {
+        $c = $this->country_schema();
+
+        $this->db->select('
+            ss.*,
+            sn.name AS school_name,
+            b.name  AS bank_name' .
+            ($c['table'] ? ', c.' . $c['name'] . ' AS country_name' : ', NULL AS country_name')
+        , false);
+
+        $this->db->from(db_prefix().'school_students ss');
+        $this->db->join(db_prefix().'school_name sn', 'sn.id = ss.school_name_id', 'left');
+
+        if ($c['table']) {
+            $this->db->join($c['table'].' c', 'c.'.$c['id'].' = ss.country_id', 'left');
+        }
+
+        $this->db->join(db_prefix().'bank b', 'b.id = ss.bank_id', 'left');
+        $this->db->order_by('ss.id', 'DESC');
+        return $this->db->get()->result_array();
     }
-    
-    return $mapped_results;
-}
+
+    public function get_by_id($id)
+    {
+        $c = $this->country_schema();
+
+        $this->db->select('
+            ss.*,
+            sn.name AS school_name,
+            b.name  AS bank_name' .
+            ($c['table'] ? ', c.' . $c['name'] . ' AS country_name' : ', NULL AS country_name')
+        , false);
+
+        $this->db->from(db_prefix().'school_students ss');
+        $this->db->join(db_prefix().'school_name sn', 'sn.id = ss.school_name_id', 'left');
+
+        if ($c['table']) {
+            $this->db->join($c['table'].' c', 'c.'.$c['id'].' = ss.country_id', 'left');
+        }
+
+        $this->db->join(db_prefix().'bank b', 'b.id = ss.bank_id', 'left');
+        $this->db->where('ss.id', (int)$id);
+        return $this->db->get()->row_array();
+    }
 
     public function count_all()
     {
-        return $this->db->count_all_results(db_prefix() . 'school_students');
+        return $this->db->count_all_results(db_prefix().'school_students');
     }
 
-    public function get($id)
+    /* ----------------- UPDATE ----------------- */
+
+    public function update($data, $id)
     {
-        return $this->db->get_where(db_prefix() . 'school_students', ['id' => $id])->row_array();
-    }
+        try {
+            $update = [];
 
-public function get_by_id($student_id)
-{
-    $this->db->select('ss.*, sn.name as school_name, c.name as country_name, b.name as bank_name');
-    $this->db->from(db_prefix() . 'school_students ss');
-    $this->db->join(db_prefix() . 'school_name sn', 'sn.id = ss.school_name_id', 'left');
-    $this->db->join(db_prefix() . 'country c', 'c.id = ss.country_id', 'left');
-    $this->db->join(db_prefix() . 'bank b', 'b.id = ss.bank_id', 'left');
-    $this->db->where('ss.id', $student_id);
-    $result = $this->db->get()->row_array();
-    
-    if (!$result) {
-        return null;
-    }
-    
-    // Map database fields to form field names to avoid undefined key errors
-    $mapped_result = [
-        'id' => $result['id'] ?? '',
-        'name' => $result['name'] ?? '',
-        'email' => $result['email'] ?? '',
-        'phone' => $result['contact_no'] ?? '', // contact_no -> phone
-        'grade' => $result['school_grade'] ?? '', // school_grade -> grade
-        'school_name' => $result['school_name'] ?? '',
-        'school_id' => $result['school_id'] ?? '',
-        'school_type' => $result['school_type'] ?? '',
-        'dob' => $result['school_student_dob'] ?? '', // school_student_dob -> dob
-        'address' => $result['address'] ?? '',
-        'city' => $result['city'] ?? '',
-        'zip' => $result['zip'] ?? '',
-        'postal_code' => $result['zip'] ?? '', // zip -> postal_code
-        'country' => $result['country_name'] ?? '',
-        'country_name' => $result['country_name'] ?? '',
-        'district' => $result['city'] ?? '', // Using city as district since district column doesn't exist
-        
-        // Sponsorship fields
-        'sponsorship_start' => $result['school_sponsorship_start_date'] ?? '',
-        'sponsorship_end' => $result['school_sponsorship_end_date'] ?? '',
-        'sponsors' => '', // This field doesn't exist in DB, set as empty
-        
-        // Introduction fields
-        'introduced_by' => $result['school_introducedby'] ?? '',
-        'introduced_phone' => $result['school_introducedph'] ?? '',
-        
-        // Bank fields
-        'bank_account_number' => $result['school_bank_account_no'] ?? '',
-        'bank_branch_number' => '', // This field doesn't exist in DB
-        'bank_branch_info' => '', // This field doesn't exist in DB
-        'bank_name' => $result['bank_name'] ?? '',
-        
-        // Family fields
-        'father_name' => $result['school_father_name'] ?? '',
-        'father_income' => $result['school_father_income'] ?? '',
-        'mother_name' => $result['school_mother_name'] ?? '',
-        'mother_income' => $result['school_mother_income'] ?? '',
-        'guardian_name' => $result['school_guardian_name'] ?? '',
-        'guardian_income' => $result['school_guardian_income'] ?? '',
-        
-        // Additional info
-        'background_information' => $result['background_info'] ?? '',
-        'internal_comment' => $result['internal_comment'] ?? '',
-        'external_comment' => $result['external_comment'] ?? '',
-        
-        // Academic fields (these don't exist in current DB structure)
-        'graduation_exam_date' => '',
-        'academic_year' => '',
-        'term' => '',
-        'overall_grade' => '',
-        'percentage' => '',
-        'class_rank' => '',
-        'attendance' => '',
-        'teacher_comments' => '',
-        'subjects_performance' => '',
-        
-        // Keep original database fields for backward compatibility
-        'contact_no' => $result['contact_no'] ?? '',
-        'school_grade' => $result['school_grade'] ?? '',
-        'school_student_dob' => $result['school_student_dob'] ?? '',
-        'school_sponsorship_start_date' => $result['school_sponsorship_start_date'] ?? '',
-        'school_sponsorship_end_date' => $result['school_sponsorship_end_date'] ?? '',
-        'school_introducedby' => $result['school_introducedby'] ?? '',
-        'school_introducedph' => $result['school_introducedph'] ?? '',
-        'school_bank_account_no' => $result['school_bank_account_no'] ?? '',
-        'school_father_name' => $result['school_father_name'] ?? '',
-        'school_father_income' => $result['school_father_income'] ?? '',
-        'school_mother_name' => $result['school_mother_name'] ?? '',
-        'school_mother_income' => $result['school_mother_income'] ?? '',
-        'school_guardian_name' => $result['school_guardian_name'] ?? '',
-        'school_guardian_income' => $result['school_guardian_income'] ?? '',
-        'background_info' => $result['background_info'] ?? '',
-        'staff_id'      => $result['staff_id']      ?? null,
-        'staff_active'  => $result['staff_active']  ?? null,
-    ];
-    
-    return $mapped_result;
-}
+            $map = [
+                // basics
+                'name'                   => 'name',
+                'email'                  => 'email',
+                'phone'                  => 'contact_no',
+                'address'                => 'address',
+                'city'                   => 'city',
+                'postal_code'            => 'zip',
+                'country_id'             => 'country_id',
 
-public function update($data, $id)
-{
-    // Map form keys -> DB columns (keep this list in sync with add())
-    $map = [
-        // basics
-        'name'                   => 'name',
-        'email'                  => 'email',
-        'phone'                  => 'contact_no',
-        'address'                => 'address',
-        'city'                   => 'city',                 // also used as "district" in UI
-        'district'               => 'city',                 // accept either one
-        'postal_code'            => 'zip',
-        'zip'                    => 'zip',
+                // school identity
+                'school_id'              => 'school_id',
+                'school_type'            => 'school_type',
+                'school_name_id'         => 'school_name_id', // direct id if provided
+                'school_name'            => 'school_name',    // OR create by name
 
-        // school identity
-        'school_id'              => 'school_id',
-        'school_type'            => 'school_type',
-        // school_name is special → school_name_id
+                // academics / personal
+                'school_grade_year'      => 'school_grade_year',
+                'grade'                  => 'school_grade',
+                'grade_mismatch_reason'  => 'grade_mismatch_reason',
+                'dob'                    => 'school_student_dob',
 
-        // academics / personal
-        'grade'                  => 'school_grade',
-        'dob'                    => 'school_student_dob',
+                // sponsorship
+                'sponsorship_start'      => 'school_sponsorship_start_date',
+                'sponsorship_end'        => 'school_sponsorship_end_date',
 
-        // sponsorship
-        'sponsorship_start'      => 'school_sponsorship_start_date',
-        'sponsorship_end'        => 'school_sponsorship_end_date',
+                // introduced by
+                'introduced_by'          => 'school_introducedby',
+                'introduced_phone'       => 'school_introducedph',
 
-        // introduced by
-        'introduced_by'          => 'school_introducedby',
-        'introduced_phone'       => 'school_introducedph',
+                // bank
+                'bank_id'                => 'bank_id',
+                'bank_branch_number'     => 'school_bank_branch_number',
+                'bank_branch_info'       => 'school_bank_branch_info',
+                'bank_account_number'    => 'school_bank_account_no',
 
-        // bank
-        'bank_account_number'    => 'school_bank_account_no',
+                // family/income
+                'father_name'            => 'school_father_name',
+                'mother_name'            => 'school_mother_name',
+                'guardian_name'          => 'school_guardian_name',
+                'father_income'          => 'school_father_income',
+                'mother_income'          => 'school_mother_income',
+                'guardian_income'        => 'school_guardian_income',
 
-        // family
-        'father_name'            => 'school_father_name',
-        'mother_name'            => 'school_mother_name',
-        'guardian_name'          => 'school_guardian_name',
+                // misc
+                'sponsor_id'             => 'sponsor_id',
+                'background_information' => 'background_info',
+                'internal_comment'       => 'internal_comment',
+                'external_comment'       => 'external_comment',
+            ];
 
-        // incomes (numeric)
-        'father_income'          => 'school_father_income',
-        'mother_income'          => 'school_mother_income',
-        'guardian_income'        => 'school_guardian_income',
+            foreach ($map as $in => $col) {
+                if (!array_key_exists($in, $data)) continue;
 
-        // comments/info
-        'background_information' => 'background_info',
-        'internal_comment'       => 'internal_comment',
-        'external_comment'       => 'external_comment',
-    ];
+                $val = $data[$in];
 
-    $update_data = [];
+                if (in_array($in, ['father_income','mother_income','guardian_income'], true)) {
+                    $update[$col] = $this->toFloatOrNull($val);
+                } elseif (in_array($in, ['sponsor_id','bank_id','country_id','school_grade_year'], true)) {
+                    $update[$col] = $this->toIntOrNull($val);
+                } elseif ($in === 'dob') {
+                    $update[$col] = $this->toNullIfEmpty($val);
+                    $update['school_age'] = $this->calc_age_int($val);
+                } elseif ($in === 'school_name_id') {
+                    $update['school_name_id'] = $this->toIntOrNull($val);
+                } elseif ($in === 'school_name') {
+                    $update['school_name_id'] = $this->get_or_create_school_name_id($val);
+                } else {
+                    $update[$col] = $this->toNullIfEmpty($val);
+                }
+            }
 
-    // Handle school_name → school_name_id
-    if (array_key_exists('school_name', $data)) {
-        $update_data['school_name_id'] = $this->get_or_create_school_name_id(
-            trim((string)$data['school_name'])
-        );
-    }
+            // optional new profile photo
+            try {
+                $photo = $this->handle_profile_photo_upload();
+                if ($photo !== null) $update['profile_photo'] = $photo;
+            } catch (Exception $e) {
+                // swallow but log
+                log_message('error','School photo upload (update): '.$e->getMessage());
+            }
 
-    // Apply mapping (trim strings, set null for empty strings)
-    foreach ($map as $form_key => $db_col) {
-        if (!array_key_exists($form_key, $data)) {
-            continue; // not posted → don't touch existing DB value
-        }
+            if (empty($update)) return false;
 
-        $val = $data[$form_key];
+            $this->db->where('id', (int)$id);
+            $this->db->update(db_prefix().'school_students', $update);
+            return $this->db->affected_rows() >= 0;
 
-        // Numeric fields: store 0 when empty
-        if (in_array($form_key, ['father_income','mother_income','guardian_income'], true)) {
-            $update_data[$db_col] = ($val === '' || $val === null) ? 0 : (float)$val;
-            continue;
-        }
-
-        // All other fields: trim strings; store NULL when empty
-        if (is_string($val)) {
-            $val = trim($val);
-        }
-        $update_data[$db_col] = ($val === '' ? null : $val);
-    }
-
-    // NOTHING to update?
-    if (empty($update_data)) {
-        log_activity('No update data provided for school student. ID: '.$id);
-        return false;
-    }
-
-    // Debug to see exactly what is being written
-    log_activity('School Student Update Data (ID '.$id.'): '.json_encode($update_data));
-
-    $this->db->where('id', (int)$id);
-    $ok = $this->db->update(db_prefix().'school_students', $update_data);
-
-    // affected_rows() can be 0 if values are identical — still a successful update statement.
-    if ($ok) {
-        if ($this->db->affected_rows() > 0) {
-            log_activity('School student updated successfully. ID: '.$id);
-        } else {
-            log_activity('School student update executed but no changes detected. ID: '.$id);
+        } catch (Exception $e) {
+            log_message('error','Error updating school student: '.$e->getMessage());
+            return false;
         }
     }
 
-    return $ok;
-}
-
-
-    public function update_student($data, $student_id)
+    public function update_student($data, $id)
     {
-        return $this->update($data, $student_id);
+        return $this->update($data, $id);
     }
+
+    /* ----------------- DELETE ----------------- */
 
     public function delete($id)
     {
-        $this->db->where('id', $id);
-        return $this->db->delete(db_prefix() . 'school_students');
+        try {
+            // delete related report cards (unlink path if present)
+            $this->db->where('student_school_id', (int)$id);
+            $cards = $this->db->get(db_prefix().'school_report_card')->result();
+            foreach ($cards as $c) {
+                if (!empty($c->report_card_file)) {
+                    $abs = rtrim(FCPATH, '/\\') . '/' . ltrim($c->report_card_file, '/');
+                    if (is_file($abs)) @unlink($abs);
+                }
+            }
+            $this->db->where('student_school_id', (int)$id)->delete(db_prefix().'school_report_card');
+
+            // delete student
+            $this->db->where('id', (int)$id)->delete(db_prefix().'school_students');
+            return $this->db->affected_rows() > 0;
+
+        } catch (Exception $e) {
+            log_message('error','Error deleting school student: '.$e->getMessage());
+            return false;
+        }
     }
 
-    public function delete_student($id)
-    {
-        return $this->delete($id);
-    }
+    public function delete_student($id) { return $this->delete($id); }
+
+    /* ----------------- FILTERS/LISTS (safe for missing cols) ----------------- */
 
     public function get_students_filtered($filters = [])
     {
         $this->db->select('ss.*, sn.name as school_name');
-        $this->db->from(db_prefix() . 'school_students ss');
-        $this->db->join(db_prefix() . 'school_name sn', 'sn.id = ss.school_name_id', 'left');
+        $this->db->from(db_prefix().'school_students ss');
+        $this->db->join(db_prefix().'school_name sn', 'sn.id = ss.school_name_id', 'left');
 
-        if (!empty($filters['grade'])) {
-            $this->db->where('ss.school_grade', $filters['grade']);
-        }
-
-        if (!empty($filters['city'])) {
-            $this->db->like('ss.city', $filters['city']);
-        }
-
-        if (!empty($filters['school_name'])) {
-            $this->db->like('sn.name', $filters['school_name']);
-        }
+        if (!empty($filters['grade'])) $this->db->where('ss.school_grade', $filters['grade']);
+        if (!empty($filters['city']))  $this->db->like('ss.city', $filters['city']);
+        if (!empty($filters['school_name'])) $this->db->like('sn.name', $filters['school_name']);
 
         if (!empty($filters['search'])) {
             $this->db->group_start();
@@ -443,120 +456,86 @@ public function update($data, $id)
 
     public function get_schools()
     {
-        $this->db->select('sn.name as school_name');
-        $this->db->from(db_prefix() . 'school_students ss');
-        $this->db->join(db_prefix() . 'school_name sn', 'sn.id = ss.school_name_id', 'inner');
-        $this->db->group_by('sn.name');
-        $this->db->order_by('sn.name', 'ASC');
-        $query = $this->db->get();
-        
-        $schools = [];
-        foreach ($query->result_array() as $row) {
-            $schools[] = $row['school_name'];
-        }
-        
-        return $schools;
+        $this->ensure_school_name_table();
+        return $this->db->order_by('name','ASC')->get(db_prefix().'school_name')->result_array();
     }
 
-    // These methods appear to be controller methods mixed in the model - they should be moved to the controller
-    public function get_student()
+    /* ----------------- REPORT CARD HELPERS (school) ----------------- */
+
+    public function get_report_cards($student_id)
     {
-        if (!has_permission('student_sponsor_portal', '', 'view')) {
-            access_denied('student_sponsor_portal');
+        $this->db->where('student_school_id', (int)$student_id);
+        $this->db->order_by('upload_date', 'DESC');
+        $cards = $this->db->get(db_prefix().'school_report_card')->result_array();
+
+        foreach ($cards as &$c) {
+            $c['download_url'] = admin_url('student_sponsor_portal/download_school_report_card/'.$c['id']);
         }
-
-        if ($this->input->post()) {
-            $student_id = $this->input->post('student_id');
-            $student_data = $this->get_by_id($student_id);
-
-            if ($student_data) {
-                $student = $student_data;
-
-                if ($this->input->post('action') == 'view') {
-                    $html = '<div class="row">
-                        <div class="col-md-6">
-                            <h5><strong>Student Information</strong></h5>
-                            <p><strong>Name:</strong> ' . htmlspecialchars($student['name']) . '</p>
-                            <p><strong>Grade:</strong> ' . htmlspecialchars($student['school_grade'] ?? 'Not set') . '</p>
-                            <p><strong>School:</strong> ' . htmlspecialchars($student['school_name'] ?? 'Not provided') . '</p>
-                            <p><strong>Email:</strong> ' . htmlspecialchars($student['email'] ?? 'Not provided') . '</p>
-                            <p><strong>Phone:</strong> ' . htmlspecialchars($student['contact_no'] ?? 'Not provided') . '</p>
-                            <p><strong>Date of Birth:</strong> ' . htmlspecialchars($student['school_student_dob'] ?? 'Not provided') . '</p>
-                        </div>
-                        <div class="col-md-6">
-                            <h5><strong>Contact Information</strong></h5>
-                            <p><strong>City:</strong> ' . htmlspecialchars($student['city'] ?? 'Not provided') . '</p>
-                            <p><strong>Address:</strong> ' . htmlspecialchars($student['address'] ?? 'Not provided') . '</p>
-                            <p><strong>Postal Code:</strong> ' . htmlspecialchars($student['zip'] ?? 'Not provided') . '</p>
-                            <p><strong>Country:</strong> ' . htmlspecialchars($student['country_name'] ?? 'Not provided') . '</p>
-                        </div>
-                    </div>
-                    <div class="row" style="margin-top: 20px;">
-                        <div class="col-md-6">
-                            <h5><strong>Family Information</strong></h5>
-                            <p><strong>Father\'s Name:</strong> ' . htmlspecialchars($student['school_father_name'] ?? 'Not provided') . '</p>
-                            <p><strong>Mother\'s Name:</strong> ' . htmlspecialchars($student['school_mother_name'] ?? 'Not provided') . '</p>
-                            <p><strong>Guardian:</strong> ' . htmlspecialchars($student['school_guardian_name'] ?? 'Not provided') . '</p>
-                        </div>
-                        <div class="col-md-6">
-                            <h5><strong>Sponsorship Information</strong></h5>
-                            <p><strong>Sponsorship Start:</strong> ' . htmlspecialchars($student['school_sponsorship_start_date'] ?? 'Not set') . '</p>
-                            <p><strong>Sponsorship End:</strong> ' . htmlspecialchars($student['school_sponsorship_end_date'] ?? 'Not set') . '</p>
-                            <p><strong>Introduced by:</strong> ' . htmlspecialchars($student['school_introducedby'] ?? 'Not provided') . '</p>
-                            <p><strong>Introducer\'s Phone:</strong> ' . htmlspecialchars($student['school_introducedph'] ?? 'Not provided') . '</p>
-                        </div>
-                    </div>';
-                    
-                    echo json_encode(['success' => true, 'html' => $html]);
-                } else {
-                    echo json_encode(['success' => true, 'student' => $student]);
-                }
-            } else {
-                echo json_encode(['success' => false, 'message' => 'Student not found']);
-            }
-        }
+        return ['success'=>true, 'report_cards'=>$cards];
     }
 
-    public function export_students()
+    /* ----------------- HELPERS ----------------- */
+
+    private function country_schema()
     {
-        if (!has_permission('student_sponsor_portal', '', 'view')) {
-            access_denied('student_sponsor_portal');
+        // Prefer core countries if present; else your custom tblcountry
+        if ($this->db->table_exists(db_prefix().'countries')) {
+            return ['table'=>db_prefix().'countries','id'=>'country_id','name'=>'short_name','phone'=>'calling_code','is_custom'=>false];
         }
-
-        $students = $this->get_all();
-
-        header('Content-Type: text/csv');
-        header('Content-Disposition: attachment; filename="school_students_' . date('Y-m-d') . '.csv"');
-
-        $output = fopen('php://output', 'w');
-
-        // CSV headers
-        fputcsv($output, [
-            'ID', 'Name', 'Email', 'Phone', 'Grade', 'School Name', 'City',
-            'Date of Birth', 'Father Name', 'Mother Name', 'Guardian Name',
-            'Sponsorship Start', 'Sponsorship End', 'Address'
-        ]);
-
-        // CSV rows
-        foreach ($students as $student) {
-            fputcsv($output, [
-                $student['id'],
-                $student['name'],
-                $student['email'],
-                $student['contact_no'],
-                $student['school_grade'],
-                $student['school_name'],
-                $student['city'],
-                $student['school_student_dob'],
-                $student['school_father_name'],
-                $student['school_mother_name'],
-                $student['school_guardian_name'],
-                $student['school_sponsorship_start_date'],
-                $student['school_sponsorship_end_date'],
-                $student['address']
-            ]);
+        if ($this->db->table_exists(db_prefix().'country')) {
+            // Matches your tblcountry structure: id, name, phone_code
+            return ['table'=>db_prefix().'country','id'=>'id','name'=>'name','phone'=>'phone_code','is_custom'=>true];
         }
+        return ['table'=>null,'id'=>null,'name'=>null,'phone'=>null,'is_custom'=>null];
+    }
 
-        fclose($output);
+    private function generate_internal_id()
+    {
+        $this->db->select('MAX(CAST(SUBSTRING(school_internal_id, 4) AS UNSIGNED)) as max_id');
+        $this->db->like('school_internal_id', 'SCH', 'after');
+        $row = $this->db->get(db_prefix().'school_students')->row();
+        $next = ($row && $row->max_id) ? ((int)$row->max_id + 1) : 1;
+        return 'SCH' . str_pad($next, 3, '0', STR_PAD_LEFT);
+    }
+
+    public function get_or_create_school_name_id($name_or_id)
+    {
+        if (!$name_or_id) return null;
+        if (is_numeric($name_or_id)) return (int)$name_or_id;
+
+        $this->db->where('name', $name_or_id);
+        $row = $this->db->get(db_prefix().'school_name')->row();
+        if ($row) return (int)$row->id;
+
+        $this->db->insert(db_prefix().'school_name', ['name'=>$name_or_id]);
+        return (int)$this->db->insert_id();
+    }
+
+    private function toFloatOrNull($v)
+    {
+        if ($v === '' || $v === null || $v === 0) return null;
+        return (float)$v;
+    }
+
+    private function toIntOrNull($v)
+    {
+        if ($v === '' || $v === null || $v === 0) return null;
+        return (int)$v;
+    }
+
+    private function toNullIfEmpty($v)
+    {
+        if ($v === '' || $v === null) return null;
+        return $v;
+    }
+
+    private function calc_age_int($dob)
+    {
+        if (!$dob) return null;
+        try {
+            $d1 = new DateTime($dob);
+            $d2 = new DateTime('now');
+            return (int)$d1->diff($d2)->y;
+        } catch (Exception $e) { return null; }
     }
 }
