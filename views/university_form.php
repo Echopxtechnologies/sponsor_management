@@ -32,12 +32,16 @@
               <input type="hidden" name="student_id" value="<?php echo (int)$student['id']; ?>">
             <?php endif; ?>
 
+            <!-- remember last active tab -->
+            <input type="hidden" name="active_tab" id="active_tab" value="<?php echo html_escape($this->input->post('active_tab') ?? ($active_tab ?? '#student-info')); ?>">
+
             <!-- hidden fields that carry "new" items to server on Save -->
             <input type="hidden" name="new_country_name" id="new_country_name">
             <input type="hidden" name="new_country_phone_code" id="new_country_phone_code">
             <input type="hidden" name="new_university_name" id="new_university_name">
             <input type="hidden" name="new_program_name" id="new_program_name">
             <input type="hidden" name="new_bank_name" id="new_bank_name">
+            <input type="hidden" name="calculated_age" id="calculated_age_hidden">
 
             <?php if(isset($student) && !empty($student)): ?>
               <?php
@@ -61,7 +65,7 @@
               <li role="presentation"><a href="#bank-info" aria-controls="bank-info" role="tab" data-toggle="tab"><i class="fa fa-bank"></i> Bank Info</a></li>
               <li role="presentation"><a href="#additional-info" aria-controls="additional-info" role="tab" data-toggle="tab"><i class="fa fa-info-circle"></i> Additional Info</a></li>
               <li role="presentation"><a href="#report-cards" aria-controls="report-cards" role="tab" data-toggle="tab"><i class="fa fa-file-text"></i> Report Cards</a></li>
-              <li><a href="#tab_staff" data-toggle="tab"><i class="fa fa-user-circle"></i> Staff Account</a></li>
+              <li role="presentation"><a href="#tab_staff" data-toggle="tab"><i class="fa fa-user-circle"></i> Staff Account</a></li>
             </ul>
 
             <div class="tab-content" style="margin-top:20px;">
@@ -75,13 +79,13 @@
                     <div class="form-group">
                       <label for="name" class="control-label">Full Name *</label>
                       <input type="text" name="name" id="name" required class="form-control"
-                        value="<?php echo isset($student) ? htmlspecialchars($student['name']) : ''; ?>" placeholder="Enter student's full name">
+                        value="<?php echo isset($student) ? html_escape($student['name'] ?? '') : (isset($old['name']) ? html_escape($old['name']) : ''); ?>" placeholder="Enter student's full name">
                     </div>
 
                     <div class="form-group">
                       <label for="email" class="control-label">Email Address</label>
                       <input type="email" name="email" id="email" class="form-control"
-                        value="<?php echo isset($student) ? htmlspecialchars($student['email']) : ''; ?>" placeholder="Enter email address">
+                        value="<?php echo isset($student) ? html_escape($student['email'] ?? '') : (isset($old['email']) ? html_escape($old['email']) : ''); ?>" placeholder="Enter email address">
                     </div>
 
                     <div class="form-group">
@@ -89,39 +93,42 @@
                       <div class="input-group">
                         <div class="input-group-addon" id="phone-code-display">
                           <?php
-                          $phone_code = '+1';
-                          if(isset($student) && !empty($student['country_id']) && isset($countries)) {
-                            foreach($countries as $country) {
-                              if($country['id'] == $student['country_id']) { $phone_code = $country['phone_code']; break; }
+                            $phone_code = '+1';
+                            if(isset($student) && !empty($student['country_id']) && !empty($countries)) {
+                              foreach($countries as $country) {
+                                $cid = (int)($country['id'] ?? 0);
+                                $pcode = $country['phone_code'] ?? $country['calling_code'] ?? '';
+                                if((int)$student['country_id'] === $cid && $pcode!==''){ $phone_code = $pcode; break; }
+                              }
                             }
-                          }
-                          echo htmlspecialchars($phone_code);
+                            echo html_escape($phone_code);
                           ?>
                         </div>
                         <input type="text" name="phone" id="phone" class="form-control"
-                          value="<?php echo isset($student) ? htmlspecialchars($student['contact_no']) : ''; ?>" placeholder="Enter phone number">
+                          value="<?php echo isset($student) ? html_escape($student['contact_no'] ?? '') : (isset($old['phone']) ? html_escape($old['phone']) : ''); ?>" placeholder="Enter phone number">
                       </div>
                     </div>
 
                     <div class="form-group">
                       <label for="dob" class="control-label">Date of Birth</label>
                       <input type="date" name="dob" id="dob" class="form-control"
-                        value="<?php echo isset($student) ? ($student['university_student_dob'] ?? '') : ''; ?>">
+                        value="<?php echo isset($student) ? ($student['university_student_dob'] ?? '') : (isset($old['dob']) ? $old['dob'] : ''); ?>">
                     </div>
 
                     <div class="form-group">
                       <label class="control-label">Age</label>
                       <input type="text" id="calculated-age" class="form-control" readonly
-                        value="<?php echo isset($student) ? ($student['university_age'] ?? '') : ''; ?>" placeholder="Will be calculated from DOB">
+                        value="<?php echo isset($student) && !empty($student['university_age']) ? $student['university_age'] . ' years' : ''; ?>" placeholder="Will be calculated from DOB">
                     </div>
 
                     <div class="form-group">
                       <label for="profile_photo" class="control-label">Profile Photo</label>
                       <input type="file" name="profile_photo" id="profile_photo" class="form-control" accept="image/*">
-                      <?php if(isset($student) && !empty($student['profile_photo'])): ?>
+                      <?php if(isset($student) && !empty($student['id'])): ?>
                         <div class="current-photo" style="margin-top: 10px;">
-                          <img src="<?php echo admin_url('student_sponsor_portal/display_profile_photo/' . $student['id']); ?>" 
-                               alt="Profile Photo" style="max-width: 150px; max-height: 150px; border: 1px solid #ddd; border-radius: 4px;">
+                          <img src="<?php echo admin_url('student_sponsor_portal/display_profile_photo/' . (int)$student['id']); ?>"
+                               alt="Profile Photo" style="max-width: 150px; max-height: 150px; border: 1px solid #ddd; border-radius: 4px;"
+                               onerror="this.style.display='none'">
                           <br><small class="text-muted">Current profile photo</small>
                         </div>
                       <?php endif; ?>
@@ -129,20 +136,27 @@
                   </div>
 
                   <div class="col-md-6">
+                    <!-- Country dropdown + add -->
                     <div class="form-group">
                       <label for="country_id" class="control-label">Country</label>
                       <div class="country-select-wrapper">
                         <select name="country_id" id="country_id" class="form-control selectpicker" data-live-search="true" data-none-selected-text="Select Country">
                           <option value="">Select Country</option>
-                          <?php if(isset($countries)): foreach($countries as $country): ?>
-                            <option value="<?php echo $country['id']; ?>"
-                                    data-phone-code="<?php echo htmlspecialchars($country['phone_code']); ?>"
-                                    <?php echo (isset($student) && $student['country_id'] == $country['id']) ? 'selected' : ''; ?>>
-                              <?php echo htmlspecialchars($country['name']); ?> (<?php echo htmlspecialchars($country['phone_code']); ?>)
+                          <?php if(!empty($countries)): foreach($countries as $c): ?>
+                            <?php
+                              $cid   = (int)($c['id'] ?? 0);
+                              $cname = $c['name'] ?? $c['short_name'] ?? '';
+                              $pcode = $c['phone_code'] ?? $c['calling_code'] ?? '';
+                              $selected = (isset($student) && (int)($student['country_id'] ?? 0) === $cid) ||
+                                         (isset($old['country_id']) && (int)$old['country_id'] === $cid);
+                            ?>
+                            <option value="<?php echo $cid; ?>"
+                              data-phone-code="<?php echo html_escape($pcode); ?>"
+                              <?php echo $selected ? 'selected' : ''; ?>>
+                              <?php echo html_escape($cname); ?><?php echo $pcode!=='' ? ' ('.html_escape($pcode).')' : ''; ?>
                             </option>
                           <?php endforeach; endif; ?>
                         </select>
-                        <!-- Add Country button -->
                         <button type="button" class="btn btn-default btn-sm add-new-btn" data-toggle="modal" data-target="#addCountryModal" title="Add New Country">
                           <i class="fa fa-plus"></i>
                         </button>
@@ -151,20 +165,22 @@
 
                     <div class="form-group">
                       <label for="address" class="control-label">Address</label>
-                      <textarea name="address" id="address" class="form-control" rows="3" placeholder="Complete address"><?php echo isset($student) ? htmlspecialchars($student['address'] ?? '') : ''; ?></textarea>
+                      <textarea name="address" id="address" class="form-control" rows="3" placeholder="Complete address"><?php echo isset($student) ? html_escape($student['address'] ?? '') : (isset($old['address']) ? html_escape($old['address']) : ''); ?></textarea>
                     </div>
 
                     <div class="row">
                       <div class="col-md-6">
                         <div class="form-group">
-                          <label for="city" class="control-label">City</label>
-                          <input type="text" name="city" id="city" class="form-control" value="<?php echo isset($student) ? htmlspecialchars($student['city'] ?? '') : ''; ?>" placeholder="City">
+                          <label for="city" class="control-label">City / District</label>
+                          <input type="text" name="city" id="city" class="form-control"
+                            value="<?php echo isset($student) ? html_escape($student['city'] ?? '') : (isset($old['city']) ? html_escape($old['city']) : ''); ?>" placeholder="City / District">
                         </div>
                       </div>
                       <div class="col-md-6">
                         <div class="form-group">
                           <label for="postal_code" class="control-label">Postal Code</label>
-                          <input type="text" name="postal_code" id="postal_code" class="form-control" value="<?php echo isset($student) ? htmlspecialchars($student['zip'] ?? '') : ''; ?>" placeholder="Postal code">
+                          <input type="text" name="postal_code" id="postal_code" class="form-control"
+                            value="<?php echo isset($student) ? html_escape($student['zip'] ?? '') : (isset($old['postal_code']) ? html_escape($old['postal_code']) : ''); ?>" placeholder="Postal code">
                         </div>
                       </div>
                     </div>
@@ -172,7 +188,13 @@
                     <div class="form-group">
                       <label for="university_id" class="control-label">University Student ID</label>
                       <input type="text" name="university_id" id="university_id" class="form-control"
-                        value="<?php echo isset($student) ? htmlspecialchars($student['university_id'] ?? '') : ''; ?>" placeholder="Enter university student ID">
+                        value="<?php echo isset($student) ? html_escape($student['university_id'] ?? '') : (isset($old['university_id']) ? html_escape($old['university_id']) : ''); ?>" placeholder="Enter university student ID">
+                    </div>
+
+                    <div class="form-group">
+                      <label for="university_internal_id" class="control-label">Internal Student ID</label>
+                      <input type="text" name="university_internal_id" id="university_internal_id" class="form-control"
+                        value="<?php echo isset($student) ? html_escape($student['university_internal_id'] ?? '') : (isset($old['university_internal_id']) ? html_escape($old['university_internal_id']) : ''); ?>" placeholder="Internal tracking ID">
                     </div>
                   </div>
                 </div>
@@ -186,9 +208,16 @@
                       <div class="university-select-wrapper">
                         <select name="university_name_id" id="university_name_id" class="form-control selectpicker" data-live-search="true" data-none-selected-text="Select University">
                           <option value="">Select University</option>
-                          <?php if(isset($universities)): foreach($universities as $university): ?>
-                            <option value="<?php echo $university['id']; ?>" <?php echo (isset($student) && $student['university_name_id'] == $university['id']) ? 'selected' : ''; ?>>
-                              <?php echo htmlspecialchars($university['name']); ?>
+                          <?php if(!empty($universities)): foreach($universities as $university): ?>
+                            <?php
+                              $uid = (int)($university['id'] ?? 0);
+                              $uname = (string)($university['name'] ?? '');
+                              $university_selected = (isset($student) && (int)($student['university_name_id'] ?? 0) === $uid) ||
+                                                   (isset($old['university_name_id']) && (int)$old['university_name_id'] === $uid);
+                            ?>
+                            <option value="<?php echo $uid; ?>" data-name="<?php echo html_escape($uname); ?>"
+                              <?php echo $university_selected ? 'selected' : ''; ?>>
+                              <?php echo html_escape($uname); ?>
                             </option>
                           <?php endforeach; endif; ?>
                         </select>
@@ -203,9 +232,16 @@
                       <div class="program-select-wrapper">
                         <select name="university_program_id" id="university_program_id" class="form-control selectpicker" data-live-search="true" data-none-selected-text="Select Program">
                           <option value="">Select Program</option>
-                          <?php if(isset($programs)): foreach($programs as $program): ?>
-                            <option value="<?php echo $program['id']; ?>" <?php echo (isset($student) && $student['university_program_id'] == $program['id']) ? 'selected' : ''; ?>>
-                              <?php echo htmlspecialchars($program['name']); ?>
+                          <?php if(!empty($programs)): foreach($programs as $program): ?>
+                            <?php
+                              $pid = (int)($program['id'] ?? 0);
+                              $pname = (string)($program['name'] ?? '');
+                              $program_selected = (isset($student) && (int)($student['university_program_id'] ?? 0) === $pid) ||
+                                                (isset($old['university_program_id']) && (int)$old['university_program_id'] === $pid);
+                            ?>
+                            <option value="<?php echo $pid; ?>" data-name="<?php echo html_escape($pname); ?>"
+                              <?php echo $program_selected ? 'selected' : ''; ?>>
+                              <?php echo html_escape($pname); ?>
                             </option>
                           <?php endforeach; endif; ?>
                         </select>
@@ -229,51 +265,11 @@
                           '4Y1S'=>'4th Year, 1st Semester','4Y2S'=>'4th Year, 2nd Semester',
                           '5Y1S'=>'5th Year, 1st Semester','5Y2S'=>'5th Year, 2nd Semester'
                         ];
-                        $current_year = isset($student) ? ($student['university_year_of_study'] ?? '') : '';
+                        $current_year = isset($student) ? ($student['university_year_of_study'] ?? '') : (isset($old['year_of_study']) ? $old['year_of_study'] : '');
                         foreach($year_options as $value => $label): ?>
                           <option value="<?php echo $value; ?>" <?php echo ($current_year == $value) ? 'selected' : ''; ?>><?php echo $label; ?></option>
                         <?php endforeach; ?>
                       </select>
-                    </div>
-                  </div>
-                </div>
-
-                <h5><i class="fa fa-users"></i> Family Information</h5>
-                <hr>
-                <div class="row">
-                  <div class="col-md-6">
-                    <div class="form-group">
-                      <label for="father_name" class="control-label">Father's Name</label>
-                      <input type="text" name="father_name" id="father_name" class="form-control" value="<?php echo isset($student) ? htmlspecialchars($student['university_father_name'] ?? '') : ''; ?>" placeholder="Father's full name">
-                    </div>
-                    <div class="form-group">
-                      <label for="father_income" class="control-label">Father's Income</label>
-                      <input type="number" name="father_income" id="father_income" class="form-control" step="0.01" value="<?php echo isset($student) ? ($student['university_father_income'] ?? '') : ''; ?>" placeholder="Monthly income">
-                    </div>
-
-                    <div class="form-group">
-                      <label for="mother_name" class="control-label">Mother's Name</label>
-                      <input type="text" name="mother_name" id="mother_name" class="form-control" value="<?php echo isset($student) ? htmlspecialchars($student['university_mother_name'] ?? '') : ''; ?>" placeholder="Mother's full name">
-                    </div>
-                    <div class="form-group">
-                      <label for="mother_income" class="control-label">Mother's Income</label>
-                      <input type="number" name="mother_income" id="mother_income" class="form-control" step="0.01" value="<?php echo isset($student) ? ($student['university_mother_income'] ?? '') : ''; ?>" placeholder="Monthly income">
-                    </div>
-                  </div>
-
-                  <div class="col-md-6">
-                    <div class="form-group">
-                      <label for="guardian_name" class="control-label">Guardian's Name</label>
-                      <input type="text" name="guardian_name" id="guardian_name" class="form-control" value="<?php echo isset($student) ? htmlspecialchars($student['university_guardian_name'] ?? '') : ''; ?>" placeholder="Guardian's full name (if different from parents)">
-                    </div>
-                    <div class="form-group">
-                      <label for="guardian_income" class="control-label">Guardian's Income</label>
-                      <input type="number" name="guardian_income" id="guardian_income" class="form-control" step="0.01" value="<?php echo isset($student) ? ($student['university_guardian_income'] ?? '') : ''; ?>" placeholder="Monthly income">
-                    </div>
-
-                    <div class="alert alert-info" style="margin-top:30px;">
-                      <i class="fa fa-info-circle"></i>
-                      <strong>Note:</strong> Guardian information is only required if different from parents or if parents are unavailable.
                     </div>
                   </div>
                 </div>
@@ -287,9 +283,13 @@
                       <label for="sponsor_id" class="control-label">Main Sponsor</label>
                       <select name="sponsor_id" id="sponsor_id" class="form-control">
                         <option value="">Select Sponsor</option>
-                        <?php if(isset($sponsors)): foreach($sponsors as $sponsor): ?>
-                          <option value="<?php echo $sponsor['id']; ?>" <?php echo (isset($student) && $student['sponsor_id'] == $sponsor['id']) ? 'selected' : ''; ?>>
-                            <?php echo htmlspecialchars($sponsor['name']); ?>
+                        <?php if(!empty($sponsors)): foreach($sponsors as $sponsor): ?>
+                          <?php
+                            $sponsor_selected = (isset($student) && (int)($student['sponsor_id'] ?? 0) === (int)$sponsor['id']) ||
+                                              (isset($old['sponsor_id']) && (int)$old['sponsor_id'] === (int)$sponsor['id']);
+                          ?>
+                          <option value="<?php echo (int)$sponsor['id']; ?>" <?php echo $sponsor_selected ? 'selected' : ''; ?>>
+                            <?php echo html_escape($sponsor['name']); ?>
                           </option>
                         <?php endforeach; endif; ?>
                       </select>
@@ -297,21 +297,25 @@
 
                     <div class="form-group">
                       <label for="sponsorship_start" class="control-label">Sponsorship Start Date</label>
-                      <input type="date" name="sponsorship_start" id="sponsorship_start" class="form-control" value="<?php echo isset($student) ? ($student['university_sponsorship_start_date'] ?? '') : ''; ?>">
+                      <input type="date" name="sponsorship_start" id="sponsorship_start" class="form-control"
+                        value="<?php echo isset($student) ? ($student['university_sponsorship_start_date'] ?? '') : (isset($old['sponsorship_start']) ? $old['sponsorship_start'] : ''); ?>">
                     </div>
                     <div class="form-group">
                       <label for="sponsorship_end" class="control-label">Sponsorship End Date</label>
-                      <input type="date" name="sponsorship_end" id="sponsorship_end" class="form-control" value="<?php echo isset($student) ? ($student['university_sponsorship_end_date'] ?? '') : ''; ?>">
+                      <input type="date" name="sponsorship_end" id="sponsorship_end" class="form-control"
+                        value="<?php echo isset($student) ? ($student['university_sponsorship_end_date'] ?? '') : (isset($old['sponsorship_end']) ? $old['sponsorship_end'] : ''); ?>">
                     </div>
                   </div>
                   <div class="col-md-6">
                     <div class="form-group">
                       <label for="introduced_by" class="control-label">Introduced By</label>
-                      <input type="text" name="introduced_by" id="introduced_by" class="form-control" value="<?php echo isset($student) ? htmlspecialchars($student['university_introducedby'] ?? '') : ''; ?>" placeholder="Person who introduced the student">
+                      <input type="text" name="introduced_by" id="introduced_by" class="form-control"
+                        value="<?php echo isset($student) ? html_escape($student['university_introducedby'] ?? '') : (isset($old['introduced_by']) ? html_escape($old['introduced_by']) : ''); ?>" placeholder="Person who introduced the student">
                     </div>
                     <div class="form-group">
                       <label for="introduced_phone" class="control-label">Introducer's Phone</label>
-                      <input type="text" name="introduced_phone" id="introduced_phone" class="form-control" value="<?php echo isset($student) ? htmlspecialchars($student['university_introducedph'] ?? '') : ''; ?>" placeholder="Contact number">
+                      <input type="text" name="introduced_phone" id="introduced_phone" class="form-control"
+                        value="<?php echo isset($student) ? html_escape($student['university_introducedph'] ?? '') : (isset($old['introduced_phone']) ? html_escape($old['introduced_phone']) : ''); ?>" placeholder="Contact number">
                     </div>
                   </div>
                 </div>
@@ -326,9 +330,13 @@
                       <div class="bank-select-wrapper">
                         <select name="bank_id" id="bank_id" class="form-control selectpicker" data-live-search="true" data-none-selected-text="Select Bank">
                           <option value="">Select Bank</option>
-                          <?php if(isset($banks)): foreach($banks as $bank): ?>
-                            <option value="<?php echo $bank['id']; ?>" <?php echo (isset($student) && $student['bank_id'] == $bank['id']) ? 'selected' : ''; ?>>
-                              <?php echo htmlspecialchars($bank['name']); ?>
+                          <?php if(!empty($banks)): foreach($banks as $b): ?>
+                            <?php
+                              $bank_selected = (isset($student) && (int)($student['bank_id'] ?? 0) === (int)$b['id']) ||
+                                             (isset($old['bank_id']) && (int)$old['bank_id'] === (int)$b['id']);
+                            ?>
+                            <option value="<?php echo (int)$b['id']; ?>" <?php echo $bank_selected ? 'selected' : ''; ?>>
+                              <?php echo html_escape($b['name']); ?>
                             </option>
                           <?php endforeach; endif; ?>
                         </select>
@@ -339,19 +347,21 @@
                     </div>
 
                     <div class="form-group">
-                      <label for="bank_branch_number" class="control-label">Bank Branch Number</label>
-                      <input type="text" name="bank_branch_number" id="bank_branch_number" class="form-control" value="<?php echo isset($student) ? htmlspecialchars($student['university_bank_branch_number'] ?? '') : ''; ?>" placeholder="Branch code/number">
-                    </div>
-
-                    <div class="form-group">
                       <label for="bank_account_number" class="control-label">Bank Account Number</label>
-                      <input type="text" name="bank_account_number" id="bank_account_number" class="form-control" value="<?php echo isset($student) ? htmlspecialchars($student['university_bank_account_no'] ?? '') : ''; ?>" placeholder="Account number">
+                      <input type="text" name="bank_account_number" id="bank_account_number" class="form-control"
+                        value="<?php echo isset($student) ? html_escape($student['university_bank_account_no'] ?? '') : (isset($old['bank_account_number']) ? html_escape($old['bank_account_number']) : ''); ?>" placeholder="Account number">
                     </div>
                   </div>
+
                   <div class="col-md-6">
                     <div class="form-group">
+                      <label for="bank_branch_number" class="control-label">Bank Branch Number</label>
+                      <input type="text" name="bank_branch_number" id="bank_branch_number" class="form-control"
+                        value="<?php echo isset($student) ? html_escape($student['university_bank_branch_number'] ?? '') : (isset($old['bank_branch_number']) ? html_escape($old['bank_branch_number']) : ''); ?>" placeholder="Branch code/number">
+                    </div>
+                    <div class="form-group">
                       <label for="bank_branch_info" class="control-label">Bank Branch Information</label>
-                      <textarea name="bank_branch_info" id="bank_branch_info" class="form-control" rows="5" placeholder="Additional branch details, address, etc."><?php echo isset($student) ? htmlspecialchars($student['university_bank_branch_info'] ?? '') : ''; ?></textarea>
+                      <textarea name="bank_branch_info" id="bank_branch_info" class="form-control" rows="3" placeholder="Additional branch details"><?php echo isset($student) ? html_escape($student['university_bank_branch_info'] ?? '') : (isset($old['bank_branch_info']) ? html_escape($old['bank_branch_info']) : ''); ?></textarea>
                     </div>
                   </div>
                 </div>
@@ -360,37 +370,84 @@
               <!-- Additional Info -->
               <div role="tabpanel" class="tab-pane" id="additional-info">
                 <div class="row">
+                  <div class="col-md-4">
+                    <div class="form-group">
+                      <label for="father_name" class="control-label">Father's Name</label>
+                      <input type="text" name="father_name" id="father_name" class="form-control"
+                        value="<?php echo isset($student) ? html_escape($student['university_father_name'] ?? '') : (isset($old['father_name']) ? html_escape($old['father_name']) : ''); ?>">
+                    </div>
+                    <div class="form-group">
+                      <label for="father_income" class="control-label">Father's Income</label>
+                      <input type="number" step="0.01" name="father_income" id="father_income" class="form-control"
+                        value="<?php echo isset($student) ? html_escape($student['university_father_income'] ?? '') : (isset($old['father_income']) ? html_escape($old['father_income']) : ''); ?>" placeholder="Monthly income">
+                    </div>
+                  </div>
+
+                  <div class="col-md-4">
+                    <div class="form-group">
+                      <label for="mother_name" class="control-label">Mother's Name</label>
+                      <input type="text" name="mother_name" id="mother_name" class="form-control"
+                        value="<?php echo isset($student) ? html_escape($student['university_mother_name'] ?? '') : (isset($old['mother_name']) ? html_escape($old['mother_name']) : ''); ?>">
+                    </div>
+                    <div class="form-group">
+                      <label for="mother_income" class="control-label">Mother's Income</label>
+                      <input type="number" step="0.01" name="mother_income" id="mother_income" class="form-control"
+                        value="<?php echo isset($student) ? html_escape($student['university_mother_income'] ?? '') : (isset($old['mother_income']) ? html_escape($old['mother_income']) : ''); ?>" placeholder="Monthly income">
+                    </div>
+                  </div>
+
+                  <div class="col-md-4">
+                    <div class="form-group">
+                      <label for="guardian_name" class="control-label">Guardian's Name</label>
+                      <input type="text" name="guardian_name" id="guardian_name" class="form-control"
+                        value="<?php echo isset($student) ? html_escape($student['university_guardian_name'] ?? '') : (isset($old['guardian_name']) ? html_escape($old['guardian_name']) : ''); ?>">
+                    </div>
+                    <div class="form-group">
+                      <label for="guardian_income" class="control-label">Guardian's Income</label>
+                      <input type="number" step="0.01" name="guardian_income" id="guardian_income" class="form-control"
+                        value="<?php echo isset($student) ? html_escape($student['university_guardian_income'] ?? '') : (isset($old['guardian_income']) ? html_escape($old['guardian_income']) : ''); ?>" placeholder="Monthly income">
+                    </div>
+                  </div>
+                </div>
+
+                <div class="row">
                   <div class="col-md-12">
                     <div class="form-group">
                       <label for="background_information" class="control-label">Background Information</label>
-                      <textarea name="background_information" id="background_information" class="form-control" rows="4" placeholder="Student background, family situation, etc."><?php echo isset($student) ? htmlspecialchars($student['background_info'] ?? '') : ''; ?></textarea>
+                      <textarea name="background_information" id="background_information" class="form-control" rows="3" placeholder="Student background, family situation, etc."><?php echo isset($student) ? html_escape($student['background_info'] ?? '') : (isset($old['background_information']) ? html_escape($old['background_information']) : ''); ?></textarea>
                     </div>
                     <div class="form-group">
                       <label for="internal_comment" class="control-label">Internal Comment</label>
-                      <textarea name="internal_comment" id="internal_comment" class="form-control" rows="3" placeholder="Internal notes (not visible to sponsors)"><?php echo isset($student) ? htmlspecialchars($student['internal_comment'] ?? '') : ''; ?></textarea>
+                      <textarea name="internal_comment" id="internal_comment" class="form-control" rows="3" placeholder="Internal notes (not visible to sponsors)"><?php echo isset($student) ? html_escape($student['internal_comment'] ?? '') : (isset($old['internal_comment']) ? html_escape($old['internal_comment']) : ''); ?></textarea>
                     </div>
                     <div class="form-group">
                       <label for="external_comment" class="control-label">External Comment</label>
-                      <textarea name="external_comment" id="external_comment" class="form-control" rows="3" placeholder="Comments visible to sponsors"><?php echo isset($student) ? htmlspecialchars($student['external_comment'] ?? '') : ''; ?></textarea>
+                      <textarea name="external_comment" id="external_comment" class="form-control" rows="3" placeholder="Comments visible to sponsors"><?php echo isset($student) ? html_escape($student['external_comment'] ?? '') : (isset($old['external_comment']) ? html_escape($old['external_comment']) : ''); ?></textarea>
                     </div>
                   </div>
                 </div>
               </div>
 
-              <!-- Report Cards -->
+              <!-- Report Cards (NO nested form, NO required attrs) -->
               <div role="tabpanel" class="tab-pane" id="report-cards">
-                <?php if(isset($student)): ?>
-                <div class="row">
-                  <div class="col-md-12">
-                    <h5><i class="fa fa-upload"></i> Upload Report Card</h5>
-                    <hr>
-                    <form id="reportCardUploadForm" enctype="multipart/form-data">
-                      <input type="hidden" name="student_university_id" value="<?php echo $student['id']; ?>">
+                <?php if(isset($student) && !empty($student['id'])): ?>
+                  <div class="row">
+                    <div class="col-md-12">
+                      <h5><i class="fa fa-upload"></i> Upload Report Card</h5>
+                      <hr>
+                      <!-- Standalone inputs (not part of the main form validation) -->
+                      <input type="hidden" id="rc_student_university_id" value="<?php echo (int)$student['id']; ?>">
                       <div class="row">
                         <div class="col-md-4">
                           <div class="form-group">
+                            <label for="filename">Filename</label>
+                            <input type="text" id="filename" class="form-control" placeholder="e.g. Semester 1 Report - 2025">
+                          </div>
+                        </div>
+                        <div class="col-md-4">
+                          <div class="form-group">
                             <label for="report_card_term">Term</label>
-                            <select name="report_card_term" id="report_card_term" class="form-control">
+                            <select id="report_card_term" class="form-control">
                               <option value="">Select Term</option>
                               <option value="1Y1S">1st Year, 1st Semester</option>
                               <option value="1Y2S">1st Year, 2nd Semester</option>
@@ -408,7 +465,7 @@
                         <div class="col-md-4">
                           <div class="form-group">
                             <label for="semester_end_month">Semester End Month</label>
-                            <select name="semester_end_month" id="semester_end_month" class="form-control">
+                            <select id="semester_end_month" class="form-control">
                               <option value="">Select Month</option>
                               <?php for($m=1;$m<=12;$m++): ?>
                                 <option value="<?php echo $m; ?>"><?php echo date('F', mktime(0,0,0,$m,10)); ?></option>
@@ -416,132 +473,86 @@
                             </select>
                           </div>
                         </div>
-                        <div class="col-md-4">
+                      </div>
+
+                      <div class="row">
+                        <div class="col-md-6">
                           <div class="form-group">
                             <label for="semester_end_year">Semester End Year</label>
-                            <input type="number" name="semester_end_year" id="semester_end_year" class="form-control" min="2020" max="2035" value="<?php echo date('Y'); ?>">
+                            <input type="number" id="semester_end_year" class="form-control" min="2020" max="2035" value="<?php echo date('Y'); ?>">
                           </div>
                         </div>
-                      </div>
-
-                      <!-- New: Optional display filename -->
-                      <div class="row">
-                        <div class="col-md-12">
-                          <div class="form-group">
-                            <label for="display_filename">File Name (optional)</label>
-                            <input type="text" name="display_filename" id="display_filename" class="form-control" placeholder="e.g. 2025_Sem1_Report.pdf">
-                            <small class="text-muted">If left blank, the original upload name will be used.</small>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div class="row">
-                        <div class="col-md-12">
+                        <div class="col-md-6">
                           <div class="form-group">
                             <label for="report_card_file">Report Card File (PDF, Image)</label>
-                            <input type="file" name="report_card_file" id="report_card_file" class="form-control" accept=".pdf,.jpg,.jpeg,.png" required>
+                            <input type="file" id="report_card_file" class="form-control" accept=".pdf,.jpg,.jpeg,.png,.gif">
                           </div>
                         </div>
                       </div>
+
                       <div class="form-group">
                         <button type="button" class="btn btn-primary" id="uploadReportCardBtn" onclick="return uploadReportCard();">
                           <i class="fa fa-upload"></i> Upload Report Card
                         </button>
                       </div>
-                    </form>
-                  </div>
-                </div>
-
-                <div class="row" style="margin-top: 30px;">
-                  <div class="col-md-12">
-                    <h5><i class="fa fa-files-o"></i> Existing Report Cards</h5>
-                    <hr>
-                    <div class="table-responsive">
-                      <table class="table table-striped" id="reportCardsTable">
-                        <thead>
-                          <tr>
-                            <th>Term</th>
-                            <th>End Month/Year</th>
-                            <th>File Name</th>
-                            <th>Upload Date</th>
-                            <th>Actions</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                            <?php if (isset($student) && !empty($student['id'])): ?>
-                              <?php
-                                $CI =& get_instance();
-                                $tbl = db_prefix().'university_report_card';
-                                // don’t fetch BLOBs
-                                $CI->db->select('id, upload_date, report_card_term, current_term, semester_end_month, semester_end_year, filename, report_card_file, mime_type');
-                                $CI->db->where('student_university_id', (int)$student['id']);
-                                $CI->db->order_by('upload_date', 'DESC');
-                                $cards = $CI->db->get($tbl)->result_array();
-
-                                if ($cards):
-                                  foreach ($cards as $card):
-                                    // display name
-                                    $name = trim((string)$card['filename']);
-                                    if ($name === '' && !empty($card['report_card_file'])) $name = basename($card['report_card_file']);
-                                    if ($name === '') {
-                                      $ext = ($card['mime_type']==='application/pdf') ? '.pdf' : (in_array($card['mime_type'],['image/jpeg','image/jpg']) ? '.jpg' : ($card['mime_type']==='image/png' ? '.png' : ''));
-                                      $name = 'report_card_'.$card['id'].$ext;
-                                    }
-                                    $download = admin_url('student_sponsor_portal/download_report_card/'.$card['id']);
-                                    $monthTxt = $card['semester_end_month'] ? date('M', mktime(0,0,0,(int)$card['semester_end_month'],10)) : '';
-                                    $uploadTxt = !empty($card['upload_date']) ? date('M d, Y', strtotime($card['upload_date'])) : '';
-                              ?>
-                                <tr>
-                                  <td><?= htmlspecialchars($card['report_card_term'] ?: 'N/A'); ?></td>
-                                  <td><?= htmlspecialchars($monthTxt.' '.($card['semester_end_year'] ?: '')); ?></td>
-                                  <td><a href="<?= $download; ?>" target="_blank" rel="noopener"><?= htmlspecialchars($name); ?></a></td>
-                                  <td><?= htmlspecialchars($uploadTxt); ?></td>
-                                  <td>
-                                    <button type="button" class="btn btn-danger btn-xs" onclick="return deleteReportCard(<?= (int)$card['id']; ?>);">
-                                      <i class="fa fa-trash"></i>
-                                    </button>
-                                  </td>
-                                </tr>
-                              <?php endforeach; else: ?>
-                                <tr><td colspan="5" class="text-center">No report cards uploaded yet.</td></tr>
-                              <?php endif; ?>
-                            <?php else: ?>
-                              <tr><td colspan="5" class="text-center">No report cards uploaded yet.</td></tr>
-                            <?php endif; ?>
-                        </tbody>
-
-                      </table>
                     </div>
                   </div>
-                </div>
+
+                  <div class="row" style="margin-top: 30px;">
+                    <div class="col-md-12">
+                      <h5><i class="fa fa-files-o"></i> Existing Report Cards</h5>
+                      <hr>
+                      <div class="table-responsive">
+                        <table class="table table-striped" id="reportCardsTable">
+                          <thead>
+                            <tr>
+                              <th>#</th>
+                              <th>Filename</th>
+                              <th>Term</th>
+                              <th>End Month/Year</th>
+                              <th>Upload Date</th>
+                              <th>Size</th>
+                              <th>Actions</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            <tr><td colspan="7" class="text-center">Loading...</td></tr>
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  </div>
                 <?php else: ?>
-                <div class="alert alert-info"><i class="fa fa-info-circle"></i> Please save the student information first before uploading report cards.</div>
+                  <div class="alert alert-info"><i class="fa fa-info-circle"></i> Please save the student first before uploading report cards.</div>
                 <?php endif; ?>
               </div>
 
               <!-- Staff Account Tab -->
               <div class="tab-pane" id="tab_staff">
                 <div class="checkbox checkbox-primary">
-                  <input type="checkbox" id="create_staff" name="create_staff" value="1" <?= !empty($student['staff_id']) ? 'checked' : ''; ?>>
+                  <input type="checkbox" id="create_staff" name="create_staff" value="1" <?php echo (!empty($student['staff_id']) || isset($old['create_staff'])) ? 'checked' : ''; ?>>
                   <label for="create_staff">Create a Staff login</label>
                 </div>
                 <div class="row">
                   <div class="col-md-4">
                     <div class="form-group">
                       <label for="staff_email" class="control-label">Login Email</label>
-                      <input type="email" name="staff_email" id="staff_email" class="form-control" value="<?= isset($student) ? htmlspecialchars($student['email'] ?? '') : ''; ?>">
+                      <input type="email" name="staff_email" id="staff_email" class="form-control"
+                        value="<?php echo isset($student) ? html_escape($student['email'] ?? '') : (isset($old['staff_email']) ? html_escape($old['staff_email']) : ''); ?>">
                     </div>
                   </div>
                   <div class="col-md-4">
                     <div class="form-group">
                       <label for="staff_firstname" class="control-label">First Name</label>
-                      <input type="text" name="staff_firstname" id="staff_firstname" class="form-control" value="<?= isset($student) ? htmlspecialchars($student['name'] ?? '') : ''; ?>">
+                      <input type="text" name="staff_firstname" id="staff_firstname" class="form-control"
+                        value="<?php echo isset($student) ? html_escape($student['name'] ?? '') : (isset($old['staff_firstname']) ? html_escape($old['staff_firstname']) : ''); ?>">
                     </div>
                   </div>
                   <div class="col-md-4">
                     <div class="form-group">
                       <label for="staff_lastname" class="control-label">Last Name</label>
-                      <input type="text" name="staff_lastname" id="staff_lastname" class="form-control">
+                      <input type="text" name="staff_lastname" id="staff_lastname" class="form-control"
+                        value="<?php echo isset($old['staff_lastname']) ? html_escape($old['staff_lastname']) : ''; ?>">
                     </div>
                   </div>
                 </div>
@@ -554,23 +565,31 @@
                   </div>
                   <div class="col-md-4">
                     <div class="checkbox checkbox-primary" style="margin-top:28px;">
-                      <input type="checkbox" id="staff_active" name="staff_active" value="1" checked>
+                      <input type="checkbox" id="staff_active" name="staff_active" value="1" <?php echo (!isset($student) || ($student['active'] ?? 1) || (isset($old['staff_active']) && $old['staff_active'])) ? 'checked' : ''; ?>>
                       <label for="staff_active">Active Login</label>
                     </div>
                   </div>
                 </div>
 
                 <?php if (!empty($student['id'])): ?>
-                  <button type="submit" class="btn btn-success" formaction="<?= admin_url('student_sponsor_portal/grant_university_access'); ?>" formmethod="post">Grant Portal Access</button>
-                  <button type="submit" class="btn btn-danger" formaction="<?= admin_url('student_sponsor_portal/revoke_university_access'); ?>" formmethod="post">Revoke Portal Access</button>
+                  <input type="hidden" name="student_id" value="<?php echo (int)$student['id']; ?>">
+                  <button type="submit" class="btn btn-success" formaction="<?php echo admin_url('student_sponsor_portal/grant_university_access'); ?>" formmethod="post">Grant Portal Access</button>
+                  <button type="submit" class="btn btn-danger"  formaction="<?php echo admin_url('student_sponsor_portal/revoke_university_access'); ?>" formmethod="post">Revoke Portal Access</button>
                 <?php endif; ?>
               </div>
 
             </div>
 
-            <button type="submit" id="btn-save-student" class="btn btn-primary btn-lg" form="university-student-form">
-              <i class="fa fa-save"></i> <?php echo isset($student) ? 'Update Student' : 'Register Student'; ?>
-            </button>
+            <div class="row" style="margin-top: 20px;">
+              <div class="col-md-12">
+                <button type="submit" id="btn-save-student" class="btn btn-primary btn-lg">
+                  <i class="fa fa-save"></i> <?php echo isset($student) ? 'Update Student' : 'Register Student'; ?>
+                </button>
+                <a href="<?php echo admin_url('student_sponsor_portal/university_students'); ?>" class="btn btn-default btn-lg">
+                  <i class="fa fa-times"></i> Cancel
+                </a>
+              </div>
+            </div>
 
             <?php echo form_close(); ?>
           </div>
@@ -619,7 +638,7 @@
             <label for="modal_university_name">University Name *</label>
             <input type="text" id="modal_university_name" class="form-control" required placeholder="Enter university name">
           </div>
-          <small class="text-muted">Note: This will be created instantly.</small>
+          <small class="text-muted">This will be created instantly.</small>
         </div>
         <div class="modal-footer">
           <button type="button" class="btn btn-default" data-dismiss="modal">Cancel</button>
@@ -642,7 +661,7 @@
             <label for="modal_program_name">Program Name *</label>
             <input type="text" id="modal_program_name" class="form-control" required placeholder="Enter program name">
           </div>
-          <small class="text-muted">Note: This will be created instantly.</small>
+          <small class="text-muted">This will be created instantly.</small>
         </div>
         <div class="modal-footer">
           <button type="button" class="btn btn-default" data-dismiss="modal">Cancel</button>
@@ -665,7 +684,7 @@
             <label for="modal_bank_name">Bank Name *</label>
             <input type="text" id="modal_bank_name" class="form-control" required placeholder="Enter bank name">
           </div>
-          <small class="text-muted">Note: This will be created instantly.</small>
+          <small class="text-muted">This will be created instantly.</small>
         </div>
         <div class="modal-footer">
           <button type="button" class="btn btn-default" data-dismiss="modal">Cancel</button>
@@ -685,7 +704,7 @@
         </div>
         <div class="modal-body">
           <p><strong>Warning:</strong> The student is under 18 years old (<span id="age-display"></span>).</p>
-          <p>Please ensure you have proper guardian consent and documentation for students under 18.</p>
+          <p>Please ensure proper guardian consent.</p>
         </div>
         <div class="modal-footer">
           <button type="button" class="btn btn-primary" data-dismiss="modal">Understood</button>
@@ -705,30 +724,17 @@
 .has-error{border-color:#d9534f}
 .university-select-wrapper,.program-select-wrapper,.bank-select-wrapper,.country-select-wrapper{position:relative;display:flex;align-items:stretch}
 .university-select-wrapper .bootstrap-select,.program-select-wrapper .bootstrap-select,.bank-select-wrapper .bootstrap-select,.country-select-wrapper .bootstrap-select{flex:1;margin-right:5px;width:auto!important}
-.university-select-wrapper select,.program-select-wrapper select,.bank-select-wrapper select,.country-select-wrapper select{flex:1;border-top-right-radius:0;border-bottom-right-radius:0}
-.add-new-btn{border-left:0;border-radius:0 4px 4px 0!important;padding:8px 12px;margin-left:0;z-index:5;border-top-left-radius:0!important;border-bottom-left-radius:0!important;flex-shrink:0;height:34px}
+.add-new-btn{border-left:0;border-radius:0 4px 4px 0!important;padding:8px 12px;margin-left:0;z-index:5;flex-shrink:0;height:34px}
 .add-new-btn:hover{background-color:#337ab7;color:#fff;border-color:#2e6da4}
 .university-select-wrapper .btn-group.bootstrap-select,.program-select-wrapper .btn-group.bootstrap-select,.bank-select-wrapper .btn-group.bootstrap-select,.country-select-wrapper .btn-group.bootstrap-select{flex:1;width:auto!important;display:flex!important}
 .university-select-wrapper .btn-group.bootstrap-select .btn,.program-select-wrapper .btn-group.bootstrap-select .btn,.bank-select-wrapper .btn-group.bootstrap-select .btn,.country-select-wrapper .btn-group.bootstrap-select .btn{width:100%;border-top-right-radius:0!important;border-bottom-right-radius:0!important;text-align:left}
-.badge-unsaved{margin-left:6px;font-size:11px;background:#f0ad4e}
 </style>
 
 <?php init_tail(); ?>
 <script>
-/* Guard if Perfex alert_float not present */
-if (typeof alert_float !== 'function') {
-  window.alert_float = function(type, message){ alert(message); };
-}
+if (typeof alert_float !== 'function') { window.alert_float = function(type, message){ alert(message); }; }
 
-/* noConflict-safe wrapper but export functions on window */
 (function($){
-
-  // ---------- Helpers (internal) ----------
-  function getMonthName(n){
-    var months = ['','Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-    n = parseInt(n,10);
-    return months[n] || '';
-  }
 
   function recalcProfileCompletion(){
     var $wrap = $('#profile-completion-wrap');
@@ -745,26 +751,21 @@ if (typeof alert_float !== 'function') {
     $('#profile-completion-bar').css('width', pct+'%');
   }
 
-  function injectAndSelect($select, id, text, extraAttrs){
-    var $opt = $('<option/>', {value: id, text: text});
-    if(extraAttrs){ $.each(extraAttrs, function(k,v){ $opt.attr(k, v); }); }
-    $select.find('option[value="'+id+'"]').remove();
-    $select.append($opt);
-    $select.val(id);
-    if($select.hasClass('selectpicker') && typeof $select.selectpicker === 'function'){
-      $select.selectpicker('refresh');
-    }
-    recalcProfileCompletion();
-  }
-
   function calculateAge(){
     var dob = $('#dob').val();
-    if(!dob){ $('#calculated-age').val(''); return null; }
+    if(!dob){ 
+      $('#calculated-age').val(''); 
+      $('#calculated_age_hidden').val('');
+      return null; 
+    }
     var today = new Date(), birthDate = new Date(dob);
     var age = today.getFullYear() - birthDate.getFullYear();
     var m = today.getMonth() - birthDate.getMonth();
     if (m < 0 || (m === 0 && today.getDate() < birthDate.getDate())) age--;
+    
     $('#calculated-age').val(age + ' years');
+    $('#calculated_age_hidden').val(age); // For form submission
+    
     if (age < 18 && age > 0) {
       $('#age-display').text(age + ' years old');
       $('#ageWarningModal').modal('show');
@@ -772,28 +773,34 @@ if (typeof alert_float !== 'function') {
     return age;
   }
 
-  // ---------- Public functions (called by inline onclick) ----------
+  function refreshSelectpicker($el){
+    if ($.fn.selectpicker) { $el.selectpicker('refresh'); }
+  }
+
+  // Add Country
   window.addCountry = function(){
     var name  = $.trim($('#modal_country_name').val());
     var phone = $.trim($('#modal_country_phone').val());
     if(!name || !phone){ alert('Country name and phone code are required'); return false; }
 
-    // set hidden fields for model->process_new_items()
     $('#new_country_name').val(name);
     $('#new_country_phone_code').val(phone);
 
-    // temporary option so UI selects it now
-    injectAndSelect($('#country_id'), '__NEW_COUNTRY__', name+' ('+phone+')', {'data-phone-code': phone});
+    var $sel = $('#country_id');
+    var tmpId = '__NEW_COUNTRY__';
+    $sel.find('option[value="'+tmpId+'"]').remove();
+    $sel.append($('<option/>',{value:tmpId, text: name+(phone?' ('+phone+')':''), selected:true, 'data-phone-code': phone}));
+    refreshSelectpicker($sel);
     $('#phone-code-display').text(phone);
 
-    // close/clear
     $('#addCountryModal').modal('hide');
-    $('#modal_country_name').val('');
-    $('#modal_country_phone').val('');
-    alert_float('success','Country will be created on Save');
+    $('#modal_country_name').val(''); $('#modal_country_phone').val('');
+    alert_float('success','Country will be added on Save');
+    recalcProfileCompletion();
     return false;
   };
 
+  // Add University (instant via AJAX)
   window.addUniversity = function(){
     var $btn = $('#btnAddUniversity').prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> Adding...');
     var name = $.trim($('#modal_university_name').val());
@@ -801,28 +808,30 @@ if (typeof alert_float !== 'function') {
 
     $.ajax({
       url: '<?php echo admin_url("student_sponsor_portal/add_university_name"); ?>',
-      type: 'POST',
-      dataType: 'json',
+      type: 'POST', dataType: 'json',
       data: { name: name }
     }).done(function(r){
       if(r && r.success){
-        injectAndSelect($('#university_name_id'), r.id, r.name);
-        $('#new_university_name').val('');
-        $('#addUniversityModal').modal('hide');
-        $('#modal_university_name').val('');
+        var $sel = $('#university_name_id');
+        var id   = r.id || r.university_id || '';
+        var txt  = r.name || name;
+        if(id){
+          $sel.append($('<option/>',{value:id, text:txt, selected:true, 'data-name': txt}));
+          refreshSelectpicker($sel);
+        }
+        $('#addUniversityModal').modal('hide'); $('#modal_university_name').val('');
         alert_float('success', r.message || 'University added');
+        recalcProfileCompletion();
       } else {
         alert(r && r.message ? r.message : 'Failed to add university');
       }
-    }).fail(function(){
-      alert('Error adding university.');
-    }).always(function(){
-      $btn.prop('disabled', false).text('Add University');
-    });
+    }).fail(function(){ alert('Error adding university.'); })
+      .always(function(){ $btn.prop('disabled', false).text('Add University'); });
 
     return false;
   };
 
+  // Add Program (instant via AJAX)
   window.addProgram = function(){
     var $btn = $('#btnAddProgram').prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> Adding...');
     var name = $.trim($('#modal_program_name').val());
@@ -830,28 +839,30 @@ if (typeof alert_float !== 'function') {
 
     $.ajax({
       url: '<?php echo admin_url("student_sponsor_portal/add_university_program"); ?>',
-      type: 'POST',
-      dataType: 'json',
+      type: 'POST', dataType: 'json',
       data: { name: name }
     }).done(function(r){
       if(r && r.success){
-        injectAndSelect($('#university_program_id'), r.id, r.name);
-        $('#new_program_name').val('');
-        $('#addProgramModal').modal('hide');
-        $('#modal_program_name').val('');
+        var $sel = $('#university_program_id');
+        var id   = r.id || r.program_id || '';
+        var txt  = r.name || name;
+        if(id){
+          $sel.append($('<option/>',{value:id, text:txt, selected:true, 'data-name': txt}));
+          refreshSelectpicker($sel);
+        }
+        $('#addProgramModal').modal('hide'); $('#modal_program_name').val('');
         alert_float('success', r.message || 'Program added');
+        recalcProfileCompletion();
       } else {
         alert(r && r.message ? r.message : 'Failed to add program');
       }
-    }).fail(function(){
-      alert('Error adding program.');
-    }).always(function(){
-      $btn.prop('disabled', false).text('Add Program');
-    });
+    }).fail(function(){ alert('Error adding program.'); })
+      .always(function(){ $btn.prop('disabled', false).text('Add Program'); });
 
     return false;
   };
 
+  // Add Bank (instant via AJAX)
   window.addBank = function(){
     var $btn = $('#btnAddBank').prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> Adding...');
     var name = $.trim($('#modal_bank_name').val());
@@ -859,46 +870,90 @@ if (typeof alert_float !== 'function') {
 
     $.ajax({
       url: '<?php echo admin_url("student_sponsor_portal/add_bank"); ?>',
-      type: 'POST',
-      dataType: 'json',
+      type: 'POST', dataType: 'json',
       data: { name: name }
     }).done(function(r){
       if(r && r.success){
-        injectAndSelect($('#bank_id'), r.id, r.name);
-        $('#new_bank_name').val('');
-        $('#addBankModal').modal('hide');
-        $('#modal_bank_name').val('');
+        var $sel = $('#bank_id');
+        var id   = r.id || r.bank_id || '';
+        var txt  = r.name || r.bank_name || name;
+        if(id){
+          $sel.append($('<option/>',{value:id, text:txt, selected:true}));
+          refreshSelectpicker($sel);
+        }
+        $('#addBankModal').modal('hide'); $('#modal_bank_name').val('');
         alert_float('success', r.message || 'Bank added');
+        recalcProfileCompletion();
       } else {
         alert(r && r.message ? r.message : 'Failed to add bank');
       }
-    }).fail(function(){
-      alert('Error adding bank.');
-    }).always(function(){
-      $btn.prop('disabled', false).text('Add Bank');
-    });
+    }).fail(function(){ alert('Error adding bank.'); })
+      .always(function(){ $btn.prop('disabled', false).text('Add Bank'); });
 
     return false;
   };
 
+  // Report cards - Load existing cards
+  function loadReportCards(){
+    var sid = <?php echo !empty($student['id']) ? (int)$student['id'] : 0; ?>;
+    if(!sid) return;
+
+    $.get('<?php echo admin_url("student_sponsor_portal/get_report_cards"); ?>', {student_id: sid}, function(resp){
+      try{ resp = (typeof resp==='string') ? JSON.parse(resp) : resp; }catch(e){ resp = {success:false}; }
+      var $tb = $('#reportCardsTable tbody').empty();
+      if(resp && resp.success && resp.report_cards && resp.report_cards.length){
+        var i=1;
+        resp.report_cards.forEach(function(c){
+          var size = c.file_size ? (c.file_size + ' bytes') : '';
+          var dl = c.file_url || c.download_url || '<?php echo admin_url("student_sponsor_portal/download_report_card/"); ?>'+c.id;
+          var uploadDate = c.upload_date || '';
+          var monthYear = '';
+          if(c.semester_end_month && c.semester_end_year){
+            var months = ['','Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+            monthYear = (months[parseInt(c.semester_end_month)] || c.semester_end_month) + ' ' + c.semester_end_year;
+          }
+          var tr = $('<tr/>',{'data-id':c.id}).append(
+            $('<td/>',{text:i++}),
+            $('<td/>').append($('<a/>',{href:dl, target:'_blank', rel:'noopener', text:(c.filename||c.display_name||('report_card_'+c.id)) })),
+            $('<td/>',{text:c.report_card_term || c.current_term || 'N/A'}),
+            $('<td/>',{text:monthYear}),
+            $('<td/>',{text:uploadDate}),
+            $('<td/>',{text:size}),
+            $('<td/>').append(
+              $('<a/>',{href:dl, class:'btn btn-xs btn-default', title:'Download', html:'<i class="fa fa-download"></i>'}), ' ',
+              $('<button/>',{type:'button', class:'btn btn-xs btn-danger btn-del-card', title:'Delete', html:'<i class="fa fa-trash"></i>'})
+            )
+          );
+          $tb.append(tr);
+        });
+      } else {
+        $tb.append('<tr><td colspan="7" class="text-center">No report cards uploaded yet.</td></tr>');
+      }
+    }).fail(function(xhr, status, error){
+      $('#reportCardsTable tbody').html('<tr><td colspan="7" class="text-center text-danger">Error loading report cards: ' + error + '</td></tr>');
+    });
+  }
+
+  // Upload handler (AJAX)
   window.uploadReportCard = function(){
     var $btn = $('#uploadReportCardBtn').prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> Uploading...');
 
     var fileInput = document.getElementById('report_card_file');
+    if(!$('#filename').val()){ alert('Please enter a filename'); $btn.prop('disabled', false).html('<i class="fa fa-upload"></i> Upload Report Card'); return false; }
     if(!$('#report_card_term').val()){ alert('Please select a term'); $btn.prop('disabled', false).html('<i class="fa fa-upload"></i> Upload Report Card'); return false; }
     if(!$('#semester_end_month').val()){ alert('Please select semester end month'); $btn.prop('disabled', false).html('<i class="fa fa-upload"></i> Upload Report Card'); return false; }
     if(!$('#semester_end_year').val()){ alert('Please select semester end year'); $btn.prop('disabled', false).html('<i class="fa fa-upload"></i> Upload Report Card'); return false; }
     if(!fileInput || !fileInput.files || !fileInput.files[0]){ alert('Please select a file to upload'); $btn.prop('disabled', false).html('<i class="fa fa-upload"></i> Upload Report Card'); return false; }
 
     var formData = new FormData();
-    formData.append('student_university_id', $('input[name="student_university_id"]').val());
+    formData.append('student_university_id', $('#rc_student_university_id').val());
+    formData.append('filename', $('#filename').val());
     formData.append('report_card_term', $('#report_card_term').val());
     formData.append('semester_end_month', $('#semester_end_month').val());
     formData.append('semester_end_year', $('#semester_end_year').val());
-    formData.append('display_filename', $('#display_filename').val()); // NEW
     formData.append('report_card_file', fileInput.files[0]);
 
-    // Perfex CSRF (if available)
+    // Add CSRF token if available
     if (typeof csrfData !== 'undefined' && csrfData && csrfData.token_name && csrfData.hash) {
       formData.append(csrfData.token_name, csrfData.hash);
     }
@@ -909,21 +964,27 @@ if (typeof alert_float !== 'function') {
       data: formData,
       processData: false,
       contentType: false,
-      dataType: 'json'
-    }).done(function(response){
-      if(response && response.success){
-        alert_float('success','Report card uploaded successfully!');
+      dataType: 'json',
+      timeout: 30000
+    }).done(function(r){
+      if(r && r.success){
+        alert_float('success', r.message || 'Report card uploaded successfully');
+        $('#filename').val('');
         $('#report_card_term').val('');
         $('#semester_end_month').val('');
         $('#semester_end_year').val('<?php echo date('Y'); ?>');
-        $('#display_filename').val(''); // NEW
         $('#report_card_file').val('');
         loadReportCards();
       } else {
-        alert('Upload failed: ' + (response && response.message ? response.message : 'Unknown error'));
+        alert('Upload failed: '+(r && r.message ? r.message : 'Unknown error'));
       }
-    }).fail(function(){
-      alert('Error uploading report card. Please try again.');
+    }).fail(function(xhr){
+      var errorMsg = 'Server error';
+      try {
+        var j = JSON.parse(xhr.responseText);
+        if (j.message) errorMsg = j.message;
+      } catch(e){}
+      alert('Upload failed: ' + errorMsg);
     }).always(function(){
       $btn.prop('disabled', false).html('<i class="fa fa-upload"></i> Upload Report Card');
     });
@@ -931,123 +992,98 @@ if (typeof alert_float !== 'function') {
     return false;
   };
 
+  // Delete card handler
   window.deleteReportCard = function(id){
     if(!id) return false;
     if(!confirm('Are you sure you want to delete this report card?')) return false;
 
-    $.post('<?php echo admin_url("student_sponsor_portal/delete_report_card"); ?>', {
-      report_card_id: id
-    }, function(response){
-      if(response && response.success){
-        alert_float('success','Report card deleted');
+    $.post('<?php echo admin_url("student_sponsor_portal/delete_report_card"); ?>', {report_card_id: id}, function(r){
+      try{ r = (typeof r==='string')?JSON.parse(r):r; }catch(e){ r={success:false}; }
+      if(r && r.success){
+        alert_float('success','Report card deleted successfully');
         loadReportCards();
-      } else {
-        alert('Delete failed: ' + (response && response.message ? response.message : 'Unknown error'));
       }
-    }, 'json').fail(function(){
+      else {
+        alert('Delete failed: ' + (r.message || 'Unknown error'));
+      }
+    }).fail(function(){
       alert('Error deleting report card');
     });
 
     return false;
   };
 
-  // ---------- Page init / bindings ----------
-  function loadReportCards(){
-    <?php if(isset($student)): ?>
-    $.post('<?php echo admin_url("student_sponsor_portal/get_report_cards"); ?>', {
-      student_id: <?php echo (int)$student['id']; ?>
-    }, function(data){
-      var tbody = $('#reportCardsTable tbody');
-      tbody.empty();
-      if(data && data.success && data.report_cards && data.report_cards.length){
-        $.each(data.report_cards, function(i, card){
-          var fileUrl = card.file_url || '#';
-          var ext = (card.mime_type === 'application/pdf') ? '.pdf'
-                   : (card.mime_type === 'image/jpeg' || card.mime_type === 'image/jpg') ? '.jpg'
-                   : (card.mime_type === 'image/png') ? '.png' : '';
-          var niceName = (card.filename && String(card.filename).trim())
-              ? card.filename
-              : ('report_card_' + card.id + ext);
-
-          tbody.append(
-            '<tr>'
-            +'<td>'+(card.report_card_term||'N/A')+'</td>'
-            +'<td>'+getMonthName(card.semester_end_month)+' '+(card.semester_end_year||'')+'</td>'
-            +'<td><a href="'+card.file_url+'" target="_blank" rel="noopener">'+(card.display_name||'file')+'</a></td>'
-            +'<td>'+card.upload_date+'</td>'
-            +'<td><button type="button" class="btn btn-danger btn-xs" onclick="return deleteReportCard('+card.id+');"><i class="fa fa-trash"></i></button></td>'
-            +'</tr>'
-          );
-        });
-      } else {
-        tbody.append('<tr><td colspan="5" class="text-center">No report cards uploaded yet.</td></tr>');
-      }
-    }, 'json').fail(function(){
-      $('#reportCardsTable tbody').html('<tr><td colspan="5" class="text-center text-danger">Error loading report cards</td></tr>');
-    });
-    <?php endif; ?>
-  }
+  // Delete card click
+  $(document).on('click', '.btn-del-card', function(){
+    var $tr = $(this).closest('tr');
+    var id = $tr.data('id');
+    if(!id) return;
+    return deleteReportCard(id);
+  });
 
   $(function(){
-    // selectpicker safe init
-    setTimeout(function(){
-      if($.fn && typeof $.fn.selectpicker === 'function'){
-        $('.selectpicker').selectpicker('destroy').selectpicker();
-      }
-    }, 100);
+    // init selectpicker
+    setTimeout(function(){ if($.fn && $.fn.selectpicker){ $('.selectpicker').selectpicker('destroy').selectpicker(); } }, 100);
 
-    // prevent Enter inside modals from submitting main form
-    $(document).on('keydown', '.modal input', function(e){
-      if(e.key === 'Enter'){
-        e.preventDefault();
-        $(this).closest('.modal').find('.btn-primary').not('.close').trigger('click');
-      }
-    });
-
-    // age calc & completion
-    $('#dob').on('change input', function(){ calculateAge(); recalcProfileCompletion(); });
-    setTimeout(calculateAge, 100);
-
-    // phone code with country
+    // phone code update
     $('#country_id').on('change', function(){
       var code = $(this).find('option:selected').data('phone-code') || '+1';
       $('#phone-code-display').text(code);
       recalcProfileCompletion();
     });
 
-    // live completion
-    $(document).on('input change', '#university-student-form input, #university-student-form select, #university-student-form textarea', function(){
-      $(this).removeClass('has-error');
-      recalcProfileCompletion();
+    // profile photo preview
+    $('#profile_photo').on('change', function(){
+      var f = this.files && this.files[0]; if(!f) return;
+      var reader = new FileReader();
+      reader.onload = function(e){ $('.current-photo img').attr('src', e.target.result); };
+      reader.readAsDataURL(f);
     });
 
-    // load report cards (edit mode)
-    <?php if(isset($student)): ?> setTimeout(loadReportCards, 400); <?php endif; ?>
+    // age + completion
+    $('#dob').on('change input', function(){ calculateAge(); recalcProfileCompletion(); });
+    setTimeout(calculateAge, 100);
+    $(document).on('input change', '#university-student-form input, #university-student-form select, #university-student-form textarea', function(){
+      $(this).removeClass('has-error'); recalcProfileCompletion();
+    });
 
-    // basic submit guard/validation
+    // report cards
+    <?php if(isset($student) && !empty($student['id'])): ?>
+      $('a[href="#report-cards"]').on('shown.bs.tab', function() { loadReportCards(); });
+      setTimeout(function(){ if ($('#report-cards').hasClass('active')) { loadReportCards(); } }, 100);
+    <?php endif; ?>
+
+    // submit guard (remember active tab)
     var submitting = false;
     $('#university-student-form').on('submit', function(e){
       if(submitting){ e.preventDefault(); return false; }
+
+      // remember current tab
+      var currentTab = $('.nav-tabs li.active a').attr('href') || '#student-info';
+      $('#active_tab').val(currentTab);
+
+      // Validate ONLY the main form (exclude the report-cards pane entirely)
       var isValid = true;
-      $(this).find('input[required], select[required], textarea[required]').each(function(){
+      $('#university-student-form .tab-pane:not(#report-cards)').find('input[required], select[required], textarea[required]').each(function(){
         if(!$(this).val()){
-          isValid = false;
-          $(this).addClass('has-error');
+          isValid = false; $(this).addClass('has-error');
           var $pane = $(this).closest('.tab-pane');
           if($pane.length){ $('a[href="#'+$pane.attr('id')+'"]').tab('show'); }
-        } else {
-          $(this).removeClass('has-error');
-        }
+          return false; // break each on first error
+        } else { $(this).removeClass('has-error'); }
       });
-      // if(!isValid){
-      //   e.preventDefault();
-      //   alert('Please fill in all required fields.');
-      //   return false;
-      // }
+
+      if(!isValid){ e.preventDefault(); return false; }
+
       submitting = true;
       $('#btn-save-student').prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> Saving...');
     });
+
+    // restore tab after reload (server echoes active_tab)
+    var initialTab = $('#active_tab').val();
+    if (initialTab && $('a[href="'+initialTab+'"]').length) {
+      $('a[href="'+initialTab+'"]').tab('show');
+    }
   });
 
 })(jQuery);
-</script>

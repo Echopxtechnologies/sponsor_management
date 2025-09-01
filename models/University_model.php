@@ -10,7 +10,7 @@ class University_model extends App_Model
     }
 
     /* ----------------- TABLE CHECK HELPERS (no seeding) ----------------- */
-
+    
     private function ensure_required_tables()
     {
         $this->ensure_university_name_table();
@@ -773,6 +773,17 @@ class University_model extends App_Model
         $next = ($row && $row->max_id) ? ((int)$row->max_id + 1) : 1;
         return 'UNI' . str_pad($next, 3, '0', STR_PAD_LEFT);
     }
+    private function filter_existing_columns($table, array $payload)
+    {
+        $fields = $this->db->list_fields($table);
+        if (!$fields) return $payload;
+        $keep = [];
+        foreach ($payload as $k=>$v) {
+            if (in_array($k, $fields, true)) $keep[$k] = $v;
+        }
+        return $keep;
+    }
+
 
     private function get_or_create_university_name_id($name_or_id)
     {

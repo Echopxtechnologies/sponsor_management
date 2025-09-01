@@ -15,7 +15,7 @@
                 </h4>
               </div>
               <div class="col-md-4 text-right">
-                <a href="<?php echo admin_url('student_sponsor_portal/export_students'); ?>" class="btn btn-success" style="margin-right:10px;">
+                <a href="<?php echo admin_url('student_sponsor_portal/export_school_students'); ?>" class="btn btn-success">
                   <i class="fa fa-download"></i> Export Students
                 </a>
                 <a href="<?php echo admin_url('student_sponsor_portal/school_student_form'); ?>" class="btn btn-primary">
@@ -26,14 +26,14 @@
 
             <hr class="hr-panel-heading">
 
-            <!-- Filters (no district) -->
+            <!-- Filters -->
             <div class="row">
               <div class="col-md-3">
                 <div class="form-group">
                   <label for="filter_grade">Grade</label>
-                  <select id="filter_grade" class="form-control selectpicker">
+                  <select id="filter_grade" class="form-control selectpicker" data-none-selected-text="All Grades">
                     <option value="">All Grades</option>
-                    <?php for($i=1;$i<=12;$i++): ?>
+                    <?php for($i=1;$i<=13;$i++): ?>
                       <option value="<?php echo $i; ?>">Grade <?php echo $i; ?></option>
                     <?php endfor; ?>
                   </select>
@@ -48,7 +48,7 @@
               <div class="col-md-6">
                 <div class="form-group">
                   <label for="search_students">Search</label>
-                  <input type="text" id="search_students" class="form-control" placeholder="Search students...">
+                  <input type="text" id="search_students" class="form-control" placeholder="Search students (name, email, phone)...">
                 </div>
               </div>
             </div>
@@ -58,73 +58,87 @@
               <table class="table table-hover students-table" id="school-students-table">
                 <thead>
                   <tr>
-                    <th width="6%">ID</th>
-                    <th width="24%">Student Name</th>
-                    <th width="10%">Grade</th>
-                    <th width="20%">School</th>
-                    <th width="16%">Email</th>
-                    <th width="14%">Phone</th>
-                    <th width="10%">Actions</th>
+                    <th width="8%">ID</th>
+                    <th width="30%">Student Name</th>
+                    <th width="12%">Grade</th>
+                    <th width="25%">School</th>
+                    <th width="15%">Email</th>
+                    <th width="10%">Phone</th>
                   </tr>
                 </thead>
                 <tbody>
                 <?php if(!empty($school_students)): ?>
                   <?php foreach ($school_students as $s): ?>
                     <?php
-                      $sid    = (int)$s['id'];
-                      $name   = $s['name'] ?? '';
-                      $grade  = $s['school_grade'] ?? '';
-                      $school = $s['school_name'] ?? '';
-                      $email  = $s['email'] ?? '';
-                      $phone  = $s['contact_no'] ?? ($s['phone'] ?? '');
+                      $sid    = (int)($s['id'] ?? 0);
+                      $name   = (string)($s['name'] ?? '');
+                      $grade  = (string)($s['school_grade'] ?? '');
+                      $school = (string)($s['school_name'] ?? '');
+                      $email  = (string)($s['email'] ?? '');
+                      $phone  = (string)($s['contact_no'] ?? '');
+
+                      // Make initials fallback
+                      $initials = '';
+                      foreach (preg_split('/\s+/', trim($name)) as $p) {
+                        if ($p !== '' && strlen($initials) < 2) $initials .= strtoupper(substr($p, 0, 1));
+                      }
+
+                      // IMPORTANT: use the controller method that exists
+                      $photoUrl = admin_url('student_sponsor_portal/display_school_photo/' . $sid);
                     ?>
                     <tr class="student-row"
                         id="student-row-<?php echo $sid; ?>"
-                        data-grade="<?php echo htmlspecialchars($grade, ENT_QUOTES); ?>"
-                        data-school="<?php echo htmlspecialchars(strtolower($school), ENT_QUOTES); ?>">
+                        data-grade="<?php echo html_escape($grade); ?>"
+                        data-school="<?php echo html_escape(mb_strtolower($school)); ?>">
                       <td><strong><?php echo $sid; ?></strong></td>
+
+                      <!-- Student Name with circular photo -->
                       <td>
-                        <strong><?php echo htmlspecialchars($name); ?></strong>
-                        <div class="row-options" style="display:none;">
-                          <a href="javascript:void(0)" onclick="viewStudent(<?php echo $sid; ?>)">View</a> |
-                          <a href="<?php echo admin_url('student_sponsor_portal/school_student_form/' . $sid); ?>">Edit</a> |
-                          <a href="#" onclick="deleteStudent(<?php echo $sid; ?>);return false;" class="text-danger">Delete</a>
+                        <div class="media">
+                          <div class="media-left">
+                            <div class="avatar">
+                                <!-- Initials fallback -->
+                                <span class="avatar__initials">
+                                    <?php echo $initials !== '' ? html_escape($initials) : '•'; ?>
+                                </span>
+                                <!-- Image tag -->
+                                <img src="<?php echo $photoUrl; ?>" 
+                                    alt="Profile" 
+                                    onerror="this.style.display='none'">
+                            </div>
+                          </div>
+                          <div class="media-body">
+                            <strong><?php echo html_escape($name); ?></strong>
+                            <div class="row-options" style="display:none;">
+                              <a href="javascript:void(0)" onclick="viewStudent(<?php echo $sid; ?>)">View</a> |
+                              <a href="<?php echo admin_url('student_sponsor_portal/school_student_form/' . $sid); ?>">Edit</a> |
+                              <a href="#" onclick="deleteStudent(<?php echo $sid; ?>); return false;" class="text-danger">Delete</a>
+                            </div>
+                          </div>
                         </div>
                       </td>
+
                       <td>
                         <?php if($grade !== ''): ?>
-                          <span class="label label-info">Grade <?php echo htmlspecialchars($grade); ?></span>
+                          <span class="label label-info">Grade <?php echo html_escape($grade); ?></span>
                         <?php else: ?>
                           <span class="text-muted">Not set</span>
                         <?php endif; ?>
                       </td>
-                      <td><?php echo htmlspecialchars($school ?: 'Not specified'); ?></td>
+                      <td><?php echo $school ? html_escape($school) : '<span class="text-muted">Not specified</span>'; ?></td>
                       <td>
                         <?php if($email): ?>
-                          <a href="mailto:<?php echo htmlspecialchars($email); ?>"><?php echo htmlspecialchars($email); ?></a>
+                          <a href="mailto:<?php echo html_escape($email); ?>"><?php echo html_escape($email); ?></a>
                         <?php else: ?>
                           <span class="text-muted">Not provided</span>
                         <?php endif; ?>
                       </td>
-                      <td><?php echo $phone ? htmlspecialchars($phone) : '<span class="text-muted">Not provided</span>'; ?></td>
-                      <td>
-                        <div class="btn-group">
-                          <button type="button" class="btn btn-default btn-xs dropdown-toggle" data-toggle="dropdown">
-                            <i class="fa fa-cogs"></i> <span class="caret"></span>
-                          </button>
-                          <ul class="dropdown-menu dropdown-menu-right">
-                            <li><a href="javascript:void(0)" onclick="viewStudent(<?php echo $sid; ?>)"><i class="fa fa-eye"></i> View Details</a></li>
-                            <li><a href="<?php echo admin_url('student_sponsor_portal/school_student_form/' . $sid); ?>"><i class="fa fa-edit"></i> Edit</a></li>
-                            <li class="divider"></li>
-                            <li><a href="#" class="text-danger" onclick="deleteStudent(<?php echo $sid; ?>);return false;"><i class="fa fa-trash"></i> Delete</a></li>
-                          </ul>
-                        </div>
-                      </td>
+                      <td><?php echo $phone ? html_escape($phone) : '<span class="text-muted">Not provided</span>'; ?></td>
                     </tr>
                   <?php endforeach; ?>
                 <?php else: ?>
                   <tr>
-                    <td colspan="7" class="text-center">
+                    <td colspan="6" class="text-center">
                       <div style="padding:40px;">
                         <i class="fa fa-graduation-cap fa-3x text-muted"></i>
                         <h4 class="text-muted">No students found</h4>
@@ -184,92 +198,143 @@
 #studentViewContent h5 { color:#337ab7; border-bottom:1px solid #ddd; padding-bottom:10px; margin-bottom:15px; }
 #studentViewContent p { margin-bottom:8px; }
 #studentViewContent .row { margin-bottom:15px; }
+.avatar{
+  width:40px;height:40px;
+  border-radius:50%;
+  overflow:hidden;
+  border:2px solid #ddd;
+  background:#f0f0f0;
+  display:flex;align-items:center;justify-content:center;
+  position:relative;
+}
+.avatar img{
+  width:100%;height:100%;
+  object-fit:cover;display:block;
+}
+.avatar__initials{
+  position:absolute;
+  font-size:12px;color:#666;line-height:1;text-align:center;
+}
+.media-left{ padding-right:10px; }
+
 .btn-xs { padding:2px 5px; font-size:11px; }
 .dropdown-menu { min-width:140px; }
 .text-muted { font-size:12px; }
 </style>
 
 <script>
-var currentStudentId = null;
-
-function viewStudent(id){
-  currentStudentId = id;
+// Define functions globally first (matching university structure exactly)
+function viewStudent(id) {
   $('#studentViewModal').modal('show');
-  $.post('<?php echo admin_url("student_sponsor_portal/get_school_student"); ?>',{
-    student_id:id, action:'view'
-  }, function(resp){
-    if(resp && resp.success){
+
+  $.post('<?php echo admin_url("student_sponsor_portal/get_school_student"); ?>', {
+    student_id: id,
+    action: 'view'
+  }, function(resp) {
+    if (resp && resp.success) {
       $('#studentViewContent').html(resp.html);
-      $('#editStudentBtn').attr('href','<?php echo admin_url("student_sponsor_portal/school_student_form/"); ?>'+id);
-    }else{
-      $('#studentViewContent').html('<div class="alert alert-danger">'+(resp.message||'Error loading student')+'</div>');
+      $('#editStudentBtn').attr('href', '<?php echo admin_url("student_sponsor_portal/school_student_form/"); ?>' + id);
+    } else {
+      $('#studentViewContent').html('<div class="alert alert-danger">' + (resp.message || 'Error loading student') + '</div>');
     }
-  }, 'json').fail(function(){
+  }, 'json').fail(function() {
     $('#studentViewContent').html('<div class="alert alert-danger">Error loading student details</div>');
   });
 }
 
-function deleteStudent(id){
-  if(!confirm('Are you sure you want to delete this student? This action cannot be undone.')) return;
-  var rowSel = '#student-row-'+id;
-  var $row = $(rowSel).css('opacity','0.5');
+function deleteStudent(id) {
+  if (!confirm('Are you sure you want to delete this student? This action cannot be undone.')) return;
 
-  $.post('<?php echo admin_url("student_sponsor_portal/delete_school_student"); ?>',{ student_id:id }, function(r){
-    if(r && r.success){
-      if ($.fn.DataTable && $.fn.DataTable.isDataTable('#school-students-table')){
-        $('#school-students-table').DataTable().row(rowSel).remove().draw();
+  var row = $('#student-row-' + id).css('opacity', '0.5');
+
+  $.post('<?php echo admin_url("student_sponsor_portal/delete_school_student"); ?>', {
+    student_id: id
+  }, function(response) {
+    if (response && response.success) {
+      if ($.fn.DataTable && $.fn.DataTable.isDataTable('#school-students-table')) {
+        var t = $('#school-students-table').DataTable();
+        t.row('#student-row-' + id).remove().draw();
       } else {
-        $(rowSel).remove();
+        $('#student-row-' + id).remove();
       }
-      alert_float('success', r.message || 'Student deleted successfully');
-    }else{
-      $row.css('opacity','1');
-      alert_float('danger', (r && r.message) || 'Error deleting student');
+      if (typeof alert_float === 'function') {
+        alert_float('success', response.message || 'Student deleted successfully');
+      } else {
+        alert('Student deleted successfully');
+      }
+    } else {
+      row.css('opacity', '1');
+      var msg = (response && response.message) || 'Error deleting student';
+      if (typeof alert_float === 'function') {
+        alert_float('danger', msg);
+      } else {
+        alert('Error: ' + msg);
+      }
     }
-  }, 'json').fail(function(){
-    $row.css('opacity','1');
-    alert_float('danger','Error deleting student');
+  }, 'json').fail(function() {
+    row.css('opacity', '1');
+    if (typeof alert_float === 'function') {
+      alert_float('danger', 'Error deleting student');
+    } else {
+      alert('Error deleting student');
+    }
   });
 }
 
-function debounce(fn, wait){ var t; return function(){ clearTimeout(t); var a=arguments,c=this; t=setTimeout(function(){ fn.apply(c,a); }, wait||250); }; }
+function debounce(fn, delay) {
+  var t;
+  return function() {
+    clearTimeout(t);
+    var args = arguments, ctx = this;
+    t = setTimeout(function(){ fn.apply(ctx, args); }, delay || 300);
+  };
+}
 
-$(function(){
+$(document).ready(function() {
+  // DataTable init
   var table = $('#school-students-table').DataTable({
-    responsive:true,
-    pageLength:10,
-    order:[[0,'desc']],
-    columnDefs:[{ orderable:false, targets:[6] }],
-    language:{
-      emptyTable:"No school students found",
-      zeroRecords:"No matching students found",
-      info:"Showing _START_ to _END_ of _TOTAL_ students",
-      infoEmpty:"Showing 0 to 0 of 0 students",
-      infoFiltered:"(filtered from _MAX_ total students)"
+    responsive: true,
+    pageLength: 10,
+    order: [[0, "desc"]],
+    columnDefs: [{ orderable: false, targets: [1] }],
+    language: {
+      emptyTable: "No school students found",
+      zeroRecords: "No matching students found",
+      info: "Showing _START_ to _END_ of _TOTAL_ students",
+      infoEmpty: "Showing 0 to 0 of 0 students",
+      infoFiltered: "(filtered from _MAX_ total students)"
     }
   });
 
-  // hover row options
-  $(document).on('mouseenter', '.student-row', function(){ $(this).find('.row-options').show(); })
-             .on('mouseleave', '.student-row', function(){ $(this).find('.row-options').hide(); });
-
-  // global search
-  $('#search_students').on('keyup', debounce(function(){ table.search(this.value).draw(); }, 250));
-
-  // grade filter (match the number only)
-  $('#filter_grade').on('change', function(){
-    var g = $(this).val();
-    if(g){ table.column(2).search('^\\s*Grade\\s*'+g+'\\b', true, false).draw(); }
-    else { table.column(2).search('').draw(); }
+  // Row hover effects
+  $(document).on('mouseenter', '.student-row', function(){ 
+    $(this).find('.row-options').show(); 
+  }).on('mouseleave', '.student-row', function(){ 
+    $(this).find('.row-options').hide(); 
   });
 
-  // school filter
+  // Search and filter functionality
+  $('#search_students').on('keyup', debounce(function(){
+    table.search(this.value).draw();
+  }, 250));
+
+  $('#filter_grade').on('change', function(){
+    var g = $(this).val();
+    if(g){ 
+      table.column(2).search('^\\s*Grade\\s*'+g+'\\b', true, false).draw(); 
+    } else { 
+      table.column(2).search('').draw(); 
+    }
+  });
+
   $('#filter_school').on('keyup', debounce(function(){
     table.column(3).search(this.value).draw();
   }, 250));
 
-  // selectpicker safe init
-  if($.fn.selectpicker){ $('.selectpicker').selectpicker(); }
+  // Initialize selectpicker if available
+  if($.fn.selectpicker){ 
+    $('.selectpicker').selectpicker(); 
+  }
 });
 </script>
 
