@@ -85,7 +85,7 @@
                       <input type="date" class="form-control" 
                         name="last_payment_date" 
                         value="<?php echo $txn ? html_escape($txn->last_payment_date) : ''; ?>" 
-                        readonly>
+                        >
 
                     </div></div>
                     <div class="col-md-6"><div class="form-group">
@@ -97,38 +97,6 @@
                     </div></div>
                   </div>
 
-                  <div class="row">
-                    <div class="col-md-6"><div class="form-group">
-                      <label>Sponsorship Start</label>
-                      <input type="date" class="form-control" name="sponsorship_start" value="<?php echo $txn ? html_escape($txn->sponsorship_start) : ''; ?>">
-                    </div></div>
-                    <div class="col-md-6"><div class="form-group">
-                      <label>Sponsorship End</label>
-                      <input type="date" class="form-control" name="sponsorship_end" value="<?php echo $txn ? html_escape($txn->sponsorship_end) : ''; ?>">
-                    </div></div>
-                  </div>
-
-                  <div class="checkbox checkbox-primary">
-                    <input type="checkbox" id="due_reminder_active" name="due_reminder_active" <?php echo ($txn && (int)$txn->due_reminder_active===1)?'checked':''; ?>>
-                    <label for="due_reminder_active">Due Reminder Active</label>
-                  </div>
-
-                  <div class="row">
-                    <div class="col-md-4"><div class="form-group">
-                      <label>Days Before Due</label>
-                      <input type="number" class="form-control" name="due_reminder_days_before" value="<?php echo $txn ? (int)$txn->due_reminder_days_before : 15; ?>">
-                    </div></div>
-                    <div class="col-md-4"><div class="form-group">
-                      <label>Scheduled Due Reminder</label>
-                      <input type="date" class="form-control" name="scheduled_due_reminder_date" value="<?php echo $txn ? html_escape($txn->scheduled_due_reminder_date) : ''; ?>">
-                    </div></div>
-                    <div class="col-md-4" style="margin-top:28px;">
-                      <div class="checkbox checkbox-primary">
-                        <input type="checkbox" id="due_reminder_sent" name="due_reminder_sent" <?php echo ($txn && (int)$txn->due_reminder_sent===1)?'checked':''; ?>>
-                        <label for="due_reminder_sent">Due Reminder Sent</label>
-                      </div>
-                    </div>
-                  </div>
 
                   <div class="checkbox checkbox-primary">
                     <input type="checkbox" id="renewal_reminder_active" name="renewal_reminder_active" <?php echo ($txn && (int)$txn->renewal_reminder_active===1)?'checked':''; ?>>
@@ -140,10 +108,7 @@
                       <label>Days Before End</label>
                       <input type="number" class="form-control" name="renewal_reminder_days_before" value="<?php echo $txn ? (int)$txn->renewal_reminder_days_before : 15; ?>">
                     </div></div>
-                    <div class="col-md-4"><div class="form-group">
-                      <label>Scheduled Renewal Reminder</label>
-                      <input type="date" class="form-control" name="scheduled_renewal_reminder" value="<?php echo $txn ? html_escape($txn->scheduled_renewal_reminder) : ''; ?>">
-                    </div></div>
+                    
                     <div class="col-md-4" style="margin-top:28px;">
                       <div class="checkbox checkbox-primary">
                         <input type="checkbox" id="renewal_reminder_sent" name="renewal_reminder_sent" <?php echo ($txn && (int)$txn->renewal_reminder_sent===1)?'checked':''; ?>>

@@ -11,21 +11,38 @@
               <div class="col-md-8">
                 <h4 class="customer-profile-group-heading">
                   <i class="fa fa-graduation-cap"></i>
-                  <?php echo isset($student) ? 'Edit School Student' : 'Register School Student'; ?>
+                  <?php if(isset($is_school_student) && $is_school_student): ?>
+                    My Profile
+                  <?php else: ?>
+                    <?php echo isset($student) ? 'Edit School Student' : 'Register School Student'; ?>
+                  <?php endif; ?>
                 </h4>
+                <?php if(isset($is_school_student) && $is_school_student): ?>
+                  <p class="text-muted"><i class="fa fa-info-circle"></i> Update your personal information below</p>
+                <?php endif; ?>
               </div>
               <div class="col-md-4 text-right">
-                <a href="<?php echo admin_url('student_sponsor_portal/school_students'); ?>" class="btn btn-default">
-                  <i class="fa fa-arrow-left"></i> Back to List
-                </a>
+                <?php if(!isset($is_school_student) || !$is_school_student): ?>
+                  <a href="<?php echo admin_url('student_sponsor_portal/school_students'); ?>" class="btn btn-default">
+                    <i class="fa fa-arrow-left"></i> Back to List
+                  </a>
+                <?php endif; ?>
               </div>
             </div>
             <hr class="hr-panel-heading">
 
             <?php
+              if (isset($is_school_student) && $is_school_student && isset($student) && !empty($student['id'])) {
+                  // For school students accessing their portal - include student ID in URL
+                  $form_action = admin_url('student_sponsor_portal/school_student_form/' . (int)$student['id']);
+              } else {
+                  // For admins using normal form - use base URL (existing behavior)
+                  $form_action = admin_url('student_sponsor_portal/school_student_form');
+              }
+
               echo form_open_multipart(
-                admin_url('student_sponsor_portal/school_student_form'),
-                ['id' => 'school-student-form', 'novalidate' => 'novalidate', 'autocomplete'=>'off']
+                  $form_action,
+                  ['id' => 'school-student-form', 'novalidate' => 'novalidate', 'autocomplete'=>'off']
               );
             ?>
             <?php if(isset($student)): ?>
@@ -35,18 +52,22 @@
             <!-- remember last active tab -->
             <input type="hidden" name="active_tab" id="active_tab" value="<?php echo html_escape($this->input->post('active_tab') ?? ($active_tab ?? '#student-info')); ?>">
 
-            <!-- new-on-save helpers -->
-            <input type="hidden" name="new_country_name" id="new_country_name">
-            <input type="hidden" name="new_country_phone_code" id="new_country_phone_code">
-            <input type="hidden" name="school_name" id="school_name"><!-- keeps selected school text when no id -->
+            <!-- new-on-save helpers (admin only) -->
+            <?php if(!isset($is_school_student) || !$is_school_student): ?>
+              <input type="hidden" name="new_country_name" id="new_country_name">
+              <input type="hidden" name="new_country_phone_code" id="new_country_phone_code">
+            <?php endif; ?>
+            <input type="hidden" name="school_name" id="school_name">
             <input type="hidden" name="calculated_age" id="calculated_age_hidden">
 
             <?php if(isset($student) && !empty($student)): ?>
               <?php
-              $all_fields = ['name','email','contact_no','address','city','zip','school_name_id','school_grade','school_student_dob','school_father_name','school_mother_name','bank_id','school_bank_account_no','school_internal_id'];
+              $essential_fields = ['name','email','contact_no','address','city','school_grade','school_student_dob'];
               $completed = 0;
-              foreach($all_fields as $field) { if (!empty($student[$field])) $completed++; }
-              $completion = round(($completed / count($all_fields)) * 100);
+              foreach($essential_fields as $field) { 
+                if (!empty($student[$field])) $completed++; 
+              }
+              $completion = round(($completed / count($essential_fields)) * 100);
               ?>
               <div class="alert alert-info" id="profile-completion-wrap">
                 <i class="fa fa-info-circle"></i>
@@ -57,18 +78,55 @@
               </div>
             <?php endif; ?>
 
+            <!-- Tab Navigation -->
             <ul class="nav nav-tabs" role="tablist">
-              <li role="presentation" class="active"><a href="#student-info" aria-controls="student-info" role="tab" data-toggle="tab"><i class="fa fa-user"></i> Student Info</a></li>
-              <li role="presentation"><a href="#sponsorship" aria-controls="sponsorship" role="tab" data-toggle="tab"><i class="fa fa-heart"></i> Sponsorship</a></li>
-              <li role="presentation"><a href="#bank-info" aria-controls="bank-info" role="tab" data-toggle="tab"><i class="fa fa-bank"></i> Bank Info</a></li>
-              <li role="presentation"><a href="#additional-info" aria-controls="additional-info" role="tab" data-toggle="tab"><i class="fa fa-info-circle"></i> Additional Info</a></li>
-              <li role="presentation"><a href="#report-cards" aria-controls="report-cards" role="tab" data-toggle="tab"><i class="fa fa-file-text"></i> Report Cards</a></li>
-              <li role="presentation"><a href="#tab_staff" data-toggle="tab"><i class="fa fa-user-circle"></i> Staff Account</a></li>
+              <li role="presentation" class="active">
+                <a href="#student-info" aria-controls="student-info" role="tab" data-toggle="tab">
+                  <i class="fa fa-user"></i> 
+                  <?php echo (isset($is_school_student) && $is_school_student) ? 'My Info' : 'Student Info'; ?>
+                </a>
+              </li>
+              <?php if(!isset($is_school_student) || !$is_school_student): ?>
+                <li role="presentation">
+                  <a href="#sponsorship" aria-controls="sponsorship" role="tab" data-toggle="tab">
+                    <i class="fa fa-heart"></i> Sponsorship
+                  </a>
+                </li>
+              <?php endif; ?>
+              <li role="presentation">
+                <a href="#bank-info" aria-controls="bank-info" role="tab" data-toggle="tab">
+                  <i class="fa fa-bank"></i> Bank Info
+                </a>
+              </li>
+              <li role="presentation">
+                <a href="#family-info" aria-controls="family-info" role="tab" data-toggle="tab">
+                  <i class="fa fa-users"></i> Family Info
+                </a>
+              </li>
+              <?php if(!isset($is_school_student) || !$is_school_student): ?>
+                <li role="presentation">
+                  <a href="#additional-info" aria-controls="additional-info" role="tab" data-toggle="tab">
+                    <i class="fa fa-info-circle"></i> Additional Info
+                  </a>
+                </li>
+              <?php endif; ?>
+              <li role="presentation">
+                <a href="#report-cards" aria-controls="report-cards" role="tab" data-toggle="tab">
+                  <i class="fa fa-file-text"></i> Report Cards
+                </a>
+              </li>
+              <?php if(!isset($is_school_student) || !$is_school_student): ?>
+                <li role="presentation">
+                  <a href="#tab_staff" data-toggle="tab">
+                    <i class="fa fa-user-circle"></i> Staff Account
+                  </a>
+                </li>
+              <?php endif; ?>
             </ul>
 
             <div class="tab-content" style="margin-top:20px;">
 
-              <!-- Student Info -->
+              <!-- Student Info Tab -->
               <div role="tabpanel" class="tab-pane active" id="student-info">
                 <h5><i class="fa fa-user"></i> Basic Information</h5>
                 <hr>
@@ -77,13 +135,15 @@
                     <div class="form-group">
                       <label for="name" class="control-label">Full Name *</label>
                       <input type="text" name="name" id="name" required class="form-control"
-                        value="<?php echo isset($student) ? html_escape($student['name'] ?? '') : (isset($old['name']) ? html_escape($old['name']) : ''); ?>" placeholder="Enter student's full name">
+                        value="<?php echo isset($student) ? html_escape($student['name'] ?? '') : (isset($old['name']) ? html_escape($old['name']) : ''); ?>" 
+                        placeholder="Enter student's full name">
                     </div>
 
                     <div class="form-group">
                       <label for="email" class="control-label">Email Address</label>
                       <input type="email" name="email" id="email" class="form-control"
-                        value="<?php echo isset($student) ? html_escape($student['email'] ?? '') : (isset($old['email']) ? html_escape($old['email']) : ''); ?>" placeholder="Enter email address">
+                        value="<?php echo isset($student) ? html_escape($student['email'] ?? '') : (isset($old['email']) ? html_escape($old['email']) : ''); ?>" 
+                        placeholder="Enter email address">
                     </div>
 
                     <div class="form-group">
@@ -91,7 +151,7 @@
                       <div class="input-group">
                         <div class="input-group-addon" id="phone-code-display">
                           <?php
-                            $phone_code = '+1';
+                            $phone_code = '+94'; // Default to Sri Lanka
                             if(isset($student) && !empty($student['country_id']) && !empty($countries)) {
                               foreach($countries as $country) {
                                 $cid = (int)($country['id'] ?? 0);
@@ -103,7 +163,8 @@
                           ?>
                         </div>
                         <input type="text" name="phone" id="phone" class="form-control"
-                          value="<?php echo isset($student) ? html_escape($student['contact_no'] ?? '') : (isset($old['phone']) ? html_escape($old['phone']) : ''); ?>" placeholder="Enter phone number">
+                          value="<?php echo isset($student) ? html_escape($student['contact_no'] ?? '') : (isset($old['phone']) ? html_escape($old['phone']) : ''); ?>" 
+                          placeholder="Enter phone number">
                       </div>
                     </div>
 
@@ -116,7 +177,8 @@
                     <div class="form-group">
                       <label class="control-label">Age</label>
                       <input type="text" id="calculated-age" class="form-control" readonly
-                        value="<?php echo isset($student) && !empty($student['school_age']) ? $student['school_age'] . ' years' : ''; ?>" placeholder="Will be calculated from DOB">
+                        value="<?php echo isset($student) && !empty($student['school_age']) ? $student['school_age'] . ' years' : ''; ?>" 
+                        placeholder="Will be calculated from DOB">
                     </div>
 
                     <div class="form-group">
@@ -134,10 +196,11 @@
                   </div>
 
                   <div class="col-md-6">
-                    <!-- Country dropdown + add -->
+                    <!-- Country dropdown + add (admin only can add new) -->
                     <div class="form-group">
                       <label for="country_id" class="control-label">Country</label>
-                      <div class="country-select-wrapper">
+                      <?php if(isset($is_school_student) && $is_school_student): ?>
+                        <!-- Simple dropdown for school students -->
                         <select name="country_id" id="country_id" class="form-control selectpicker" data-live-search="true" data-none-selected-text="Select Country">
                           <option value="">Select Country</option>
                           <?php if(!empty($countries)): foreach($countries as $c): ?>
@@ -155,10 +218,31 @@
                             </option>
                           <?php endforeach; endif; ?>
                         </select>
-                        <button type="button" class="btn btn-default btn-sm add-new-btn" data-toggle="modal" data-target="#addCountryModal" title="Add New Country">
-                          <i class="fa fa-plus"></i>
-                        </button>
-                      </div>
+                      <?php else: ?>
+                        <!-- Admin version with add button -->
+                        <div class="country-select-wrapper">
+                          <select name="country_id" id="country_id" class="form-control selectpicker" data-live-search="true" data-none-selected-text="Select Country">
+                            <option value="">Select Country</option>
+                            <?php if(!empty($countries)): foreach($countries as $c): ?>
+                              <?php
+                                $cid   = (int)($c['id'] ?? 0);
+                                $cname = $c['name'] ?? $c['short_name'] ?? '';
+                                $pcode = $c['phone_code'] ?? $c['calling_code'] ?? '';
+                                $selected = (isset($student) && (int)($student['country_id'] ?? 0) === $cid) ||
+                                           (isset($old['country_id']) && (int)$old['country_id'] === $cid);
+                              ?>
+                              <option value="<?php echo $cid; ?>"
+                                data-phone-code="<?php echo html_escape($pcode); ?>"
+                                <?php echo $selected ? 'selected' : ''; ?>>
+                                <?php echo html_escape($cname); ?><?php echo $pcode!=='' ? ' ('.html_escape($pcode).')' : ''; ?>
+                              </option>
+                            <?php endforeach; endif; ?>
+                          </select>
+                          <button type="button" class="btn btn-default btn-sm add-new-btn" data-toggle="modal" data-target="#addCountryModal" title="Add New Country">
+                            <i class="fa fa-plus"></i>
+                          </button>
+                        </div>
+                      <?php endif; ?>
                     </div>
 
                     <div class="form-group">
@@ -171,29 +255,46 @@
                         <div class="form-group">
                           <label for="city" class="control-label">City / District</label>
                           <input type="text" name="city" id="city" class="form-control"
-                            value="<?php echo isset($student) ? html_escape($student['city'] ?? '') : (isset($old['city']) ? html_escape($old['city']) : ''); ?>" placeholder="City / District">
+                            value="<?php echo isset($student) ? html_escape($student['city'] ?? '') : (isset($old['city']) ? html_escape($old['city']) : ''); ?>" 
+                            placeholder="City / District">
                         </div>
                       </div>
                       <div class="col-md-6">
                         <div class="form-group">
                           <label for="postal_code" class="control-label">Postal Code</label>
                           <input type="text" name="postal_code" id="postal_code" class="form-control"
-                            value="<?php echo isset($student) ? html_escape($student['zip'] ?? '') : (isset($old['postal_code']) ? html_escape($old['postal_code']) : ''); ?>" placeholder="Postal code">
+                            value="<?php echo isset($student) ? html_escape($student['zip'] ?? '') : (isset($old['postal_code']) ? html_escape($old['postal_code']) : ''); ?>" 
+                            placeholder="Postal code">
                         </div>
                       </div>
                     </div>
 
-                    <div class="form-group">
-                      <label for="school_id" class="control-label">School Student ID</label>
-                      <input type="text" name="school_id" id="school_id" class="form-control"
-                        value="<?php echo isset($student) ? html_escape($student['school_id'] ?? '') : (isset($old['school_id']) ? html_escape($old['school_id']) : ''); ?>" placeholder="Enter school student ID">
-                    </div>
+                    <?php if(!isset($is_school_student) || !$is_school_student): ?>
+                      <!-- Admin-only fields -->
+                      <div class="form-group">
+                        <label for="school_id" class="control-label">School Student ID</label>
+                        <input type="text" name="school_id" id="school_id" class="form-control"
+                          value="<?php echo isset($student) ? html_escape($student['school_id'] ?? '') : (isset($old['school_id']) ? html_escape($old['school_id']) : ''); ?>" 
+                          placeholder="Enter school student ID">
+                      </div>
 
-                    <div class="form-group">
-                      <label for="school_internal_id" class="control-label">Internal Student ID</label>
-                      <input type="text" name="school_internal_id" id="school_internal_id" class="form-control"
-                        value="<?php echo isset($student) ? html_escape($student['school_internal_id'] ?? '') : (isset($old['school_internal_id']) ? html_escape($old['school_internal_id']) : ''); ?>" placeholder="Internal tracking ID">
-                    </div>
+                      <div class="form-group">
+                        <label for="school_internal_id" class="control-label">Internal Student ID</label>
+                        <input type="text" name="school_internal_id" id="school_internal_id" class="form-control"
+                          value="<?php echo isset($student) ? html_escape($student['school_internal_id'] ?? '') : (isset($old['school_internal_id']) ? html_escape($old['school_internal_id']) : ''); ?>" 
+                          placeholder="Internal tracking ID">
+                      </div>
+                    <?php else: ?>
+                      <!-- Display-only for school students -->
+                      <?php if(isset($student)): ?>
+                        <div class="form-group">
+                          <label class="control-label">Student ID</label>
+                          <p class="form-control-static">
+                            <strong><?php echo html_escape($student['school_internal_id'] ?? 'Not assigned'); ?></strong>
+                          </p>
+                        </div>
+                      <?php endif; ?>
+                    <?php endif; ?>
                   </div>
                 </div>
 
@@ -212,7 +313,6 @@
                           ?>
                           <option value="<?php echo $g; ?>" <?php echo $grade_selected ? 'selected' : ''; ?>>Grade <?php echo $g; ?></option>
                         <?php endfor; ?>
-                        <!-- After Grade 10, add O/L and A/L options -->
                         <?php
                           $ol_selected = (isset($student) && (string)($student['school_grade'] ?? '') === 'O/L') ||
                                         (isset($old['grade']) && (string)$old['grade'] === 'O/L');
@@ -231,46 +331,73 @@
                     <div class="form-group" id="grade-mismatch-group" style="display: none;">
                       <label for="grade_mismatch_reason" class="control-label">Grade Mismatch Reason *</label>
                       <textarea name="grade_mismatch_reason" id="grade_mismatch_reason" class="form-control" rows="3" 
-                        placeholder="Explain why the student's age doesn't match the typical age for their grade (e.g., repeated a year, started late, etc.)"><?php echo isset($student) ? html_escape($student['grade_mismatch_reason'] ?? '') : (isset($old['grade_mismatch_reason']) ? html_escape($old['grade_mismatch_reason']) : ''); ?></textarea>
-                      <small class="text-muted">Required when student's age doesn't match typical age range for the selected grade.</small>
+                        placeholder="Explain why the student's age doesn't match the typical age for their grade"
+                        <?php echo (isset($is_school_student) && $is_school_student) ? 'readonly' : ''; ?>><?php echo isset($student) ? html_escape($student['grade_mismatch_reason'] ?? '') : (isset($old['grade_mismatch_reason']) ? html_escape($old['grade_mismatch_reason']) : ''); ?></textarea>
+                      <?php if(isset($is_school_student) && $is_school_student): ?>
+                        <small class="text-muted">This field can only be modified by administrators.</small>
+                      <?php else: ?>
+                        <small class="text-muted">Required when student's age doesn't match typical age range for the selected grade.</small>
+                      <?php endif; ?>
                     </div>
 
-                    <div class="form-group">
-                      <label for="school_type" class="control-label">School Type</label>
-                      <input type="text" name="school_type" id="school_type" class="form-control"
-                        value="<?php echo isset($student) ? html_escape($student['school_type'] ?? '') : (isset($old['school_type']) ? html_escape($old['school_type']) : ''); ?>" placeholder="e.g. Type 1AB">
-                    </div>
+                    <?php if(!isset($is_school_student) || !$is_school_student): ?>
+                      <div class="form-group">
+                        <label for="school_type" class="control-label">School Type</label>
+                        <input type="text" name="school_type" id="school_type" class="form-control"
+                          value="<?php echo isset($student) ? html_escape($student['school_type'] ?? '') : (isset($old['school_type']) ? html_escape($old['school_type']) : ''); ?>" 
+                          placeholder="e.g. Type 1AB">
+                      </div>
+                    <?php else: ?>
+                      <!-- Display-only for school students -->
+                      <?php if(isset($student) && !empty($student['school_type'])): ?>
+                        <div class="form-group">
+                          <label class="control-label">School Type</label>
+                          <p class="form-control-static"><?php echo html_escape($student['school_type']); ?></p>
+                        </div>
+                      <?php endif; ?>
+                    <?php endif; ?>
                   </div>
 
                   <div class="col-md-6">
                     <div class="form-group">
                       <label for="school_name_id" class="control-label">School Name</label>
-                      <div class="school-select-wrapper">
-                        <select id="school_name_id" name="school_name_id" class="form-control selectpicker" data-live-search="true" data-none-selected-text="Select School">
-                          <option value="">Select School</option>
-                          <?php if(!empty($schools)): foreach($schools as $row): ?>
-                            <?php
-                              $sid   = (int)($row['id'] ?? 0);
-                              $sname = (string)($row['name'] ?? '');
-                              $school_selected = (isset($student) && (int)($student['school_name_id'] ?? 0) === $sid) ||
-                                               (isset($old['school_name_id']) && (int)$old['school_name_id'] === $sid);
-                            ?>
-                            <option value="<?php echo $sid; ?>" data-name="<?php echo html_escape($sname); ?>"
-                              <?php echo $school_selected ? 'selected' : ''; ?>>
-                              <?php echo html_escape($sname); ?>
-                            </option>
-                          <?php endforeach; endif; ?>
-                        </select>
-                        <button type="button" class="btn btn-default btn-sm add-new-btn" data-toggle="modal" data-target="#addSchoolModal" title="Add New School">
-                          <i class="fa fa-plus"></i>
-                        </button>
-                      </div>
+                      <?php if(isset($is_school_student) && $is_school_student): ?>
+                        <!-- Display-only for school students -->
+                        <p class="form-control-static">
+                          <strong><?php echo isset($student) ? html_escape($student['school_name'] ?? 'Not assigned') : 'Not assigned'; ?></strong>
+                        </p>
+                        <!-- Hidden field to maintain the value -->
+                        <input type="hidden" name="school_name_id" value="<?php echo isset($student) ? (int)($student['school_name_id'] ?? 0) : 0; ?>">
+                      <?php else: ?>
+                        <!-- Admin version with add button -->
+                        <div class="school-select-wrapper">
+                          <select id="school_name_id" name="school_name_id" class="form-control selectpicker" data-live-search="true" data-none-selected-text="Select School">
+                            <option value="">Select School</option>
+                            <?php if(!empty($schools)): foreach($schools as $row): ?>
+                              <?php
+                                $sid   = (int)($row['id'] ?? 0);
+                                $sname = (string)($row['name'] ?? '');
+                                $school_selected = (isset($student) && (int)($student['school_name_id'] ?? 0) === $sid) ||
+                                                 (isset($old['school_name_id']) && (int)$old['school_name_id'] === $sid);
+                              ?>
+                              <option value="<?php echo $sid; ?>" data-name="<?php echo html_escape($sname); ?>"
+                                <?php echo $school_selected ? 'selected' : ''; ?>>
+                                <?php echo html_escape($sname); ?>
+                              </option>
+                            <?php endforeach; endif; ?>
+                          </select>
+                          <button type="button" class="btn btn-default btn-sm add-new-btn" data-toggle="modal" data-target="#addSchoolModal" title="Add New School">
+                            <i class="fa fa-plus"></i>
+                          </button>
+                        </div>
+                      <?php endif; ?>
                     </div>
                   </div>
                 </div>
               </div>
 
-              <!-- Sponsorship -->
+              <!-- Sponsorship Tab (Admin Only) -->
+              <?php if(!isset($is_school_student) || !$is_school_student): ?>
               <div role="tabpanel" class="tab-pane" id="sponsorship">
                 <div class="row">
                   <div class="col-md-6">
@@ -289,24 +416,42 @@
                     <div class="form-group">
                       <label for="introduced_by" class="control-label">Introduced By</label>
                       <input type="text" name="introduced_by" id="introduced_by" class="form-control"
-                        value="<?php echo isset($student) ? html_escape($student['school_introducedby'] ?? '') : (isset($old['introduced_by']) ? html_escape($old['introduced_by']) : ''); ?>" placeholder="Person who introduced the student">
+                        value="<?php echo isset($student) ? html_escape($student['school_introducedby'] ?? '') : (isset($old['introduced_by']) ? html_escape($old['introduced_by']) : ''); ?>" 
+                        placeholder="Person who introduced the student">
                     </div>
                     <div class="form-group">
                       <label for="introduced_phone" class="control-label">Introducer's Phone</label>
                       <input type="text" name="introduced_phone" id="introduced_phone" class="form-control"
-                        value="<?php echo isset($student) ? html_escape($student['school_introducedph'] ?? '') : (isset($old['introduced_phone']) ? html_escape($old['introduced_phone']) : ''); ?>" placeholder="Contact number">
+                        value="<?php echo isset($student) ? html_escape($student['school_introducedph'] ?? '') : (isset($old['introduced_phone']) ? html_escape($old['introduced_phone']) : ''); ?>" 
+                        placeholder="Contact number">
                     </div>
                   </div>
                 </div>
-              </div>
 
-              <!-- Bank Info -->
+                <!-- Display sponsorship info for school students (read-only) -->
+                <?php if(isset($student) && !empty($student['school_sponsorship_start_date'])): ?>
+                  <div class="alert alert-info">
+                    <h5><i class="fa fa-heart"></i> Sponsorship Information</h5>
+                    <p><strong>Start Date:</strong> <?php echo date('F j, Y', strtotime($student['school_sponsorship_start_date'])); ?></p>
+                    <?php if(!empty($student['school_sponsorship_end_date'])): ?>
+                      <p><strong>End Date:</strong> <?php echo date('F j, Y', strtotime($student['school_sponsorship_end_date'])); ?></p>
+                    <?php endif; ?>
+                    <?php if(!empty($student['school_introducedby'])): ?>
+                      <p><strong>Introduced By:</strong> <?php echo html_escape($student['school_introducedby']); ?></p>
+                    <?php endif; ?>
+                  </div>
+                <?php endif; ?>
+              </div>
+              <?php endif; ?>
+
+              <!-- Bank Info Tab -->
               <div role="tabpanel" class="tab-pane" id="bank-info">
                 <div class="row">
                   <div class="col-md-6">
                     <div class="form-group">
                       <label for="bank_id" class="control-label">Bank Name</label>
-                      <div class="bank-select-wrapper">
+                      <?php if(isset($is_school_student) && $is_school_student): ?>
+                        <!-- Simple dropdown for school students -->
                         <select name="bank_id" id="bank_id" class="form-control selectpicker" data-live-search="true" data-none-selected-text="Select Bank">
                           <option value="">Select Bank</option>
                           <?php if(!empty($banks)): foreach($banks as $b): ?>
@@ -319,16 +464,33 @@
                             </option>
                           <?php endforeach; endif; ?>
                         </select>
-                        <button type="button" class="btn btn-default btn-sm add-new-btn" data-toggle="modal" data-target="#addBankModal" title="Add New Bank">
-                          <i class="fa fa-plus"></i>
-                        </button>
-                      </div>
+                      <?php else: ?>
+                        <!-- Admin version with add button -->
+                        <div class="bank-select-wrapper">
+                          <select name="bank_id" id="bank_id" class="form-control selectpicker" data-live-search="true" data-none-selected-text="Select Bank">
+                            <option value="">Select Bank</option>
+                            <?php if(!empty($banks)): foreach($banks as $b): ?>
+                              <?php
+                                $bank_selected = (isset($student) && (int)($student['bank_id'] ?? 0) === (int)$b['id']) ||
+                                               (isset($old['bank_id']) && (int)$old['bank_id'] === (int)$b['id']);
+                              ?>
+                              <option value="<?php echo (int)$b['id']; ?>" <?php echo $bank_selected ? 'selected' : ''; ?>>
+                                <?php echo html_escape($b['name']); ?>
+                              </option>
+                            <?php endforeach; endif; ?>
+                          </select>
+                          <button type="button" class="btn btn-default btn-sm add-new-btn" data-toggle="modal" data-target="#addBankModal" title="Add New Bank">
+                            <i class="fa fa-plus"></i>
+                          </button>
+                        </div>
+                      <?php endif; ?>
                     </div>
 
                     <div class="form-group">
                       <label for="bank_account_number" class="control-label">Bank Account Number</label>
                       <input type="text" name="bank_account_number" id="bank_account_number" class="form-control"
-                        value="<?php echo isset($student) ? html_escape($student['school_bank_account_no'] ?? '') : (isset($old['bank_account_number']) ? html_escape($old['bank_account_number']) : ''); ?>" placeholder="Account number">
+                        value="<?php echo isset($student) ? html_escape($student['school_bank_account_no'] ?? '') : (isset($old['bank_account_number']) ? html_escape($old['bank_account_number']) : ''); ?>" 
+                        placeholder="Account number">
                     </div>
                   </div>
 
@@ -336,7 +498,8 @@
                     <div class="form-group">
                       <label for="bank_branch_number" class="control-label">Bank Branch Number</label>
                       <input type="text" name="bank_branch_number" id="bank_branch_number" class="form-control"
-                        value="<?php echo isset($student) ? html_escape($student['school_bank_branch_number'] ?? '') : (isset($old['bank_branch_number']) ? html_escape($old['bank_branch_number']) : ''); ?>" placeholder="Branch code/number">
+                        value="<?php echo isset($student) ? html_escape($student['school_bank_branch_number'] ?? '') : (isset($old['bank_branch_number']) ? html_escape($old['bank_branch_number']) : ''); ?>" 
+                        placeholder="Branch code/number">
                     </div>
                     <div class="form-group">
                       <label for="bank_branch_info" class="control-label">Bank Branch Information</label>
@@ -346,8 +509,8 @@
                 </div>
               </div>
 
-              <!-- Additional Info -->
-              <div role="tabpanel" class="tab-pane" id="additional-info">
+              <!-- Family Info Tab -->
+              <div role="tabpanel" class="tab-pane" id="family-info">
                 <div class="row">
                   <div class="col-md-4">
                     <div class="form-group">
@@ -358,7 +521,8 @@
                     <div class="form-group">
                       <label for="father_income" class="control-label">Father's Income</label>
                       <input type="number" step="0.01" name="father_income" id="father_income" class="form-control"
-                        value="<?php echo isset($student) ? html_escape($student['school_father_income'] ?? '') : (isset($old['father_income']) ? html_escape($old['father_income']) : ''); ?>" placeholder="Monthly income">
+                        value="<?php echo isset($student) ? html_escape($student['school_father_income'] ?? '') : (isset($old['father_income']) ? html_escape($old['father_income']) : ''); ?>" 
+                        placeholder="Monthly income">
                     </div>
                   </div>
 
@@ -371,7 +535,8 @@
                     <div class="form-group">
                       <label for="mother_income" class="control-label">Mother's Income</label>
                       <input type="number" step="0.01" name="mother_income" id="mother_income" class="form-control"
-                        value="<?php echo isset($student) ? html_escape($student['school_mother_income'] ?? '') : (isset($old['mother_income']) ? html_escape($old['mother_income']) : ''); ?>" placeholder="Monthly income">
+                        value="<?php echo isset($student) ? html_escape($student['school_mother_income'] ?? '') : (isset($old['mother_income']) ? html_escape($old['mother_income']) : ''); ?>" 
+                        placeholder="Monthly income">
                     </div>
                   </div>
 
@@ -384,7 +549,8 @@
                     <div class="form-group">
                       <label for="guardian_income" class="control-label">Guardian's Income</label>
                       <input type="number" step="0.01" name="guardian_income" id="guardian_income" class="form-control"
-                        value="<?php echo isset($student) ? html_escape($student['school_guardian_income'] ?? '') : (isset($old['guardian_income']) ? html_escape($old['guardian_income']) : ''); ?>" placeholder="Monthly income">
+                        value="<?php echo isset($student) ? html_escape($student['school_guardian_income'] ?? '') : (isset($old['guardian_income']) ? html_escape($old['guardian_income']) : ''); ?>" 
+                        placeholder="Monthly income">
                     </div>
                   </div>
                 </div>
@@ -393,28 +559,44 @@
                   <div class="col-md-12">
                     <div class="form-group">
                       <label for="background_information" class="control-label">Background Information</label>
-                      <textarea name="background_information" id="background_information" class="form-control" rows="3" placeholder="Student background, family situation, etc."><?php echo isset($student) ? html_escape($student['background_info'] ?? '') : (isset($old['background_information']) ? html_escape($old['background_information']) : ''); ?></textarea>
-                    </div>
-                    <div class="form-group">
-                      <label for="internal_comment" class="control-label">Internal Comment</label>
-                      <textarea name="internal_comment" id="internal_comment" class="form-control" rows="3" placeholder="Internal notes (not visible to sponsors)"><?php echo isset($student) ? html_escape($student['internal_comment'] ?? '') : (isset($old['internal_comment']) ? html_escape($old['internal_comment']) : ''); ?></textarea>
-                    </div>
-                    <div class="form-group">
-                      <label for="external_comment" class="control-label">External Comment</label>
-                      <textarea name="external_comment" id="external_comment" class="form-control" rows="3" placeholder="Comments visible to sponsors"><?php echo isset($student) ? html_escape($student['external_comment'] ?? '') : (isset($old['external_comment']) ? html_escape($old['external_comment']) : ''); ?></textarea>
+                      <textarea name="background_information" id="background_information" class="form-control" rows="3" 
+                        placeholder="Student background, family situation, etc."><?php echo isset($student) ? html_escape($student['background_info'] ?? '') : (isset($old['background_information']) ? html_escape($old['background_information']) : ''); ?></textarea>
                     </div>
                   </div>
                 </div>
               </div>
 
-              <!-- Report Cards (NO nested form, NO required attrs) -->
+              <!-- Additional Info Tab (Admin Only) -->
+              <?php if(!isset($is_school_student) || !$is_school_student): ?>
+              <div role="tabpanel" class="tab-pane" id="additional-info">
+                <div class="row">
+                  <div class="col-md-6">
+                    <div class="form-group">
+                      <label for="internal_comment" class="control-label">Internal Comment</label>
+                      <textarea name="internal_comment" id="internal_comment" class="form-control" rows="3" 
+                        placeholder="Internal notes (not visible to sponsors)"><?php echo isset($student) ? html_escape($student['internal_comment'] ?? '') : (isset($old['internal_comment']) ? html_escape($old['internal_comment']) : ''); ?></textarea>
+                      <small class="text-muted">These comments are only visible to staff/administrators.</small>
+                    </div>
+                  </div>
+                  <div class="col-md-6">
+                    <div class="form-group">
+                      <label for="external_comment" class="control-label">External Comment</label>
+                      <textarea name="external_comment" id="external_comment" class="form-control" rows="3" 
+                        placeholder="Comments visible to sponsors"><?php echo isset($student) ? html_escape($student['external_comment'] ?? '') : (isset($old['external_comment']) ? html_escape($old['external_comment']) : ''); ?></textarea>
+                      <small class="text-muted">These comments may be visible to sponsors and other stakeholders.</small>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <?php endif; ?>
+
+              <!-- Report Cards Tab -->
               <div role="tabpanel" class="tab-pane" id="report-cards">
                 <?php if(isset($student) && !empty($student['id'])): ?>
                   <div class="row">
                     <div class="col-md-12">
                       <h5><i class="fa fa-upload"></i> Upload Report Card</h5>
                       <hr>
-                      <!-- Standalone inputs (not part of the main form validation) -->
                       <input type="hidden" id="rc_student_school_id" value="<?php echo (int)$student['id']; ?>">
                       <div class="row">
                         <div class="col-md-4">
@@ -461,7 +643,7 @@
 
                   <div class="row" style="margin-top: 30px;">
                     <div class="col-md-12">
-                      <h5><i class="fa fa-files-o"></i> Existing Report Cards</h5>
+                      <h5><i class="fa fa-files-o"></i> My Report Cards</h5>
                       <hr>
                       <div class="table-responsive">
                         <table class="table table-striped" id="reportCardsTable">
@@ -487,7 +669,8 @@
                 <?php endif; ?>
               </div>
 
-              <!-- Staff Account Tab -->
+              <!-- Staff Account Tab (Admin Only) -->
+              <?php if(!isset($is_school_student) || !$is_school_student): ?>
               <div class="tab-pane" id="tab_staff">
                 <div class="checkbox checkbox-primary">
                   <input type="checkbox" id="create_staff" name="create_staff" value="1" <?php echo (!empty($student['staff_id']) || isset($old['create_staff'])) ? 'checked' : ''; ?>>
@@ -537,17 +720,27 @@
                   <button type="submit" class="btn btn-danger"  formaction="<?php echo admin_url('student_sponsor_portal/revoke_school_access'); ?>" formmethod="post">Revoke Portal Access</button>
                 <?php endif; ?>
               </div>
+              <?php endif; ?>
 
             </div>
 
+            <!-- Action Buttons -->
             <div class="row" style="margin-top: 20px;">
               <div class="col-md-12">
                 <button type="submit" id="btn-save-student" class="btn btn-primary btn-lg">
-                  <i class="fa fa-save"></i> <?php echo isset($student) ? 'Update Student' : 'Register Student'; ?>
+                  <i class="fa fa-save"></i> 
+                  <?php if(isset($is_school_student) && $is_school_student): ?>
+                    Update My Profile
+                  <?php else: ?>
+                    <?php echo isset($student) ? 'Update Student' : 'Register Student'; ?>
+                  <?php endif; ?>
                 </button>
-                <a href="<?php echo admin_url('student_sponsor_portal/school_students'); ?>" class="btn btn-default btn-lg">
-                  <i class="fa fa-times"></i> Cancel
-                </a>
+                
+                <?php if(!isset($is_school_student) || !$is_school_student): ?>
+                  <a href="<?php echo admin_url('student_sponsor_portal/school_students'); ?>" class="btn btn-default btn-lg">
+                    <i class="fa fa-times"></i> Cancel
+                  </a>
+                <?php endif; ?>
               </div>
             </div>
 
@@ -558,6 +751,9 @@
     </div>
   </div>
 
+  <!-- Modals (Admin Only) -->
+  <?php if(!isset($is_school_student) || !$is_school_student): ?>
+  
   <!-- Add Country Modal -->
   <div class="modal fade" id="addCountryModal" tabindex="-1" role="dialog">
     <div class="modal-dialog modal-sm" role="document">
@@ -631,6 +827,8 @@
     </div>
   </div>
 
+  <?php endif; ?>
+
   <!-- Age Validation Modal -->
   <div class="modal fade" id="ageValidationModal" tabindex="-1" role="dialog">
     <div class="modal-dialog" role="document">
@@ -641,10 +839,18 @@
         </div>
         <div class="modal-body">
           <p><strong>Warning:</strong> <span id="age-validation-message"></span></p>
-          <p>Please provide a reason for this grade/age mismatch to continue.</p>
+          <?php if(!isset($is_school_student) || !$is_school_student): ?>
+            <p>Please provide a reason for this grade/age mismatch to continue.</p>
+          <?php else: ?>
+            <p>Please contact your administrator to resolve this issue.</p>
+          <?php endif; ?>
         </div>
         <div class="modal-footer">
-          <button type="button" class="btn btn-primary" data-dismiss="modal">I'll Provide Reason</button>
+          <?php if(!isset($is_school_student) || !$is_school_student): ?>
+            <button type="button" class="btn btn-primary" data-dismiss="modal">I'll Provide Reason</button>
+          <?php else: ?>
+            <button type="button" class="btn btn-primary" data-dismiss="modal">OK</button>
+          <?php endif; ?>
         </div>
       </div>
     </div>
@@ -680,6 +886,15 @@
   border-color: #d9534f !important;
   box-shadow: inset 0 1px 1px rgba(0,0,0,.075), 0 0 6px rgba(217,83,79,.6) !important;
 }
+
+.form-control-static {
+  padding-top: 7px;
+  padding-bottom: 7px;
+  margin-bottom: 0;
+  min-height: 34px;
+  font-weight: 500;
+  color: #555;
+}
 </style>
 
 <?php init_tail(); ?>
@@ -687,6 +902,9 @@
 if (typeof alert_float !== 'function') { window.alert_float = function(type, message){ alert(message); }; }
 
 (function($){
+  // Check if user is a school student
+  var isSchoolStudent = <?php echo json_encode(isset($is_school_student) && $is_school_student); ?>;
+  var canEditRestricted = <?php echo json_encode(isset($can_edit_restricted_fields) && $can_edit_restricted_fields); ?>;
 
   // Grade to age mapping for Sri Lankan education system
   var gradeAgeMapping = {
@@ -715,7 +933,11 @@ if (typeof alert_float !== 'function') { window.alert_float = function(type, mes
     $('#grade').removeClass('field-error');
     $('#grade_mismatch_reason').removeClass('field-error');
     $('#grade-mismatch-group').removeClass('show');
-    $('#grade_mismatch_reason').prop('required', false);
+    
+    // Only require grade mismatch reason for admins
+    if (!isSchoolStudent) {
+      $('#grade_mismatch_reason').prop('required', false);
+    }
 
     if (!grade || !age || age <= 0) {
       return true; // Allow if no grade or age specified
@@ -735,7 +957,7 @@ if (typeof alert_float !== 'function') { window.alert_float = function(type, mes
     var minAge = expected.min;
     var maxAge = expected.max;
     
-    // If age is within expected range, it's valid (no mismatch reason needed)
+    // If age is within expected range, it's valid
     if (age >= minAge && age <= maxAge) {
       return true;
     }
@@ -749,26 +971,32 @@ if (typeof alert_float !== 'function') { window.alert_float = function(type, mes
       return false;
     }
 
-    // If age is exactly one year older than max, allow with mismatch reason
+    // If age is exactly one year older than max, show mismatch field for admins
     if (age === (maxAge + 1)) {
       $('#grade-mismatch-group').addClass('show');
-      $('#grade_mismatch_reason').prop('required', true);
-
-      // If no reason provided, show validation message
-      if (!gradeReason) {
-        var message = "Age " + age + " is one year older than typical for " + expected.name + " (expected " + minAge + "-" + maxAge + " years). Please provide a grade mismatch reason below.";
-        $('#age-validation-message').text(message);
-        $('#ageValidationModal').modal('show');
-        $('#grade').addClass('field-error');
-        return false;
+      
+      if (!isSchoolStudent) {
+        $('#grade_mismatch_reason').prop('required', true);
+        
+        // If no reason provided, show validation message
+        if (!gradeReason) {
+          var message = "Age " + age + " is one year older than typical for " + expected.name + " (expected " + minAge + "-" + maxAge + " years). Please provide a grade mismatch reason below.";
+          $('#age-validation-message').text(message);
+          $('#ageValidationModal').modal('show');
+          $('#grade').addClass('field-error');
+          return false;
+        }
+      } else {
+        // For school students, just show the field as readonly
+        $('#grade_mismatch_reason').prop('readonly', true);
       }
       
-      return true; // Allow if reason is provided
+      return true;
     }
 
     // If age is more than one year older than max, reject completely
     if (age > (maxAge + 1)) {
-      var message = "Student is too old for " + expected.name + ". Age " + age + " exceeds maximum allowed age of " + (maxAge + 1) + " years (expected " + minAge + "-" + maxAge + ", max with reason: " + (maxAge + 1) + ").";
+      var message = "Student is too old for " + expected.name + ". Age " + age + " exceeds maximum allowed age of " + (maxAge + 1) + " years.";
       $('#age-validation-message').text(message);
       $('#ageValidationModal').modal('show');
       $('#grade').addClass('field-error');
@@ -781,13 +1009,13 @@ if (typeof alert_float !== 'function') { window.alert_float = function(type, mes
   function recalcProfileCompletion(){
     var $wrap = $('#profile-completion-wrap');
     if(!$wrap.length) return;
+    
+    // Essential fields for completion calculation
     var checks = [
-      !!$('#name').val(), !!$('#email').val(), !!$('#phone').val(), !!$('#address').val(),
-      !!$('#city').val(), !!$('#postal_code').val(),
-      !!$('#school_name_id').val() || !!$('#school_name').val(), !!$('#grade').val(),
-      !!$('#dob').val(), !!$('#father_name').val(), !!$('#mother_name').val(),
-      !!$('#bank_id').val(), !!$('#bank_account_number').val(), !!$('#school_internal_id').val()
+      !!$('#name').val(), !!$('#email').val(), !!$('#phone').val(), 
+      !!$('#address').val(), !!$('#city').val(), !!$('#grade').val(), !!$('#dob').val()
     ];
+    
     var pct = Math.round((checks.filter(Boolean).length/checks.length)*100);
     $('#profile-completion-value').text(pct+'%');
     $('#profile-completion-bar').css('width', pct+'%');
@@ -819,11 +1047,17 @@ if (typeof alert_float !== 'function') { window.alert_float = function(type, mes
   }
 
   function syncSchoolNameHidden(){
+    if (!canEditRestricted) return; // School students can't change school
+    
     var $opt = $('#school_name_id option:selected');
     var name = $opt.data('name') || $opt.text() || '';
     $('#school_name').val($.trim(name));
   }
-  $('#school_name_id').on('changed.bs.select change', syncSchoolNameHidden);
+
+  // Event handlers
+  if (!isSchoolStudent) {
+    $('#school_name_id').on('changed.bs.select change', syncSchoolNameHidden);
+  }
 
   // Grade change handler
   $('#grade').on('change', function() {
@@ -831,96 +1065,101 @@ if (typeof alert_float !== 'function') { window.alert_float = function(type, mes
     recalcProfileCompletion();
   });
 
-  // Grade mismatch reason change handler
-  $('#grade_mismatch_reason').on('input', function() {
-    validateAgeGrade();
-  });
+  // Grade mismatch reason change handler (admin only)
+  if (!isSchoolStudent) {
+    $('#grade_mismatch_reason').on('input', function() {
+      validateAgeGrade();
+    });
+  }
 
-  // Add Country
-  window.addCountry = function(){
-    var name  = $.trim($('#modal_country_name').val());
-    var phone = $.trim($('#modal_country_phone').val());
-    if(!name || !phone){ alert('Country name and phone code are required'); return false; }
+  // Admin-only functions
+  if (!isSchoolStudent) {
+    // Add Country
+    window.addCountry = function(){
+      var name  = $.trim($('#modal_country_name').val());
+      var phone = $.trim($('#modal_country_phone').val());
+      if(!name || !phone){ alert('Country name and phone code are required'); return false; }
 
-    $('#new_country_name').val(name);
-    $('#new_country_phone_code').val(phone);
+      $('#new_country_name').val(name);
+      $('#new_country_phone_code').val(phone);
 
-    var $sel = $('#country_id');
-    var tmpId = '__NEW_COUNTRY__';
-    $sel.find('option[value="'+tmpId+'"]').remove();
-    $sel.append($('<option/>',{value:tmpId, text: name+(phone?' ('+phone+')':''), selected:true, 'data-phone-code': phone}));
-    refreshSelectpicker($sel);
-    $('#phone-code-display').text(phone);
+      var $sel = $('#country_id');
+      var tmpId = '__NEW_COUNTRY__';
+      $sel.find('option[value="'+tmpId+'"]').remove();
+      $sel.append($('<option/>',{value:tmpId, text: name+(phone?' ('+phone+')':''), selected:true, 'data-phone-code': phone}));
+      refreshSelectpicker($sel);
+      $('#phone-code-display').text(phone);
 
-    $('#addCountryModal').modal('hide');
-    $('#modal_country_name').val(''); $('#modal_country_phone').val('');
-    alert_float('success','Country will be added on Save');
-    recalcProfileCompletion();
-    return false;
-  };
+      $('#addCountryModal').modal('hide');
+      $('#modal_country_name').val(''); $('#modal_country_phone').val('');
+      alert_float('success','Country will be added on Save');
+      recalcProfileCompletion();
+      return false;
+    };
 
-  // Add School (instant via AJAX)
-  window.addSchool = function(){
-    var $btn = $('#btnAddSchool').prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> Adding...');
-    var name = $.trim($('#modal_school_name').val());
-    if(!name){ alert('Enter school name'); $btn.prop('disabled', false).text('Add School'); return false; }
+    // Add School (instant via AJAX)
+    window.addSchool = function(){
+      var $btn = $('#btnAddSchool').prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> Adding...');
+      var name = $.trim($('#modal_school_name').val());
+      if(!name){ alert('Enter school name'); $btn.prop('disabled', false).text('Add School'); return false; }
 
-    $.ajax({
-      url: '<?php echo admin_url("student_sponsor_portal/add_school_name"); ?>',
-      type: 'POST', dataType: 'json',
-      data: { name: name }
-    }).done(function(r){
-      if(r && r.success){
-        var $sel = $('#school_name_id');
-        var id   = r.id || r.school_name_id || '';
-        var txt  = r.name || name;
-        if(id){
-          $sel.append($('<option/>',{value:id, text:txt, selected:true, 'data-name': txt}));
-          refreshSelectpicker($sel);
-          syncSchoolNameHidden();
+      $.ajax({
+        url: '<?php echo admin_url("student_sponsor_portal/add_school_name"); ?>',
+        type: 'POST', dataType: 'json',
+        data: { name: name }
+      }).done(function(r){
+        if(r && r.success){
+          var $sel = $('#school_name_id');
+          var id   = r.id || r.school_name_id || '';
+          var txt  = r.name || name;
+          if(id){
+            $sel.append($('<option/>',{value:id, text:txt, selected:true, 'data-name': txt}));
+            refreshSelectpicker($sel);
+            syncSchoolNameHidden();
+          }
+          $('#addSchoolModal').modal('hide'); $('#modal_school_name').val('');
+          alert_float('success', r.message || 'School added');
+          recalcProfileCompletion();
+        } else {
+          alert(r && r.message ? r.message : 'Failed to add school');
         }
-        $('#addSchoolModal').modal('hide'); $('#modal_school_name').val('');
-        alert_float('success', r.message || 'School added');
-        recalcProfileCompletion();
-      } else {
-        alert(r && r.message ? r.message : 'Failed to add school');
-      }
-    }).fail(function(){ alert('Error adding school.'); })
-      .always(function(){ $btn.prop('disabled', false).text('Add School'); });
+      }).fail(function(){ alert('Error adding school.'); })
+        .always(function(){ $btn.prop('disabled', false).text('Add School'); });
 
-    return false;
-  };
+      return false;
+    };
 
-  // Add Bank (instant via AJAX)
-  window.addBank = function(){
-    var $btn = $('#btnAddBank').prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> Adding...');
-    var name = $.trim($('#modal_bank_name').val());
-    if(!name){ alert('Enter bank name'); $btn.prop('disabled', false).text('Add Bank'); return false; }
+    // Add Bank (instant via AJAX)
+    window.addBank = function(){
+      var $btn = $('#btnAddBank').prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> Adding...');
+      var name = $.trim($('#modal_bank_name').val());
+      if(!name){ alert('Enter bank name'); $btn.prop('disabled', false).text('Add Bank'); return false; }
 
-    $.ajax({
-      url: '<?php echo admin_url("student_sponsor_portal/add_bank"); ?>',
-      type: 'POST', dataType: 'json',
-      data: { name: name }
-    }).done(function(r){
-      if(r && r.success){
-        var $sel = $('#bank_id');
-        var id   = r.id || r.bank_id || '';
-        var txt  = r.name || r.bank_name || name;
-        if(id){
-          $sel.append($('<option/>',{value:id, text:txt, selected:true}));
-          refreshSelectpicker($sel);
+      $.ajax({
+        url: '<?php echo admin_url("student_sponsor_portal/add_bank"); ?>',
+        type: 'POST', dataType: 'json',
+        data: { name: name }
+      }).done(function(r){
+        if(r && r.success){
+          var $sel = $('#bank_id');
+          var id   = r.id || r.bank_id || '';
+          var txt  = r.name || r.bank_name || name;
+          if(id){
+            $sel.append($('<option/>',{value:id, text:txt, selected:true}));
+            refreshSelectpicker($sel);
+          }
+          $('#addBankModal').modal('hide'); $('#modal_bank_name').val('');
+          alert_float('success', r.message || 'Bank added');
+          recalcProfileCompletion();
+        } else {
+          alert(r && r.message ? r.message : 'Failed to add bank');
         }
-        $('#addBankModal').modal('hide'); $('#modal_bank_name').val('');
-        alert_float('success', r.message || 'Bank added');
-        recalcProfileCompletion();
-      } else {
-        alert(r && r.message ? r.message : 'Failed to add bank');
-      }
-    }).fail(function(){ alert('Error adding bank.'); })
-      .always(function(){ $btn.prop('disabled', false).text('Add Bank'); });
+      }).fail(function(){ alert('Error adding bank.'); })
+        .always(function(){ $btn.prop('disabled', false).text('Add Bank'); });
 
-    return false;
-  };
+      return false;
+    };
+  }
 
   // Report cards - Load existing cards
   function loadReportCards(){
@@ -936,16 +1175,21 @@ if (typeof alert_float !== 'function') { window.alert_float = function(type, mes
           var size = c.file_size ? (c.file_size + ' bytes') : '';
           var dl = c.file_url || c.download_url || '<?php echo admin_url("student_sponsor_portal/download_school_report_card/"); ?>'+c.id;
           var uploadDate = c.upload_date || '';
+          
+          var actionsHtml = '<a href="'+dl+'" class="btn btn-xs btn-default" title="Download"><i class="fa fa-download"></i></a>';
+          
+          // Only show delete button for admins or if user can edit
+          if (!isSchoolStudent) {
+            actionsHtml += ' <button type="button" class="btn btn-xs btn-danger btn-del-card" title="Delete"><i class="fa fa-trash"></i></button>';
+          }
+          
           var tr = $('<tr/>',{'data-id':c.id}).append(
             $('<td/>',{text:i++}),
             $('<td/>').append($('<a/>',{href:dl, target:'_blank', rel:'noopener', text:(c.filename||c.display_name||('report_card_'+c.id)) })),
             $('<td/>',{text:c.term || 'N/A'}),
             $('<td/>',{text:uploadDate}),
             $('<td/>',{text:size}),
-            $('<td/>').append(
-              $('<a/>',{href:dl, class:'btn btn-xs btn-default', title:'Download', html:'<i class="fa fa-download"></i>'}), ' ',
-              $('<button/>',{type:'button', class:'btn btn-xs btn-danger btn-del-card', title:'Delete', html:'<i class="fa fa-trash"></i>'})
-            )
+            $('<td/>').html(actionsHtml)
           );
           $tb.append(tr);
         });
@@ -1012,34 +1256,36 @@ if (typeof alert_float !== 'function') { window.alert_float = function(type, mes
     return false;
   };
 
-  // Delete card handler
-  window.deleteReportCard = function(id){
-    if(!id) return false;
-    if(!confirm('Are you sure you want to delete this report card?')) return false;
+  // Delete card handler (admin only)
+  if (!isSchoolStudent) {
+    window.deleteReportCard = function(id){
+      if(!id) return false;
+      if(!confirm('Are you sure you want to delete this report card?')) return false;
 
-    $.post('<?php echo admin_url("student_sponsor_portal/delete_school_report_card"); ?>/'+id, {}, function(r){
-      try{ r = (typeof r==='string')?JSON.parse(r):r; }catch(e){ r={success:false}; }
-      if(r && r.success){
-        alert_float('success','Report card deleted successfully');
-        loadReportCards();
-      }
-      else {
-        alert('Delete failed: ' + (r.message || 'Unknown error'));
-      }
-    }).fail(function(){
-      alert('Error deleting report card');
+      $.post('<?php echo admin_url("student_sponsor_portal/delete_school_report_card"); ?>/'+id, {}, function(r){
+        try{ r = (typeof r==='string')?JSON.parse(r):r; }catch(e){ r={success:false}; }
+        if(r && r.success){
+          alert_float('success','Report card deleted successfully');
+          loadReportCards();
+        }
+        else {
+          alert('Delete failed: ' + (r.message || 'Unknown error'));
+        }
+      }).fail(function(){
+        alert('Error deleting report card');
+      });
+
+      return false;
+    };
+
+    // Delete card click
+    $(document).on('click', '.btn-del-card', function(){
+      var $tr = $(this).closest('tr');
+      var id = $tr.data('id');
+      if(!id) return;
+      return deleteReportCard(id);
     });
-
-    return false;
-  };
-
-  // Delete card click
-  $(document).on('click', '.btn-del-card', function(){
-    var $tr = $(this).closest('tr');
-    var id = $tr.data('id');
-    if(!id) return;
-    return deleteReportCard(id);
-  });
+  }
 
   $(function(){
     // init selectpicker
@@ -1047,7 +1293,7 @@ if (typeof alert_float !== 'function') { window.alert_float = function(type, mes
 
     // phone code update
     $('#country_id').on('change', function(){
-      var code = $(this).find('option:selected').data('phone-code') || '+1';
+      var code = $(this).find('option:selected').data('phone-code') || '+94';
       $('#phone-code-display').text(code);
       recalcProfileCompletion();
     });
@@ -1056,12 +1302,14 @@ if (typeof alert_float !== 'function') { window.alert_float = function(type, mes
     $('#profile_photo').on('change', function(){
       var f = this.files && this.files[0]; if(!f) return;
       var reader = new FileReader();
-      reader.onload = function(e){ $('.current-photo img').attr('src', e.target.result); };
+      reader.onload = function(e){ $('.current-photo img').attr('src', e.target.result).show(); };
       reader.readAsDataURL(f);
     });
 
-    // keep hidden school_name synced
-    syncSchoolNameHidden();
+    // keep hidden school_name synced (admin only)
+    if (!isSchoolStudent) {
+      syncSchoolNameHidden();
+    }
 
     // age + completion
     $('#dob').on('change input', function(){ calculateAge(); recalcProfileCompletion(); });
@@ -1085,14 +1333,14 @@ if (typeof alert_float !== 'function') { window.alert_float = function(type, mes
       var currentTab = $('.nav-tabs li.active a').attr('href') || '#student-info';
       $('#active_tab').val(currentTab);
 
-      // Validate age-grade combination before submission
+      // Validate age-grade combination before submission (admin only for grade mismatch reason)
       if (!validateAgeGrade()) {
         e.preventDefault();
         $('a[href="#student-info"]').tab('show'); // Switch to student info tab
         return false;
       }
 
-      // Validate ONLY the main form (exclude the report-cards pane entirely)
+      // Validate required fields
       var isValid = true;
       $('#school-student-form .tab-pane:not(#report-cards)').find('input[required], select[required], textarea[required]').each(function(){
         if(!$(this).val()){
@@ -1106,7 +1354,8 @@ if (typeof alert_float !== 'function') { window.alert_float = function(type, mes
       if(!isValid){ e.preventDefault(); return false; }
 
       submitting = true;
-      $('#btn-save-student').prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> Saving...');
+      var saveText = isSchoolStudent ? 'Updating Profile...' : 'Saving...';
+      $('#btn-save-student').prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> ' + saveText);
     });
 
     // restore tab after reload (server echoes active_tab)
@@ -1114,7 +1363,57 @@ if (typeof alert_float !== 'function') { window.alert_float = function(type, mes
     if (initialTab && $('a[href="'+initialTab+'"]').length) {
       $('a[href="'+initialTab+'"]').tab('show');
     }
-  });
 
+    // Show completion calculation after page load
+    setTimeout(recalcProfileCompletion, 200);
+  });
+$('#school-student-form').on('submit', function(e){
+    console.log('=== FORM SUBMISSION STARTED ===');
+    
+    // Check if form is valid
+    var formValid = this.checkValidity();
+    console.log('Form HTML5 validity:', formValid);
+    
+    // Log all form data
+    var formData = new FormData(this);
+    var formObject = {};
+    
+    for (var pair of formData.entries()) {
+        formObject[pair[0]] = pair[1];
+    }
+    
+    console.log('Form data being submitted:', formObject);
+    console.log('Form action:', this.action);
+    console.log('Form method:', this.method);
+    
+    // Check critical fields
+    console.log('=== CRITICAL FIELDS ===');
+    console.log('student_id:', formData.get('student_id'));
+    console.log('name:', formData.get('name'));
+    console.log('email:', formData.get('email'));
+    console.log('phone:', formData.get('phone'));
+    console.log('grade:', formData.get('grade'));
+    console.log('calculated_age:', formData.get('calculated_age'));
+    
+    // Check if we have CSRF token
+    var csrfTokenName = '<?php echo $this->security->get_csrf_token_name(); ?>';
+    var csrfTokenValue = formData.get(csrfTokenName);
+    console.log('CSRF Token (' + csrfTokenName + '):', csrfTokenValue);
+    
+    console.log('==============================');
+    
+    // Don't prevent default - let it submit and see what happens
+    // You can add e.preventDefault(); here if you want to stop submission for testing
+});
+
+// Also debug when the page loads
+$(document).ready(function() {
+    console.log('=== PAGE LOAD DEBUG ===');
+    console.log('Form exists:', $('#school-student-form').length > 0);
+    console.log('Student ID field value:', $('input[name="student_id"]').val());
+    console.log('Current URL:', window.location.href);
+    console.log('Is school student:', <?php echo json_encode(isset($is_school_student) && $is_school_student); ?>);
+    console.log('========================');
+});
 })(jQuery);
 </script>

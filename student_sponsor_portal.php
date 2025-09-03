@@ -36,80 +36,131 @@ hooks()->add_action('app_admin_head', function () {
     </style>';
 });
 
-/* ---------------- Admin Menu ---------------- */
+/* ===================== ENHANCED ADMIN MENU WITH ROLE-BASED ACCESS ===================== */
+/* ---------------- Dashboard Redirect Hook ---------------- */
+hooks()->add_action('admin_init', 'check_school_student_dashboard_redirect');
+
+function check_school_student_dashboard_redirect() {
+    if (!is_staff_logged_in()) {
+        return;
+    }
+    
+    $CI = &get_instance();
+    
+    // Only redirect from the main admin dashboard
+    if ($CI->router->fetch_class() !== 'dashboard' || $CI->router->fetch_method() !== 'index') {
+        return;
+    }
+    
+    $staff_id = get_staff_user_id();
+    
+    // Check if current user is a school student
+    $is_school_student = $CI->db->select('id, school_internal_id, name')
+                                ->where('staff_id', $staff_id)
+                                ->where('entity_type', 'school')
+                                ->where('staff_active', 1)
+                                ->get(db_prefix() . 'school_students')
+                                ->row();
+
+    if ($is_school_student && isset($is_school_student->id) && $is_school_student->id > 0) {
+        redirect(admin_url('student_sponsor_portal/school_student_form/' . (int)$is_school_student->id));
+        exit;
+    }
+}
 hooks()->add_action('admin_init', 'student_sponsor_portal_admin_menu');
 function student_sponsor_portal_admin_menu()
 {
-    if (!has_permission('student_sponsor_portal', '', 'view')) {
+    if (!is_staff_logged_in()) {
         return;
     }
 
     $CI = &get_instance();
+    $staff_id = get_staff_user_id();
+    
+    // Check if current user is a school student
+    $is_school_student = $CI->db->select('id, school_internal_id, name')
+                                ->where('staff_id', $staff_id)
+                                ->where('entity_type', 'school')
+                                ->where('staff_active', 1)
+                                ->get(db_prefix() . 'school_students')
+                                ->row();
 
-    // Parent (only once)
+    if ($is_school_student) {
+        // Menu for school students - only show their profile
+        $CI->app_menu->add_sidebar_menu_item('student-profile', [
+            'name'     => 'My Profile',
+            'href'     => admin_url('student_sponsor_portal/'),
+            'position' => 1,
+            'icon'     => 'fa fa-user-circle',
+        ]);
+
+        // Add report cards as a separate menu item
+        $CI->app_menu->add_sidebar_menu_item('my-reports', [
+            'name'     => 'My Report Cards',
+            'href'     => admin_url('student_sponsor_portal/school_student_form/' . $is_school_student->id . '#report-cards'),
+            'position' => 2,
+            'icon'     => 'fa fa-file-text',
+        ]);
+
+        return; // Don't show admin menu items for school students
+    }
+
+    // Regular admin menu (only if user has permissions)
+    if (!has_permission('student_sponsor_portal', '', 'view')) {
+        return;
+    }
+
+    // Parent menu item
     $CI->app_menu->add_sidebar_menu_item('student-sponsor-portal', [
         'name'     => 'Student Portal',
-        'href'     => admin_url('student_sponsor_portal'), // dashboard/index
+        'href'     => admin_url('student_sponsor_portal'),
         'position' => 36,
         'icon'     => 'fa fa-graduation-cap',
     ]);
 
-    // Children (unique slugs, all under the parent)
+    // Children menu items for admin users
     $CI->app_menu->add_sidebar_children_item('student-sponsor-portal', [
-        'slug'     => 'ssp-transactions',
-        'name'     => 'Sponsor Transactions',
-        'href'     => admin_url('student_sponsor_portal/transactions'),
+        'slug'     => 'ssp-dashboard',
+        'name'     => 'Dashboard',
+        'href'     => admin_url('student_sponsor_portal'),
         'position' => 1,
-    ]);
-
-    $CI->app_menu->add_sidebar_children_item('student-sponsor-portal', [
-        'slug'     => 'ssp-payments',
-        'name'     => 'Sponsor Payments',
-        'href'     => admin_url('student_sponsor_portal/payments'),
-        'position' => 2,
     ]);
 
     $CI->app_menu->add_sidebar_children_item('student-sponsor-portal', [
         'slug'     => 'ssp-school',
         'name'     => 'School Students',
         'href'     => admin_url('student_sponsor_portal/school_students'),
-        'position' => 3,
+        'position' => 2,
     ]);
 
     $CI->app_menu->add_sidebar_children_item('student-sponsor-portal', [
         'slug'     => 'ssp-university',
         'name'     => 'University Students',
         'href'     => admin_url('student_sponsor_portal/university_students'),
-        'position' => 4,
+        'position' => 3,
     ]);
 
     $CI->app_menu->add_sidebar_children_item('student-sponsor-portal', [
         'slug'     => 'ssp-sponsors',
         'name'     => 'Sponsors',
         'href'     => admin_url('student_sponsor_portal/sponsors'),
+        'position' => 4,
+    ]);
+
+    $CI->app_menu->add_sidebar_children_item('student-sponsor-portal', [
+        'slug'     => 'ssp-transactions',
+        'name'     => 'Transactions',
+        'href'     => admin_url('student_sponsor_portal/transactions'),
         'position' => 5,
     ]);
 
     $CI->app_menu->add_sidebar_children_item('student-sponsor-portal', [
-        'slug'     => 'ssp-dashboard',
-        'name'     => 'Dashboard',
-        'href'     => admin_url('student_sponsor_portal'),
+        'slug'     => 'ssp-payments',
+        'name'     => 'Payments',
+        'href'     => admin_url('student_sponsor_portal/payments'),
         'position' => 6,
     ]);
 }
-
-hooks()->add_filter('staff_permissions', function($permissions){
-    $permissions['student_sponsor_portal'] = [
-        'name' => 'Student Sponsor Portal',
-        'capabilities' => [
-            'view'   => 'View',
-            'create' => 'Create',
-            'edit'   => 'Edit',
-            'delete' => 'Delete',
-        ],
-    ];
-    return $permissions;
-});
 
 /* ---------------- Permissions ---------------- */
 hooks()->add_filter('staff_permissions', 'student_sponsor_portal_permissions');
@@ -125,11 +176,6 @@ function student_sponsor_portal_permissions($permissions) {
     ];
     return $permissions;
 }
-
-/* ---------------- Debug ---------------- */
-hooks()->add_action('app_admin_head', function () {
-   
-});
 
 /* ---------------- SAVE HOOK (writes to tblclients) ---------------- */
 if (!function_exists('_ssp_save_customer_fields')) {
@@ -169,7 +215,7 @@ hooks()->add_action('app_admin_footer', function () {
         }
     }
 
-    // Build options from distinct saved values so your quick-add persists next time
+    // Build options from distinct saved values
     $existing_types = $CI->db->select('DISTINCT(user_type) AS name', false)
                              ->from('tblclients')
                              ->where("user_type IS NOT NULL AND user_type != ''")
@@ -191,7 +237,6 @@ hooks()->add_action('app_admin_footer', function () {
 
         // Locate the Clients form
         var form = document.querySelector('#client-form') || document.querySelector('form[action*="clients/client"]');
-        // if(!form){ console.log('[SSP] client form not found'); return; }
 
         // Build the row (Username + User Type)
         var row = document.createElement('div');
@@ -222,13 +267,11 @@ hooks()->add_action('app_admin_footer', function () {
         var addrGroup = addrInput ? addrInput.closest('.form-group') : null;
         if (addrGroup && addrGroup.parentNode) {
           addrGroup.parentNode.insertBefore(row, addrGroup.nextSibling);
-        //   console.log('[SSP] placed block after Address');
         } else {
           // fallback: top of first tab
           var pane = document.querySelector('.tab-content .tab-pane');
           if (pane) { pane.insertBefore(row, pane.firstChild); }
           else { form.insertBefore(row, form.firstChild); }
-        //   console.log('[SSP] placed block at top (fallback)');
         }
 
         // Fill initial values
@@ -252,7 +295,7 @@ hooks()->add_action('app_admin_footer', function () {
         // Refresh selectpicker if available
         if (typeof $(sel).selectpicker === 'function') { $(sel).selectpicker('refresh'); }
 
-        // Quick add type (client-side only, persists on save)
+        // Quick add type
         row.querySelector('#quick-add-usertype').addEventListener('click', function(){
           var name = prompt('New User Type name:');
           if(!name) return;
@@ -272,17 +315,17 @@ hooks()->add_action('app_admin_footer', function () {
     </script>
 <?php
 });
-// ---------------- PROFILE VIEW: show + inline-edit Username & User Type ----------------
-// ---------------- PROFILE VIEW: direct edit (no view mode) ----------------
+
+// Enhanced profile view functionality
 hooks()->add_action('app_admin_footer', function () {
     $CI = &get_instance();
     if (method_exists($CI->router, 'fetch_class') && method_exists($CI->router, 'fetch_method')) {
         if ($CI->router->fetch_class() !== 'clients' || $CI->router->fetch_method() !== 'client') {
-            return; // only on Clients pages
+            return;
         }
     }
 
-    /* 1) AJAX inline save (POST to same URL) */
+    /* AJAX inline save */
     if ($CI->input->post('ssp_profile_save')) {
         if (!is_staff_logged_in()) { echo json_encode(['success'=>false,'message'=>'Not logged in']); exit; }
         $id        = (int)$CI->input->post('userid');
@@ -299,22 +342,14 @@ hooks()->add_action('app_admin_footer', function () {
         echo json_encode(['success'=>(bool)$ok,'username'=>$username,'user_type'=>$user_type]); exit;
     }
 
-    /* 2) Render editable UI on Profile tab only (not on Add/Edit form) */
-    ?>
-    <script>if (document.getElementById('client-form')) { /* on form view; skip profile UI */ }</script>
-    <?php
-
-    // Customer id from URL
     $id = (int)$CI->input->get('userid');
     if (!$id) { $id = (int)$CI->uri->segment(4) ?: (int)$CI->uri->segment(3); }
     if (!$id) { return; }
 
-    // Current values
     $row = $CI->db->select('username,user_type')->where('userid',$id)->get('tblclients')->row();
     $username = $row ? (string)$row->username : '';
     $usertype = $row ? (string)$row->user_type : '';
 
-    // Existing types for dropdown
     $types_rs = $CI->db->select('DISTINCT(user_type) AS name', false)
                        ->where("user_type IS NOT NULL AND user_type != ''", null, false)
                        ->order_by('name','asc')
@@ -338,7 +373,6 @@ hooks()->add_action('app_admin_footer', function () {
         // only on profile (not on edit form)
         if (document.getElementById('client-form')) { clearInterval(iv); return; }
 
-        // container of Profile -> Customer Details
         var $profile = jQuery('.customer-profile-group[data-group="profile"]');
         if (!$profile.length) $profile = jQuery('#tab_profile');
         if (!$profile.length) $profile = jQuery('.tab-content .tab-pane.active');
@@ -392,7 +426,7 @@ hooks()->add_action('app_admin_footer', function () {
               }
               $sel.val(name);
               if (typeof $sel.selectpicker === 'function') { $sel.selectpicker('refresh'); }
-              saveNow(); // autosave after quick add
+              saveNow();
             });
 
             // manual Save
@@ -420,7 +454,7 @@ hooks()->add_action('app_admin_footer', function () {
                   window.SSP_PROFILE_USERTYPE = r.user_type || '';
                   if (typeof alert_float === 'function') alert_float('success','Saved'); else alert('Saved');
                 } else {
-                  if (typeof alert_float === 'function') alert_float('success','Saveed'); else alert('Save done');
+                  if (typeof alert_float === 'function') alert_float('success','Saved'); else alert('Save done');
                 }
               });
             }

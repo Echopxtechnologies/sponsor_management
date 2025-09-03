@@ -74,21 +74,17 @@
                                         <th width="18%">Email</th>
                                         <th width="15%">Phone</th>
                                         <th width="10%">Status</th>
-                                        <th width="15%">Frequency</th>
+                                        <th width="10%">Frequency</th>
+                                        <th width="5%">Actions</th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     <?php if(!empty($sponsors)): ?>
                                         <?php foreach($sponsors as $index => $sponsor): ?>
-                                        <tr class="sponsor-row">
+                                        <tr class="sponsor-row" data-sponsor-id="<?php echo $sponsor['id']; ?>">
                                             <td><?php echo $sponsor['id']; ?></td>
                                             <td>
                                                 <strong><?php echo htmlspecialchars($sponsor['name'] ?? ''); ?></strong>
-                                                <div class="row-options" style="display: none;">
-                                                    <a href="<?php echo admin_url('student_sponsor_portal/sponsor_form/' . $sponsor['id']); ?>">View</a>
-                                                    |
-                                                    <a href="#" onclick="deleteSponsor(<?php echo $sponsor['id']; ?>); return false;" class="text-danger">Delete</a>
-                                                </div>
                                                 <?php if(!empty($sponsor['sponsor_type'])): ?>
                                                     <br><small class="text-muted"><?php echo ucfirst($sponsor['sponsor_type']); ?></small>
                                                 <?php endif; ?>
@@ -110,21 +106,28 @@
                                             <td><?php echo htmlspecialchars($sponsor['phone'] ?? 'Not provided'); ?></td>
                                             <td>
                                                 <?php 
-                                                // Calculate status based on sponsorship dates
+                                                // Calculate status based on sponsorship dates and active flag
                                                 $status = 'inactive';
-                                                if(!empty($sponsor['membership_start_date'])) {
-                                                    $start_date = strtotime($sponsor['membership_start_date']);
-                                                    $current_date = time();
-                                                    
-                                                    if($start_date <= $current_date) {
-                                                        if(empty($sponsor['membership_end_date'])) {
-                                                            $status = 'active';
-                                                        } else {
-                                                            $end_date = strtotime($sponsor['membership_end_date']);
-                                                            if($end_date >= $current_date) {
+                                                $active_flag = isset($sponsor['active']) ? (int)$sponsor['active'] : 0;
+                                                
+                                                if ($active_flag == 1) {
+                                                    if(!empty($sponsor['membership_start_date'])) {
+                                                        $start_date = strtotime($sponsor['membership_start_date']);
+                                                        $current_date = time();
+                                                        
+                                                        if($start_date <= $current_date) {
+                                                            if(empty($sponsor['membership_end_date'])) {
                                                                 $status = 'active';
+                                                            } else {
+                                                                $end_date = strtotime($sponsor['membership_end_date']);
+                                                                if($end_date >= $current_date) {
+                                                                    $status = 'active';
+                                                                }
                                                             }
                                                         }
+                                                    } else {
+                                                        // If active flag is 1 but no start date, consider as active
+                                                        $status = 'active';
                                                     }
                                                 }
                                                 ?>
@@ -141,11 +144,40 @@
                                                 }
                                                 ?>
                                             </td>
+                                            <td>
+                                                <div class="dropdown">
+                                                    <button class="btn btn-default btn-icon dropdown-toggle" type="button" data-toggle="dropdown">
+                                                        <i class="fa fa-ellipsis-h"></i>
+                                                    </button>
+                                                    <ul class="dropdown-menu dropdown-menu-right">
+                                                        <li>
+                                                            <a href="#" onclick="viewSponsor(<?php echo $sponsor['id']; ?>); return false;">
+                                                                <i class="fa fa-eye text-info"></i> View Details
+                                                            </a>
+                                                        </li>
+                                                        <?php if(has_permission('student_sponsor_portal', '', 'edit')): ?>
+                                                        <li>
+                                                            <a href="<?php echo admin_url('student_sponsor_portal/sponsor_form/' . $sponsor['id']); ?>">
+                                                                <i class="fa fa-edit text-primary"></i> Edit Sponsor
+                                                            </a>
+                                                        </li>
+                                                        <?php endif; ?>
+                                                        <?php if(has_permission('student_sponsor_portal', '', 'delete')): ?>
+                                                        <li class="divider"></li>
+                                                        <li>
+                                                            <a href="#" onclick="deleteSponsor(<?php echo $sponsor['id']; ?>); return false;" class="text-danger">
+                                                                <i class="fa fa-trash text-danger"></i> Delete
+                                                            </a>
+                                                        </li>
+                                                        <?php endif; ?>
+                                                    </ul>
+                                                </div>
+                                            </td>
                                         </tr>
                                         <?php endforeach; ?>
                                     <?php else: ?>
                                         <tr>
-                                            <td colspan="7" class="text-center">
+                                            <td colspan="8" class="text-center">
                                                 <div style="padding: 40px;">
                                                     <i class="fa fa-users fa-3x text-muted"></i>
                                                     <h4 class="text-muted">No sponsors found</h4>
@@ -182,7 +214,7 @@
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-default" data-dismiss="modal">Close</button>
-                <button type="button" class="btn btn-primary" onclick="editCurrentSponsor()">
+                <button type="button" class="btn btn-primary" id="edit-sponsor-btn" onclick="editCurrentSponsor()">
                     <i class="fa fa-edit"></i> Edit
                 </button>
             </div>
@@ -191,22 +223,76 @@
 </div>
 
 <script>
+// Global variable to store current sponsor being viewed
+let currentSponsorId = null;
+
+function viewSponsor(id) {
+    currentSponsorId = id;
+    
+    $.ajax({
+        url: '<?php echo admin_url("student_sponsor_portal/get_sponsor"); ?>',
+        type: 'POST',
+        data: { 
+            sponsor_id: id,
+            action: 'view',
+            <?php echo $this->security->get_csrf_token_name(); ?>: '<?php echo $this->security->get_csrf_hash(); ?>'
+        },
+        dataType: 'json',
+        success: function(response) {
+            if(response.success) {
+                $('#sponsor-details-content').html(response.html);
+                $('#viewSponsorModal').modal('show');
+                
+                // Update CSRF token if provided
+                if (typeof csrfData !== 'undefined' && response[csrfData.token_name]) {
+                    csrfData.hash = response[csrfData.token_name];
+                }
+            } else {
+                alert_float('danger', response.message || 'Error loading sponsor details');
+            }
+        },
+        error: function(xhr, status, error) {
+            console.error('AJAX Error:', xhr.responseText);
+            alert_float('danger', 'Error loading sponsor details');
+        }
+    });
+}
+
+function editCurrentSponsor() {
+    if (currentSponsorId) {
+        window.location.href = '<?php echo admin_url("student_sponsor_portal/sponsor_form/"); ?>' + currentSponsorId;
+    }
+}
+
 function deleteSponsor(id) {
-    if (confirm('Are you sure you want to delete this sponsor?')) {
+    if (confirm('Are you sure you want to delete this sponsor? This action cannot be undone.')) {
         $.ajax({
             url: '<?php echo admin_url("student_sponsor_portal/delete_sponsor"); ?>',
             type: 'POST',
-            data: { sponsor_id: id },
+            data: { 
+                sponsor_id: id,
+                <?php echo $this->security->get_csrf_token_name(); ?>: '<?php echo $this->security->get_csrf_hash(); ?>'
+            },
             dataType: 'json',
             success: function(response) {
                 if(response.success) {
                     alert_float('success', 'Sponsor deleted successfully');
-                    location.reload();
+                    
+                    // Remove the row from DataTable
+                    var table = $('#sponsors-table').DataTable();
+                    var $row = $('[data-sponsor-id="' + id + '"]');
+                    table.row($row).remove().draw();
+                    
+                    // Update CSRF token
+                    if (typeof csrfData !== 'undefined' && response[csrfData.token_name]) {
+                        csrfData.hash = response[csrfData.token_name];
+                    }
                 } else {
                     alert_float('danger', response.message || 'Error deleting sponsor');
                 }
             },
-            error: function() {
+            error: function(xhr, status, error) {
+                console.error('Delete Error:', xhr.responseText);
                 alert_float('danger', 'Error deleting sponsor');
             }
         });
@@ -214,20 +300,17 @@ function deleteSponsor(id) {
 }
 
 $(document).ready(function() {
-    // Initialize DataTable
+    // Initialize DataTable with proper configuration
     $('#sponsors-table').DataTable({
         "pageLength": 10,
         "searching": false, // We'll use custom search
         "ordering": true,
         "info": true,
-        "responsive": true
-    });
-    
-    // Handle row hover using event delegation (works with DataTables)
-    $(document).on('mouseenter', '.sponsor-row', function() {
-        $(this).find('.row-options').show();
-    }).on('mouseleave', '.sponsor-row', function() {
-        $(this).find('.row-options').hide();
+        "responsive": true,
+        "columnDefs": [
+            { "orderable": false, "targets": [7] }, // Disable sorting on Actions column
+            { "className": "text-center", "targets": [0, 6, 7] }
+        ]
     });
     
     // Custom search functionality
@@ -280,37 +363,47 @@ $(document).ready(function() {
     padding: 4px 8px;
 }
 
-.row-options {
-    font-size: 12px;
-    color: #777;
-    display: none !important; /* Force hide initially */
-    margin-top: 2px;
+.dropdown-menu {
+    min-width: 160px;
 }
 
-.row-options a {
-    color: #777;
-    text-decoration: none;
+.dropdown-menu > li > a {
+    padding: 8px 16px;
 }
 
-.row-options a:hover {
-    color: #333;
-    text-decoration: none;
+.dropdown-menu > li > a i {
+    margin-right: 8px;
+    width: 14px;
 }
 
-.row-options a.text-danger {
-    color: #d9534f !important;
-}
-
-.row-options a.text-danger:hover {
-    color: #c9302c !important;
+.btn-icon {
+    width: 30px;
+    height: 30px;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
 
 .sponsor-row:hover {
     background-color: #f9f9f9;
 }
 
-.sponsor-row:hover .row-options {
-    display: block !important; /* Force show on hover */
+/* Responsive table adjustments */
+@media (max-width: 768px) {
+    .table-responsive {
+        border: none;
+    }
+    
+    .sponsors-table td {
+        padding: 8px 4px;
+        font-size: 12px;
+    }
+    
+    .sponsors-table th {
+        padding: 8px 4px;
+        font-size: 11px;
+    }
 }
 </style>
 

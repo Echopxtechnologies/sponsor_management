@@ -28,6 +28,9 @@ class Student_sponsor_portal extends AdminController
         $this->load->model('student_sponsor_portal/university_model', 'university_model');
         $this->load->model('student_sponsor_portal/Sponsor_transactions_model', 'txn_model');
         
+        // Add access control check on every request
+        $this->_check_school_student_access();
+        
         log_message('debug', 'Student_sponsor_portal controller loaded successfully');
     }
 
@@ -35,6 +38,13 @@ class Student_sponsor_portal extends AdminController
 
     public function index()
     {
+        // Check if user is a school student - redirect to their form
+        $current_student = $this->is_school_student_user();
+        if ($current_student) {
+            redirect(admin_url('student_sponsor_portal/school_student_form/' . $current_student->id));
+            return;
+        }
+        
         if (!has_permission('student_sponsor_portal', '', 'view')) access_denied('student_sponsor_portal');
 
         $data['title']             = 'Student Sponsor Portal Dashboard';
@@ -71,8 +81,97 @@ class Student_sponsor_portal extends AdminController
         echo json_encode(['success' => true, 'data' => $payload]);
     }
 
+/* ===================== ACCESS CONTROL METHODS ===================== */
 
+    /**
+     * Check if current user is a school student with entity_type = 'school'
+     */
+    private function is_school_student_user()
+    {
+        if (!is_staff_logged_in()) {
+            return false;
+        }
+        
+        $staff_id = get_staff_user_id();
+        
+        // Check if this staff member is linked to a school student
+        $student = $this->db->select('id, entity_type, school_internal_id, name')
+                        ->where('staff_id', $staff_id)
+                        ->where('entity_type', 'school')
+                        ->where('staff_active', 1)
+                        ->get(db_prefix() . 'school_students')
+                        ->row();
+        
+        return $student ? $student : false;
+    }
 
+    /**
+     * Get the school student record for the current logged-in staff member
+     */
+    private function get_current_student_record()
+    {
+        $staff_id = get_staff_user_id();
+        
+        return $this->db->where('staff_id', $staff_id)
+                    ->where('entity_type', 'school')
+                    ->get(db_prefix() . 'school_students')
+                    ->row_array();
+    }
+
+    /**
+     * Check if user can access a specific student record
+     */
+    private function can_access_student($student_id)
+    {
+        // Admin can access all
+        if (is_admin()) {
+            return true;
+        }
+        
+        // Check if user is a school student trying to access their own record
+        $current_student = $this->is_school_student_user();
+        if ($current_student) {
+            return (int)$current_student->id === (int)$student_id;
+        }
+        
+        // Regular permission check for other staff
+        return has_permission('student_sponsor_portal', '', 'view');
+    }
+
+/**
+     * REPLACE your _check_school_student_access() method with this fixed version
+     */
+    private function _check_school_student_access()
+    {
+        // Skip access control for AJAX requests and specific methods
+        if ($this->input->is_ajax_request()) {
+            return;
+        }
+        
+        $current_student = $this->is_school_student_user();
+        
+        if ($current_student) {
+            $method = $this->router->fetch_method();
+            
+            // Allowed methods for school students
+            $allowed_methods = [
+                'index',  // Add this to prevent redirect loops
+                'school_student_form',
+                'get_school_student', 
+                'display_school_photo',
+                'upload_school_report_card',
+                'get_school_report_cards',
+                'download_school_report_card'
+            ];
+            
+            // Only redirect if accessing truly forbidden methods
+            if (!in_array($method, $allowed_methods)) {
+                // Use a more gentle redirect that preserves session
+                set_alert('info', 'You have been redirected to your profile.');
+                redirect(admin_url('student_sponsor_portal/school_student_form/' . $current_student->id));
+            }
+        }
+    }
 
     /* =================================================================================== */
     /* =====================              SCHOOL STUDENTS              =================== */
@@ -80,6 +179,13 @@ class Student_sponsor_portal extends AdminController
 
     public function school_students()
     {
+        // School students can't access the list - redirect to their own form
+        $current_student = $this->is_school_student_user();
+        if ($current_student) {
+            redirect(admin_url('student_sponsor_portal/school_student_form/' . $current_student->id));
+            return;
+        }
+        
         if (!has_permission('student_sponsor_portal', '', 'view')) {
             access_denied('student_sponsor_portal');
         }
@@ -97,7 +203,6 @@ class Student_sponsor_portal extends AdminController
             show_error('An error occurred while loading school students: ' . $e->getMessage(), 500);
         }
     }
-
 // Add this to your Student_sponsor_portal.php controller
     
     // In the school_student_form method, update the validation and saving logic:
@@ -120,7 +225,7 @@ class Student_sponsor_portal extends AdminController
                 log_message('debug', 'Raw POST data: ' . json_encode($post));
 
                 // Clean and map form data to database fields
-                $cleaned_data = $this->clean_school_post_data($post);
+                $cleaned_data = $this->clean_school_post_data($post, $current_student ? true : false);
 
                 // Validate age-grade combination if both are present
                 if (!empty($cleaned_data['school_grade']) && !empty($cleaned_data['school_age'])) {
@@ -292,7 +397,7 @@ class Student_sponsor_portal extends AdminController
     
     // Add this new method to clean and map form data to database fields
     // Updated clean_school_post_data method in Student_sponsor_portal.php
-    private function clean_school_post_data($data)
+    private function clean_school_post_data($data, $is_school_student = false)
     {
         $cleaned = [];
         
@@ -307,16 +412,7 @@ class Student_sponsor_portal extends AdminController
             'address' => 'address',
             'city' => 'city',
             'postal_code' => 'zip',
-            'school_id' => 'school_id',
-            'school_internal_id' => 'school_internal_id',
             'grade' => 'school_grade',
-            'grade_mismatch_reason' => 'grade_mismatch_reason', // Add this mapping
-            'school_type' => 'school_type',
-            'school_name_id' => 'school_name_id',
-            'sponsorship_start' => 'school_sponsorship_start_date',
-            'sponsorship_end' => 'school_sponsorship_end_date',
-            'introduced_by' => 'school_introducedby',
-            'introduced_phone' => 'school_introducedph',
             'bank_id' => 'bank_id',
             'bank_account_number' => 'school_bank_account_no',
             'bank_branch_number' => 'school_bank_branch_number',
@@ -328,9 +424,27 @@ class Student_sponsor_portal extends AdminController
             'guardian_name' => 'school_guardian_name',
             'guardian_income' => 'school_guardian_income',
             'background_information' => 'background_info',
+        ];
+
+        // Admin-only fields (students CANNOT edit these)
+        $admin_only_fields = [
+            'school_id' => 'school_id',
+            'school_internal_id' => 'school_internal_id',
+            'school_type' => 'school_type',
+            'school_name_id' => 'school_name_id',
+            'grade_mismatch_reason' => 'grade_mismatch_reason',
+            'sponsorship_start' => 'school_sponsorship_start_date',
+            'sponsorship_end' => 'school_sponsorship_end_date',
+            'introduced_by' => 'school_introducedby',
+            'introduced_phone' => 'school_introducedph',
             'internal_comment' => 'internal_comment',
             'external_comment' => 'external_comment'
         ];
+
+        // Add admin-only fields to mappings only if user is admin
+        if (!$is_school_student) {
+            $field_mappings = array_merge($field_mappings, $admin_only_fields);
+        }
         
         foreach ($field_mappings as $form_field => $db_field) {
             if (isset($data[$form_field])) {
@@ -338,7 +452,6 @@ class Student_sponsor_portal extends AdminController
                 
                 // Handle different data types
                 if ($value === '' || $value === null) {
-                    // For updates, we want to actually set empty values, not skip them
                     $cleaned[$db_field] = ($value === '') ? '' : null;
                 } elseif (in_array($form_field, ['father_income', 'mother_income', 'guardian_income'])) {
                     $cleaned[$db_field] = is_numeric($value) ? (float)$value : null;
@@ -361,18 +474,19 @@ class Student_sponsor_portal extends AdminController
             }
         }
         
-        // Set entity_type (required field with default value)
-        $cleaned['entity_type'] = 'school';
+        // IMPORTANT: Don't set entity_type for student updates to avoid conflicts
+        if (!$is_school_student) {
+            $cleaned['entity_type'] = 'school';
+        }
         
-        // Handle new country creation
-        if (!empty($data['new_country_name']) && !empty($data['new_country_phone_code'])) {
+        // Handle new country creation (admin only)
+        if (!$is_school_student && !empty($data['new_country_name']) && !empty($data['new_country_phone_code'])) {
             $country_id = $this->create_new_country($data['new_country_name'], $data['new_country_phone_code']);
             if ($country_id) {
                 $cleaned['country_id'] = $country_id;
             }
         }
         
-        // Log what we're about to save for debugging
         log_message('debug', 'Cleaned school student data: ' . json_encode($cleaned));
         
         return $cleaned;
@@ -440,14 +554,28 @@ class Student_sponsor_portal extends AdminController
         $this->db->insert(db_prefix() . 'countries', $country_data);
         return $this->db->insert_id();
     }
+    
+
+
+
+
+
     public function get_school_student()
     {
+        $current_student = $this->is_school_student_user();
         if (!has_permission('student_sponsor_portal', '', 'view')) access_denied('student_sponsor_portal');
 
         if ($this->input->post()) {
             $student_id  = $this->input->post('student_id');
-            $student     = $this->school_model->get_by_id($student_id);
-
+             if ($current_student && (int)$current_student->id !== (int)$student_id) {
+            echo json_encode(['success' => false, 'message' => 'Access denied']);
+            return;
+        }
+          // ADD THIS ACCESS CHECK:
+        if ($current_student && (int)$current_student->id !== (int)$student_id) {
+            echo json_encode(['success' => false, 'message' => 'Access denied']);
+            return;
+        }
             if (!$student) { echo json_encode(['success' => false, 'message' => 'Student not found']); return; }
 
             if ($this->input->post('action') == 'view') {
@@ -615,6 +743,9 @@ class Student_sponsor_portal extends AdminController
         }
     }
 
+
+
+    
    public function upload_school_report_card()
     {
         header('Content-Type: application/json');
@@ -928,9 +1059,14 @@ class Student_sponsor_portal extends AdminController
 
     public function display_school_photo($student_id)
     {
+        $current_student = $this->is_school_student_user();
         if (!has_permission('student_sponsor_portal', '', 'view')) {
             access_denied('student_sponsor_portal');
         }
+         if ($current_student && (int)$current_student->id !== (int)$student_id) {
+        header('HTTP/1.0 403 Forbidden');
+        exit('Access denied');
+    }
         
         $photo_data = $this->school_model->get_profile_photo((int)$student_id);
         
@@ -1065,6 +1201,11 @@ class Student_sponsor_portal extends AdminController
 
     public function university_students()
     {
+    $current_student = $this->is_school_student_user();
+    if ($current_student) {
+        redirect(admin_url('student_sponsor_portal/school_student_form/' . $current_student->id));
+        return;
+    }
         if (!has_permission('student_sponsor_portal', '', 'view')) {
             access_denied('student_sponsor_portal');
         }
@@ -2510,6 +2651,11 @@ class Student_sponsor_portal extends AdminController
 
     public function sponsors()
     {
+        $current_student = $this->is_school_student_user();
+if ($current_student) {
+    redirect(admin_url('student_sponsor_portal/school_student_form/' . $current_student->id));
+    return;
+}
         if (!has_permission('student_sponsor_portal', '', 'view')) access_denied('student_sponsor_portal');
 
         $data['title']    = 'Sponsor Management';
@@ -3074,6 +3220,11 @@ class Student_sponsor_portal extends AdminController
 
     public function payments()
     {
+        $current_student = $this->is_school_student_user();
+if ($current_student) {
+    redirect(admin_url('student_sponsor_portal/school_student_form/' . $current_student->id));
+    return;
+}
         if (!(is_admin() || has_permission('student_sponsor_portal', '', 'view'))) access_denied('student_sponsor_portal');
 
         $filters = [
@@ -3200,12 +3351,47 @@ public function send_test_email($id)
 {
     $this->load->model('student_sponsor_portal/sponsor_transactions_model');
     
+    // Debug: Check if transaction exists
+    $txn = $this->sponsor_transactions_model->get($id);
+    if (!$txn) {
+        set_alert('danger', 'Transaction not found!');
+        redirect(admin_url('student_sponsor_portal/transactions'));
+        return;
+    }
+    
+    // Debug: Check if sponsor has email
+    $sponsor = $this->db->select('email, name')->where('id', $txn->sponsor_id)->get(db_prefix().'sponsor_records')->row();
+    if (!$sponsor) {
+        set_alert('danger', 'Sponsor record not found!');
+        redirect(admin_url('student_sponsor_portal/transaction/'.$id.'?tab=payments'));
+        return;
+    }
+    
+    if (empty($sponsor->email)) {
+        set_alert('danger', 'Sponsor "' . $sponsor->name . '" does not have an email address configured. Please update the sponsor record.');
+        redirect(admin_url('student_sponsor_portal/transaction/'.$id.'?tab=payments'));
+        return;
+    }
+    
+    // Debug: Check if emails_model exists
+    if (!class_exists('Emails_model')) {
+        $this->load->model('emails_model');
+    }
+    
+    // Attempt to send
     $result = $this->sponsor_transactions_model->send_due_email($id);
     
     if ($result) {
-        set_alert('success', 'Test email sent successfully!');
+        set_alert('success', 'Email sent successfully to: ' . $sponsor->email);
+        
+        // Update the due_reminder_sent flag
+        $this->db->where('id', $id);
+        $this->db->update(db_prefix().'sponsor_transactions', [
+            'due_reminder_sent' => 1,
+            'scheduled_due_reminder_date' => null, // Clear the scheduled date
+        ]);
     } else {
-        set_alert('danger', 'Failed to send email. Please check the sponsor\'s email address.');
+        set_alert('danger', 'Failed to send email to: ' . $sponsor->email . '. Check email configuration and logs.');
     }
     
     redirect(admin_url('student_sponsor_portal/transaction/'.$id.'?tab=payments'));

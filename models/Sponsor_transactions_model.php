@@ -269,43 +269,99 @@ private function clean($in)
     }
 
     /** Insert and return new ID */
+    // public function create(array $data)
+    // {
+    //     $clean = $this->clean($data);
+
+    //     // require sponsor and exactly one student type
+    //     if (!$clean['sponsor_id'] || !$this->has_exactly_one_student($clean)) {
+    //         return false;
+    //     }
+
+    //     // timestamps if columns exist
+    //     if ($this->db->field_exists('created_at', $this->txn_tbl)) {
+    //         $clean['created_at'] = date('Y-m-d H:i:s');
+    //     }
+    //     if ($this->db->field_exists('updated_at', $this->txn_tbl)) {
+    //         $clean['updated_at'] = date('Y-m-d H:i:s');
+    //     }
+
+    //     $this->db->insert($this->txn_tbl, $clean);
+    //     return (int)$this->db->insert_id();
+    // }
+
     public function create(array $data)
-    {
-        $clean = $this->clean($data);
+{
+    $clean = $this->clean($data);
 
-        // require sponsor and exactly one student type
-        if (!$clean['sponsor_id'] || !$this->has_exactly_one_student($clean)) {
-            return false;
-        }
-
-        // timestamps if columns exist
-        if ($this->db->field_exists('created_at', $this->txn_tbl)) {
-            $clean['created_at'] = date('Y-m-d H:i:s');
-        }
-        if ($this->db->field_exists('updated_at', $this->txn_tbl)) {
-            $clean['updated_at'] = date('Y-m-d H:i:s');
-        }
-
-        $this->db->insert($this->txn_tbl, $clean);
-        return (int)$this->db->insert_id();
+    // require sponsor and exactly one student type
+    if (!$clean['sponsor_id'] || !$this->has_exactly_one_student($clean)) {
+        return false;
     }
+
+    // timestamps if columns exist
+    if ($this->db->field_exists('created_at', $this->txn_tbl)) {
+        $clean['created_at'] = date('Y-m-d H:i:s');
+    }
+    if ($this->db->field_exists('updated_at', $this->txn_tbl)) {
+        $clean['updated_at'] = date('Y-m-d H:i:s');
+    }
+
+    $this->db->insert($this->txn_tbl, $clean);
+    $transaction_id = (int)$this->db->insert_id();
+    
+    // If creation was successful, handle additional processing
+    if ($transaction_id) {
+        // Auto-schedule reminders after creating
+        $this->update_scheduled_reminders($transaction_id);
+    }
+    
+    return $transaction_id;
+}
 
     /** Update by ID */
+    // public function update($id, array $data)
+    // {
+    //     $clean = $this->clean($data);
+
+    //     if (!$clean['sponsor_id'] || !$this->has_exactly_one_student($clean)) {
+    //         return false;
+    //     }
+
+    //     if ($this->db->field_exists('updated_at', $this->txn_tbl)) {
+    //         $clean['updated_at'] = date('Y-m-d H:i:s');
+    //     }
+
+    //     $this->db->where('id', (int)$id)->update($this->txn_tbl, $clean);
+    //     return $this->db->affected_rows() > 0;
+    // }
+    
     public function update($id, array $data)
-    {
-        $clean = $this->clean($data);
+{
+    $clean = $this->clean($data);
 
-        if (!$clean['sponsor_id'] || !$this->has_exactly_one_student($clean)) {
-            return false;
-        }
-
-        if ($this->db->field_exists('updated_at', $this->txn_tbl)) {
-            $clean['updated_at'] = date('Y-m-d H:i:s');
-        }
-
-        $this->db->where('id', (int)$id)->update($this->txn_tbl, $clean);
-        return $this->db->affected_rows() > 0;
+    if (!$clean['sponsor_id'] || !$this->has_exactly_one_student($clean)) {
+        return false;
     }
+
+    if ($this->db->field_exists('updated_at', $this->txn_tbl)) {
+        $clean['updated_at'] = date('Y-m-d H:i:s');
+    }
+
+    $this->db->where('id', (int)$id)->update($this->txn_tbl, $clean);
+    $result = $this->db->affected_rows() > 0;
+    
+    // If update was successful, handle additional processing
+    if ($result) {
+        // Auto-schedule reminders after updating
+        $this->update_scheduled_reminders($id);
+        
+        // Also recompute next due date if needed
+        $this->recompute_next_due_from_type($id);
+    }
+    
+    return $result;
+}
 
     /** Hard-delete a transaction and its payments */
     public function delete($id)
@@ -549,23 +605,108 @@ public function send_due_email($transaction_id)
     $CI =& get_instance();
     $CI->load->model('emails_model');
 
+    // Debug: Log the transaction ID
+    log_message('debug', 'Attempting to send email for transaction ID: ' . $transaction_id);
+
     $txn = $this->get($transaction_id);
-    if (!$txn) return false;
-
-    $template = $this->get_due_email_template($transaction_id);
-    if (!$template) return false;
-
-    // Fetch sponsor email
-    $sponsor = $this->db->select('email')->where('id', $txn->sponsor_id)->get(db_prefix().'sponsor_records')->row();
-    if (!$sponsor || empty($sponsor->email)) {
+    if (!$txn) {
+        log_message('error', 'Transaction not found: ' . $transaction_id);
         return false;
     }
 
-    return $CI->emails_model->send_simple_email(
+    // Debug: Log transaction data
+    log_message('debug', 'Transaction found, sponsor_id: ' . $txn->sponsor_id);
+
+    $template = $this->get_due_email_template($transaction_id);
+    if (!$template) {
+        log_message('error', 'Email template generation failed for transaction: ' . $transaction_id);
+        return false;
+    }
+
+    // Debug: Log template generation success
+    log_message('debug', 'Email template generated successfully');
+
+    // Fetch sponsor email - IMPORTANT: Check if 'email' column exists
+    $sponsor = $this->db->select('email, name')->where('id', $txn->sponsor_id)->get(db_prefix().'sponsor_records')->row();
+    
+    // Debug: Check sponsor data
+    if (!$sponsor) {
+        log_message('error', 'Sponsor not found in database for ID: ' . $txn->sponsor_id);
+        return false;
+    }
+    
+    log_message('debug', 'Sponsor found: ' . $sponsor->name . ', email: ' . ($sponsor->email ?? 'NULL'));
+    
+    if (empty($sponsor->email)) {
+        log_message('error', 'Sponsor email is empty for sponsor: ' . $sponsor->name);
+        return false;
+    }
+
+    // Debug: Attempt to send email
+    log_message('debug', 'Attempting to send email to: ' . $sponsor->email);
+    log_message('debug', 'Email subject: ' . $template['subject']);
+    
+    $result = $CI->emails_model->send_simple_email(
         $sponsor->email,
         $template['subject'],
         $template['body']
     );
+    
+    // Debug: Log result
+    log_message('debug', 'Email send result: ' . ($result ? 'SUCCESS' : 'FAILED'));
+    
+    return $result;
 }
+
+
+/**
+ * Calculate and set the scheduled due reminder date
+ * Called after creating/updating transactions
+ */
+public function update_scheduled_reminders($transaction_id)
+{
+    $txn = $this->get($transaction_id);
+    if (!$txn) return false;
+    
+    $updates = [];
+    
+    // Calculate due reminder schedule
+    if ((int)$txn->due_reminder_active === 1 && $txn->next_payment_due) {
+        $days_before = (int)$txn->due_reminder_days_before ?: 15;
+        $reminder_date = date('Y-m-d', strtotime($txn->next_payment_due . ' -' . $days_before . ' days'));
+        
+        // Only schedule if reminder date is in the future and not already sent
+        if ($reminder_date >= date('Y-m-d') && (int)$txn->due_reminder_sent === 0) {
+            $updates['scheduled_due_reminder_date'] = $reminder_date;
+        } else {
+            $updates['scheduled_due_reminder_date'] = null;
+        }
+    } else {
+        $updates['scheduled_due_reminder_date'] = null;
+    }
+    
+    // Calculate renewal reminder schedule
+    if ((int)$txn->renewal_reminder_active === 1 && $txn->sponsorship_end) {
+        $days_before = (int)$txn->renewal_reminder_days_before ?: 15;
+        $renewal_reminder_date = date('Y-m-d', strtotime($txn->sponsorship_end . ' -' . $days_before . ' days'));
+        
+        if ($renewal_reminder_date >= date('Y-m-d') && (int)$txn->renewal_reminder_sent === 0) {
+            $updates['scheduled_renewal_reminder'] = $renewal_reminder_date;
+        } else {
+            $updates['scheduled_renewal_reminder'] = null;
+        }
+    } else {
+        $updates['scheduled_renewal_reminder'] = null;
+    }
+    
+    // Update the record
+    if (!empty($updates)) {
+        $this->db->where('id', $transaction_id);
+        return $this->db->update($this->txn_tbl, $updates);
+    }
+    
+    return true;
+}
+
 
 }
