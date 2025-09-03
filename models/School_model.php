@@ -8,10 +8,92 @@ class School_model extends App_Model
     private $tbl_bank     = 'tblbank';
     private $tbl_rcard    = 'tblschool_report_card';
 
+    // Grade to age mapping for Sri Lankan education system
+    private $grade_age_mapping = [
+        1 => ['min' => 5, 'max' => 6],
+        2 => ['min' => 6, 'max' => 7],
+        3 => ['min' => 7, 'max' => 8],
+        4 => ['min' => 8, 'max' => 9],
+        5 => ['min' => 9, 'max' => 10],
+        6 => ['min' => 10, 'max' => 11],
+        7 => ['min' => 11, 'max' => 12],
+        8 => ['min' => 12, 'max' => 13],
+        9 => ['min' => 13, 'max' => 14],
+        10 => ['min' => 14, 'max' => 15],
+        11 => ['min' => 15, 'max' => 16], // O/L
+        12 => ['min' => 16, 'max' => 17], // A/L1
+        13 => ['min' => 17, 'max' => 18], // A/L2
+    ];
+
     public function __construct()
     {
         parent::__construct();
         $this->ensure_required_tables();
+    }
+
+    /* ----------------- VALIDATION ----------------- */
+
+    public function validate_age_grade($grade, $age, $grade_mismatch_reason = null)
+    {
+        if (empty($grade) || $age === null || $age === '') {
+            return ['valid' => true]; // Allow if no grade or age specified
+        }
+
+        $grade_str = (string)$grade;
+        $age = (int)$age;
+
+        // No validation for grades above 10 (O/L and A/L students)
+        if ($grade_str === 'O/L' || $grade_str === 'A/L1' || $grade_str === 'A/L2') {
+            return ['valid' => true];
+        }
+
+        $grade_int = (int)$grade;
+        // Check if grade exists in our mapping
+        if (!isset($this->grade_age_mapping[$grade_int])) {
+            return ['valid' => false, 'message' => 'Invalid grade specified'];
+        }
+
+        $expected = $this->grade_age_mapping[$grade_int];
+        $min_age = $expected['min'];
+        $max_age = $expected['max'];
+        
+        // If age is within expected range, it's valid (no mismatch reason needed)
+        if ($age >= $min_age && $age <= $max_age) {
+            return ['valid' => true];
+        }
+
+        // If age is younger than minimum allowed, reject completely
+        if ($age < $min_age) {
+            return [
+                'valid' => false, 
+                'message' => "Student is too young for Grade {$grade_int}. Age {$age} is below minimum required age of {$min_age} years.",
+                'too_young' => true
+            ];
+        }
+
+        // If age is exactly one year older than max, allow with mismatch reason
+        if ($age === ($max_age + 1)) {
+            if (empty($grade_mismatch_reason)) {
+                return [
+                    'valid' => false, 
+                    'message' => "Age {$age} is one year older than typical for Grade {$grade_int} (expected {$min_age}-{$max_age} years). Please provide a grade mismatch reason.",
+                    'requires_reason' => true
+                ];
+            }
+            // If mismatch reason is provided, allow it
+            return ['valid' => true, 'has_mismatch' => true];
+        }
+
+        // If age is more than one year older than max, reject completely
+        if ($age > ($max_age + 1)) {
+            return [
+                'valid' => false, 
+                'message' => "Student is too old for Grade {$grade_int}. Age {$age} exceeds maximum allowed age of " . ($max_age + 1) . " years (expected {$min_age}-{$max_age}, max with reason: " . ($max_age + 1) . ").",
+                'too_old' => true
+            ];
+        }
+
+        return ['valid' => false, 'message' => 'Invalid age-grade combination'];
     }
 
     /* ----------------- INSTALL/CHECKS ----------------- */
@@ -58,7 +140,6 @@ class School_model extends App_Model
     {
         $table = db_prefix().'school_report_card';
         if (!$this->db->table_exists($table)) {
-            // Make blob/path columns NULL-able so either storage strategy works.
             $this->db->query("
                 CREATE TABLE IF NOT EXISTS `{$table}` (
                     `id` int(11) NOT NULL AUTO_INCREMENT,
@@ -79,7 +160,6 @@ class School_model extends App_Model
             return;
         }
 
-        // Soft-align existing schema (non-destructive).
         if (!$this->db->field_exists('file_blob', $table)) {
             $this->db->query("ALTER TABLE `{$table}` ADD COLUMN `file_blob` MEDIUMBLOB NULL AFTER `report_card_file`");
         } else {
@@ -164,64 +244,56 @@ class School_model extends App_Model
     public function add($data)
     {
         try {
+            // Validate age-grade combination first
+            $grade = $data['grade'] ?? $data['school_grade'] ?? null;
+            $age = $data['calculated_age'] ?? $data['school_age'] ?? null;
+            $grade_mismatch_reason = $data['grade_mismatch_reason'] ?? null;
+            
+            if (!empty($grade) && !empty($age)) {
+                $validation = $this->validate_age_grade($grade, $age, $grade_mismatch_reason);
+                if (!$validation['valid']) {
+                    return ['success' => false, 'message' => $validation['message']];
+                }
+            }
+
             $photo = null;
             try { $photo = $this->handle_profile_photo_upload(); } catch (Exception $e) { log_message('error','School photo upload: '.$e->getMessage()); }
 
             $country_id     = $this->toIntOrNull($data['country_id'] ?? null);
             $school_name_id = $this->get_or_create_school_name_id($data['school_name'] ?? ($data['school_name_id'] ?? ''));
 
-            // Build insert, then filter to existing columns (prevents unknown-column crashes).
             $insert = [
-                // identification
                 'school_internal_id'            => $this->generate_internal_id(),
                 'name'                          => $data['name'] ?? '',
                 'profile_photo'                 => $photo,
-
-                // contacts
                 'contact_no'                    => $this->toNullIfEmpty($data['phone'] ?? ''),
                 'email'                         => $this->toNullIfEmpty($data['email'] ?? ''),
                 'address'                       => $this->toNullIfEmpty($data['address'] ?? ''),
                 'city'                          => $this->toNullIfEmpty($data['city'] ?? ''),
                 'zip'                           => $this->toNullIfEmpty($data['postal_code'] ?? ''),
                 'country_id'                    => $country_id,
-
-                // school info
                 'school_id'                     => $this->toNullIfEmpty($data['school_id'] ?? ''),
                 'school_type'                   => $this->toNullIfEmpty($data['school_type'] ?? ''),
                 'school_name_id'                => $school_name_id,
-
-                // academic
                 'school_grade_year'             => $this->toIntOrNull($data['school_grade_year'] ?? ''),
                 'school_grade'                  => $this->toNullIfEmpty($data['grade'] ?? ''),
-                'grade_mismatch_reason'         => $this->toNullIfEmpty($data['grade_mismatch_reason'] ?? ''),
-
-                // personal
+                'grade_mismatch_reason'         => $this->toNullIfEmpty($grade_mismatch_reason),
                 'school_student_dob'            => $this->toNullIfEmpty($data['dob'] ?? ''),
                 'school_age'                    => $this->calc_age_int($data['dob'] ?? null),
-
-                // bank
                 'bank_id'                       => $this->toIntOrNull($data['bank_id'] ?? ''),
                 'school_bank_branch_number'     => $this->toNullIfEmpty($data['bank_branch_number'] ?? ''),
                 'school_bank_branch_info'       => $this->toNullIfEmpty($data['bank_branch_info'] ?? ''),
                 'school_bank_account_no'        => $this->toNullIfEmpty($data['bank_account_number'] ?? ''),
-
-                // sponsorship
                 'school_sponsorship_start_date' => $this->toNullIfEmpty($data['sponsorship_start'] ?? ''),
                 'school_sponsorship_end_date'   => $this->toNullIfEmpty($data['sponsorship_end'] ?? ''),
-
-                // intro
                 'school_introducedby'           => $this->toNullIfEmpty($data['introduced_by'] ?? ''),
                 'school_introducedph'           => $this->toNullIfEmpty($data['introduced_phone'] ?? ''),
-
-                // family/income
                 'school_father_name'            => $this->toNullIfEmpty($data['father_name'] ?? ''),
                 'school_mother_name'            => $this->toNullIfEmpty($data['mother_name'] ?? ''),
                 'school_guardian_name'          => $this->toNullIfEmpty($data['guardian_name'] ?? ''),
                 'school_father_income'          => $this->toFloatOrNull($data['father_income'] ?? null),
                 'school_mother_income'          => $this->toFloatOrNull($data['mother_income'] ?? null),
                 'school_guardian_income'        => $this->toFloatOrNull($data['guardian_income'] ?? null),
-
-                // misc
                 'sponsor_id'                    => $this->toIntOrNull($data['sponsor_id'] ?? ''),
                 'background_info'               => $this->toNullIfEmpty($data['background_information'] ?? ''),
                 'internal_comment'              => $this->toNullIfEmpty($data['internal_comment'] ?? ''),
@@ -236,7 +308,7 @@ class School_model extends App_Model
 
         } catch (Exception $e) {
             log_message('error','Error adding school student: '.$e->getMessage());
-            return false;
+            return ['success' => false, 'message' => 'Error adding student: ' . $e->getMessage()];
         }
     }
 
@@ -246,10 +318,20 @@ class School_model extends App_Model
             $id = (int)$id;
             if ($id <= 0) return false;
 
-            // Start building the update array - similar to add() but for existing record
+            // Validate age-grade combination first
+            $grade = $data['school_grade'] ?? null;
+            $age = $data['school_age'] ?? null;
+            $grade_mismatch_reason = $data['grade_mismatch_reason'] ?? null;
+            
+            if (!empty($grade) && !empty($age)) {
+                $validation = $this->validate_age_grade($grade, $age, $grade_mismatch_reason);
+                if (!$validation['valid']) {
+                    return ['success' => false, 'message' => $validation['message']];
+                }
+            }
+
             $update_data = [];
 
-            // Handle profile photo if uploaded
             try {
                 $photo = $this->handle_profile_photo_upload();
                 if ($photo !== null) {
@@ -259,9 +341,7 @@ class School_model extends App_Model
                 log_message('error','School photo upload (update): '.$e->getMessage());
             }
 
-            // Map the same fields as in add(), using the cleaned data from controller
             $field_mappings = [
-                // Basic info
                 'name' => 'name',
                 'email' => 'email',
                 'contact_no' => 'contact_no',
@@ -269,85 +349,68 @@ class School_model extends App_Model
                 'city' => 'city',
                 'zip' => 'zip',
                 'country_id' => 'country_id',
-                
-                // School info
                 'school_id' => 'school_id',
                 'school_internal_id' => 'school_internal_id',
                 'school_type' => 'school_type',
                 'school_name_id' => 'school_name_id',
                 'school_grade' => 'school_grade',
+                'grade_mismatch_reason' => 'grade_mismatch_reason',
                 'school_student_dob' => 'school_student_dob',
                 'school_age' => 'school_age',
-                
-                // Bank info
                 'bank_id' => 'bank_id',
                 'school_bank_account_no' => 'school_bank_account_no',
                 'school_bank_branch_number' => 'school_bank_branch_number',
                 'school_bank_branch_info' => 'school_bank_branch_info',
-                
-                // Sponsorship
                 'school_sponsorship_start_date' => 'school_sponsorship_start_date',
                 'school_sponsorship_end_date' => 'school_sponsorship_end_date',
                 'school_introducedby' => 'school_introducedby',
                 'school_introducedph' => 'school_introducedph',
-                
-                // Family
                 'school_father_name' => 'school_father_name',
                 'school_mother_name' => 'school_mother_name',
                 'school_guardian_name' => 'school_guardian_name',
                 'school_father_income' => 'school_father_income',
                 'school_mother_income' => 'school_mother_income',
                 'school_guardian_income' => 'school_guardian_income',
-                
-                // Comments
                 'background_info' => 'background_info',
                 'internal_comment' => 'internal_comment',
                 'external_comment' => 'external_comment'
             ];
 
-            // Apply the cleaned data with proper NULL handling for foreign keys
             foreach ($field_mappings as $db_field => $target_field) {
                 if (array_key_exists($db_field, $data)) {
                     $value = $data[$db_field];
                     
-                    // Handle foreign key fields - convert empty strings to NULL and validate existence
                     if (in_array($db_field, ['country_id', 'bank_id', 'school_name_id'], true)) {
                         if ($value === '' || $value === null) {
                             $update_data[$target_field] = null;
                         } else {
                             $fk_id = (int)$value;
-                            // Validate foreign key exists
                             if ($this->validateForeignKey($db_field, $fk_id)) {
                                 $update_data[$target_field] = $fk_id;
                             } else {
                                 log_message('warning', 'Invalid foreign key: '.$db_field.' = '.$fk_id.' does not exist');
-                                $update_data[$target_field] = null; // Set to NULL if invalid
+                                $update_data[$target_field] = null;
                             }
                         }
                     }
-                    // Handle numeric fields
                     elseif (in_array($db_field, ['school_father_income', 'school_mother_income', 'school_guardian_income', 'school_age'], true)) {
                         $update_data[$target_field] = ($value === '' || $value === null) ? null : (is_numeric($value) ? (float)$value : null);
                     }
-                    // Handle all other fields
                     else {
                         $update_data[$target_field] = ($value === '' || $value === null) ? null : $value;
                     }
                 }
             }
 
-            // Filter to only existing database columns
             $update_data = $this->filter_existing_columns($this->tbl_students, $update_data);
 
-            // Log what we're updating
             log_message('debug', 'School_model::update for ID '.$id.' with data: ' . json_encode($update_data));
 
             if (empty($update_data)) {
                 log_message('debug', 'School_model::update - no data to update for ID: ' . $id);
-                return true; // Nothing to update
+                return true;
             }
 
-            // Perform the update
             $this->db->where('id', $id);
             $result = $this->db->update($this->tbl_students, $update_data);
 
@@ -371,7 +434,6 @@ class School_model extends App_Model
     public function delete($id)
     {
         try {
-            // delete report cards (and files)
             $cards = $this->db->where('student_school_id', (int)$id)->get($this->tbl_rcard)->result();
             foreach ($cards as $c) {
                 if (!empty($c->report_card_file)) {
@@ -381,7 +443,6 @@ class School_model extends App_Model
             }
             $this->db->where('student_school_id', (int)$id)->delete($this->tbl_rcard);
 
-            // delete student
             $this->db->where('id', (int)$id)->delete($this->tbl_students);
             return $this->db->affected_rows() > 0;
 
@@ -473,13 +534,12 @@ class School_model extends App_Model
         return $this->db->order_by('name','ASC')->get($this->tbl_sname)->result_array();
     }
 
-    /* ----------------- REPORT CARDS (school) - FIXED TO MATCH UNIVERSITY VERSION ----------------- */
+    /* ----------------- REPORT CARDS ----------------- */
 
     public function get_report_cards($student_id)
     {
         $tbl = db_prefix().'school_report_card';
         
-        // Select all fields except BLOB data for listing
         $this->db->select('
             id,
             student_school_id,
@@ -500,12 +560,10 @@ class School_model extends App_Model
         $rows = $this->db->get($tbl)->result_array();
 
         foreach ($rows as &$c) {
-            // Format upload date consistently
             $c['upload_date'] = !empty($c['upload_date'])
                 ? date('M d, Y', strtotime($c['upload_date']))
                 : '';
 
-            // Determine display name (same logic as university)
             $name = trim((string)($c['filename'] ?? ''));
             if ($name === '' && !empty($c['report_card_file'])) {
                 $name = basename($c['report_card_file']);
@@ -520,9 +578,8 @@ class School_model extends App_Model
             }
             $c['display_name'] = $name;
 
-            // Add download URL
             $c['file_url'] = admin_url('student_sponsor_portal/download_school_report_card/'.$c['id']);
-            $c['download_url'] = $c['file_url']; // Add both for compatibility
+            $c['download_url'] = $c['file_url'];
         }
         unset($c);
 
@@ -538,7 +595,7 @@ class School_model extends App_Model
         switch ($field) {
             case 'country_id':
                 $c = $this->country_schema();
-                if (!$c['table']) return true; // No country table, skip validation
+                if (!$c['table']) return true;
                 return $this->db->where($c['id'], $id)->count_all_results($c['table']) > 0;
                 
             case 'bank_id':
@@ -548,7 +605,7 @@ class School_model extends App_Model
                 return $this->db->where('id', $id)->count_all_results($this->tbl_sname) > 0;
                 
             default:
-                return true; // Unknown field, assume valid
+                return true;
         }
     }
 
@@ -565,7 +622,6 @@ class School_model extends App_Model
 
     private function generate_internal_id()
     {
-        // SCH001, SCH002, ...
         $row = $this->db->select('MAX(CAST(SUBSTRING(school_internal_id, 4) AS UNSIGNED)) AS m', false)
                         ->like('school_internal_id', 'SCH', 'after')
                         ->get($this->tbl_students)->row();

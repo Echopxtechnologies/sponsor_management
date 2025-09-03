@@ -205,14 +205,34 @@
                       <label for="grade" class="control-label">Grade / Class</label>
                       <select name="grade" id="grade" class="form-control">
                         <option value="">Select Grade</option>
-                        <?php for($g=1;$g<=13;$g++): ?>
+                        <?php for($g=1;$g<=10;$g++): ?>
                           <?php
                             $grade_selected = (isset($student) && (string)($student['school_grade'] ?? '') === (string)$g) ||
                                             (isset($old['grade']) && (string)$old['grade'] === (string)$g);
                           ?>
                           <option value="<?php echo $g; ?>" <?php echo $grade_selected ? 'selected' : ''; ?>>Grade <?php echo $g; ?></option>
                         <?php endfor; ?>
+                        <!-- After Grade 10, add O/L and A/L options -->
+                        <?php
+                          $ol_selected = (isset($student) && (string)($student['school_grade'] ?? '') === 'O/L') ||
+                                        (isset($old['grade']) && (string)$old['grade'] === 'O/L');
+                          $al1_selected = (isset($student) && (string)($student['school_grade'] ?? '') === 'A/L1') ||
+                                         (isset($old['grade']) && (string)$old['grade'] === 'A/L1');
+                          $al2_selected = (isset($student) && (string)($student['school_grade'] ?? '') === 'A/L2') ||
+                                         (isset($old['grade']) && (string)$old['grade'] === 'A/L2');
+                        ?>
+                        <option value="O/L" <?php echo $ol_selected ? 'selected' : ''; ?>>O/L (Grade 11)</option>
+                        <option value="A/L1" <?php echo $al1_selected ? 'selected' : ''; ?>>A/L1 (Grade 12)</option>
+                        <option value="A/L2" <?php echo $al2_selected ? 'selected' : ''; ?>>A/L2 (Grade 13)</option>
                       </select>
+                    </div>
+
+                    <!-- Grade Mismatch Reason Field (Initially Hidden) -->
+                    <div class="form-group" id="grade-mismatch-group" style="display: none;">
+                      <label for="grade_mismatch_reason" class="control-label">Grade Mismatch Reason *</label>
+                      <textarea name="grade_mismatch_reason" id="grade_mismatch_reason" class="form-control" rows="3" 
+                        placeholder="Explain why the student's age doesn't match the typical age for their grade (e.g., repeated a year, started late, etc.)"><?php echo isset($student) ? html_escape($student['grade_mismatch_reason'] ?? '') : (isset($old['grade_mismatch_reason']) ? html_escape($old['grade_mismatch_reason']) : ''); ?></textarea>
+                      <small class="text-muted">Required when student's age doesn't match typical age range for the selected grade.</small>
                     </div>
 
                     <div class="form-group">
@@ -611,20 +631,20 @@
     </div>
   </div>
 
-  <!-- Age Warning Modal -->
-  <div class="modal fade" id="ageWarningModal" tabindex="-1" role="dialog">
-    <div class="modal-dialog modal-sm" role="document">
+  <!-- Age Validation Modal -->
+  <div class="modal fade" id="ageValidationModal" tabindex="-1" role="dialog">
+    <div class="modal-dialog" role="document">
       <div class="modal-content">
         <div class="modal-header">
           <button type="button" class="close" data-dismiss="modal">&times;</button>
-          <h4 class="modal-title"><i class="fa fa-exclamation-triangle text-warning"></i> Age Warning</h4>
+          <h4 class="modal-title"><i class="fa fa-exclamation-triangle text-warning"></i> Age Validation Required</h4>
         </div>
         <div class="modal-body">
-          <p><strong>Warning:</strong> The student is under 18 years old (<span id="age-display"></span>).</p>
-          <p>Please ensure proper guardian consent.</p>
+          <p><strong>Warning:</strong> <span id="age-validation-message"></span></p>
+          <p>Please provide a reason for this grade/age mismatch to continue.</p>
         </div>
         <div class="modal-footer">
-          <button type="button" class="btn btn-primary" data-dismiss="modal">Understood</button>
+          <button type="button" class="btn btn-primary" data-dismiss="modal">I'll Provide Reason</button>
         </div>
       </div>
     </div>
@@ -645,6 +665,21 @@
 .add-new-btn:hover{background-color:#337ab7;color:#fff;border-color:#2e6da4}
 .school-select-wrapper .btn-group.bootstrap-select,.bank-select-wrapper .btn-group.bootstrap-select,.country-select-wrapper .btn-group.bootstrap-select{flex:1;width:auto!important;display:flex!important}
 .school-select-wrapper .btn-group.bootstrap-select .btn,.bank-select-wrapper .btn-group.bootstrap-select .btn,.country-select-wrapper .btn-group.bootstrap-select .btn{width:100%;border-top-right-radius:0!important;border-bottom-right-radius:0!important;text-align:left}
+
+#grade-mismatch-group.show {
+  display: block !important;
+  animation: slideDown 0.3s ease-in-out;
+}
+
+@keyframes slideDown {
+  from { opacity: 0; max-height: 0; }
+  to { opacity: 1; max-height: 200px; }
+}
+
+.field-error {
+  border-color: #d9534f !important;
+  box-shadow: inset 0 1px 1px rgba(0,0,0,.075), 0 0 6px rgba(217,83,79,.6) !important;
+}
 </style>
 
 <?php init_tail(); ?>
@@ -652,6 +687,96 @@
 if (typeof alert_float !== 'function') { window.alert_float = function(type, message){ alert(message); }; }
 
 (function($){
+
+  // Grade to age mapping for Sri Lankan education system
+  var gradeAgeMapping = {
+    '1': {min: 5, max: 6, name: 'Grade 1'},
+    '2': {min: 6, max: 7, name: 'Grade 2'},
+    '3': {min: 7, max: 8, name: 'Grade 3'},
+    '4': {min: 8, max: 9, name: 'Grade 4'},
+    '5': {min: 9, max: 10, name: 'Grade 5'},
+    '6': {min: 10, max: 11, name: 'Grade 6'},
+    '7': {min: 11, max: 12, name: 'Grade 7'},
+    '8': {min: 12, max: 13, name: 'Grade 8'},
+    '9': {min: 13, max: 14, name: 'Grade 9'},
+    '10': {min: 14, max: 15, name: 'Grade 10'},
+    // O/L and A/L students don't have age restrictions
+    'O/L': {min: 0, max: 99, name: 'O/L (Grade 11)'},
+    'A/L1': {min: 0, max: 99, name: 'A/L1 (Grade 12)'},
+    'A/L2': {min: 0, max: 99, name: 'A/L2 (Grade 13)'}
+  };
+
+  function validateAgeGrade() {
+    var grade = $('#grade').val();
+    var age = parseInt($('#calculated_age_hidden').val());
+    var gradeReason = $('#grade_mismatch_reason').val().trim();
+
+    // Clear previous errors
+    $('#grade').removeClass('field-error');
+    $('#grade_mismatch_reason').removeClass('field-error');
+    $('#grade-mismatch-group').removeClass('show');
+    $('#grade_mismatch_reason').prop('required', false);
+
+    if (!grade || !age || age <= 0) {
+      return true; // Allow if no grade or age specified
+    }
+
+    // No validation for O/L and A/L grades
+    if (grade === 'O/L' || grade === 'A/L1' || grade === 'A/L2') {
+      return true;
+    }
+
+    // Check if we have expected ages for this grade
+    if (!gradeAgeMapping[grade]) {
+      return true; // Allow if grade not in mapping
+    }
+
+    var expected = gradeAgeMapping[grade];
+    var minAge = expected.min;
+    var maxAge = expected.max;
+    
+    // If age is within expected range, it's valid (no mismatch reason needed)
+    if (age >= minAge && age <= maxAge) {
+      return true;
+    }
+
+    // If age is younger than minimum allowed, reject completely
+    if (age < minAge) {
+      var message = "Student is too young for " + expected.name + ". Age " + age + " is below minimum required age of " + minAge + " years.";
+      $('#age-validation-message').text(message);
+      $('#ageValidationModal').modal('show');
+      $('#grade').addClass('field-error');
+      return false;
+    }
+
+    // If age is exactly one year older than max, allow with mismatch reason
+    if (age === (maxAge + 1)) {
+      $('#grade-mismatch-group').addClass('show');
+      $('#grade_mismatch_reason').prop('required', true);
+
+      // If no reason provided, show validation message
+      if (!gradeReason) {
+        var message = "Age " + age + " is one year older than typical for " + expected.name + " (expected " + minAge + "-" + maxAge + " years). Please provide a grade mismatch reason below.";
+        $('#age-validation-message').text(message);
+        $('#ageValidationModal').modal('show');
+        $('#grade').addClass('field-error');
+        return false;
+      }
+      
+      return true; // Allow if reason is provided
+    }
+
+    // If age is more than one year older than max, reject completely
+    if (age > (maxAge + 1)) {
+      var message = "Student is too old for " + expected.name + ". Age " + age + " exceeds maximum allowed age of " + (maxAge + 1) + " years (expected " + minAge + "-" + maxAge + ", max with reason: " + (maxAge + 1) + ").";
+      $('#age-validation-message').text(message);
+      $('#ageValidationModal').modal('show');
+      $('#grade').addClass('field-error');
+      return false;
+    }
+
+    return true;
+  }
 
   function recalcProfileCompletion(){
     var $wrap = $('#profile-completion-wrap');
@@ -683,10 +808,9 @@ if (typeof alert_float !== 'function') { window.alert_float = function(type, mes
     $('#calculated-age').val(age + ' years');
     $('#calculated_age_hidden').val(age); // For form submission
     
-    if (age < 18 && age > 0) {
-      $('#age-display').text(age + ' years old');
-      $('#ageWarningModal').modal('show');
-    }
+    // Validate age-grade combination after calculation
+    validateAgeGrade();
+    
     return age;
   }
 
@@ -700,6 +824,17 @@ if (typeof alert_float !== 'function') { window.alert_float = function(type, mes
     $('#school_name').val($.trim(name));
   }
   $('#school_name_id').on('changed.bs.select change', syncSchoolNameHidden);
+
+  // Grade change handler
+  $('#grade').on('change', function() {
+    validateAgeGrade();
+    recalcProfileCompletion();
+  });
+
+  // Grade mismatch reason change handler
+  $('#grade_mismatch_reason').on('input', function() {
+    validateAgeGrade();
+  });
 
   // Add Country
   window.addCountry = function(){
@@ -932,7 +1067,7 @@ if (typeof alert_float !== 'function') { window.alert_float = function(type, mes
     $('#dob').on('change input', function(){ calculateAge(); recalcProfileCompletion(); });
     setTimeout(calculateAge, 100);
     $(document).on('input change', '#school-student-form input, #school-student-form select, #school-student-form textarea', function(){
-      $(this).removeClass('has-error'); recalcProfileCompletion();
+      $(this).removeClass('has-error field-error'); recalcProfileCompletion();
     });
 
     // report cards
@@ -950,15 +1085,22 @@ if (typeof alert_float !== 'function') { window.alert_float = function(type, mes
       var currentTab = $('.nav-tabs li.active a').attr('href') || '#student-info';
       $('#active_tab').val(currentTab);
 
+      // Validate age-grade combination before submission
+      if (!validateAgeGrade()) {
+        e.preventDefault();
+        $('a[href="#student-info"]').tab('show'); // Switch to student info tab
+        return false;
+      }
+
       // Validate ONLY the main form (exclude the report-cards pane entirely)
       var isValid = true;
       $('#school-student-form .tab-pane:not(#report-cards)').find('input[required], select[required], textarea[required]').each(function(){
         if(!$(this).val()){
-          isValid = false; $(this).addClass('has-error');
+          isValid = false; $(this).addClass('has-error field-error');
           var $pane = $(this).closest('.tab-pane');
           if($pane.length){ $('a[href="#'+$pane.attr('id')+'"]').tab('show'); }
           return false; // break each on first error
-        } else { $(this).removeClass('has-error'); }
+        } else { $(this).removeClass('has-error field-error'); }
       });
 
       if(!isValid){ e.preventDefault(); return false; }

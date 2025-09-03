@@ -728,6 +728,11 @@
 .add-new-btn:hover{background-color:#337ab7;color:#fff;border-color:#2e6da4}
 .university-select-wrapper .btn-group.bootstrap-select,.program-select-wrapper .btn-group.bootstrap-select,.bank-select-wrapper .btn-group.bootstrap-select,.country-select-wrapper .btn-group.bootstrap-select{flex:1;width:auto!important;display:flex!important}
 .university-select-wrapper .btn-group.bootstrap-select .btn,.program-select-wrapper .btn-group.bootstrap-select .btn,.bank-select-wrapper .btn-group.bootstrap-select .btn,.country-select-wrapper .btn-group.bootstrap-select .btn{width:100%;border-top-right-radius:0!important;border-bottom-right-radius:0!important;text-align:left}
+
+.field-error {
+  border-color: #d9534f !important;
+  box-shadow: inset 0 1px 1px rgba(0,0,0,.075), 0 0 6px rgba(217,83,79,.6) !important;
+}
 </style>
 
 <?php init_tail(); ?>
@@ -898,14 +903,14 @@ if (typeof alert_float !== 'function') { window.alert_float = function(type, mes
     var sid = <?php echo !empty($student['id']) ? (int)$student['id'] : 0; ?>;
     if(!sid) return;
 
-    $.get('<?php echo admin_url("student_sponsor_portal/get_report_cards"); ?>', {student_id: sid}, function(resp){
+    $.get('<?php echo admin_url("student_sponsor_portal/get_university_report_cards"); ?>/'+sid, function(resp){
       try{ resp = (typeof resp==='string') ? JSON.parse(resp) : resp; }catch(e){ resp = {success:false}; }
       var $tb = $('#reportCardsTable tbody').empty();
       if(resp && resp.success && resp.report_cards && resp.report_cards.length){
         var i=1;
         resp.report_cards.forEach(function(c){
           var size = c.file_size ? (c.file_size + ' bytes') : '';
-          var dl = c.file_url || c.download_url || '<?php echo admin_url("student_sponsor_portal/download_report_card/"); ?>'+c.id;
+          var dl = c.file_url || c.download_url || '<?php echo admin_url("student_sponsor_portal/download_university_report_card/"); ?>'+c.id;
           var uploadDate = c.upload_date || '';
           var monthYear = '';
           if(c.semester_end_month && c.semester_end_year){
@@ -959,7 +964,7 @@ if (typeof alert_float !== 'function') { window.alert_float = function(type, mes
     }
 
     $.ajax({
-      url: '<?php echo admin_url("student_sponsor_portal/upload_report_card"); ?>',
+      url: '<?php echo admin_url("student_sponsor_portal/upload_university_report_card"); ?>',
       type: 'POST',
       data: formData,
       processData: false,
@@ -997,7 +1002,7 @@ if (typeof alert_float !== 'function') { window.alert_float = function(type, mes
     if(!id) return false;
     if(!confirm('Are you sure you want to delete this report card?')) return false;
 
-    $.post('<?php echo admin_url("student_sponsor_portal/delete_report_card"); ?>', {report_card_id: id}, function(r){
+    $.post('<?php echo admin_url("student_sponsor_portal/delete_university_report_card"); ?>/'+id, {}, function(r){
       try{ r = (typeof r==='string')?JSON.parse(r):r; }catch(e){ r={success:false}; }
       if(r && r.success){
         alert_float('success','Report card deleted successfully');
@@ -1044,7 +1049,7 @@ if (typeof alert_float !== 'function') { window.alert_float = function(type, mes
     $('#dob').on('change input', function(){ calculateAge(); recalcProfileCompletion(); });
     setTimeout(calculateAge, 100);
     $(document).on('input change', '#university-student-form input, #university-student-form select, #university-student-form textarea', function(){
-      $(this).removeClass('has-error'); recalcProfileCompletion();
+      $(this).removeClass('has-error field-error'); recalcProfileCompletion();
     });
 
     // report cards
@@ -1066,11 +1071,11 @@ if (typeof alert_float !== 'function') { window.alert_float = function(type, mes
       var isValid = true;
       $('#university-student-form .tab-pane:not(#report-cards)').find('input[required], select[required], textarea[required]').each(function(){
         if(!$(this).val()){
-          isValid = false; $(this).addClass('has-error');
+          isValid = false; $(this).addClass('has-error field-error');
           var $pane = $(this).closest('.tab-pane');
           if($pane.length){ $('a[href="#'+$pane.attr('id')+'"]').tab('show'); }
           return false; // break each on first error
-        } else { $(this).removeClass('has-error'); }
+        } else { $(this).removeClass('has-error field-error'); }
       });
 
       if(!isValid){ e.preventDefault(); return false; }
@@ -1087,3 +1092,4 @@ if (typeof alert_float !== 'function') { window.alert_float = function(type, mes
   });
 
 })(jQuery);
+</script>

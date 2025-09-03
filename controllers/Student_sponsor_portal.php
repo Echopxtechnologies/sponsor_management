@@ -98,6 +98,9 @@ class Student_sponsor_portal extends AdminController
         }
     }
 
+// Add this to your Student_sponsor_portal.php controller
+    
+    // In the school_student_form method, update the validation and saving logic:
     public function school_student_form($student_id = null)
     {
         if (!has_permission('student_sponsor_portal', '', 'view')) access_denied('student_sponsor_portal');
@@ -114,25 +117,54 @@ class Student_sponsor_portal extends AdminController
                 $sid = (int)($post['student_id'] ?? 0);
                 unset($post['student_id']);
 
-                // Log raw POST data for debugging
                 log_message('debug', 'Raw POST data: ' . json_encode($post));
 
                 // Clean and map form data to database fields
                 $cleaned_data = $this->clean_school_post_data($post);
 
+                // Validate age-grade combination if both are present
+                if (!empty($cleaned_data['school_grade']) && !empty($cleaned_data['school_age'])) {
+                    $validation_result = $this->school_model->validate_age_grade(
+                        $cleaned_data['school_grade'], 
+                        $cleaned_data['school_age'], 
+                        $cleaned_data['grade_mismatch_reason'] ?? null
+                    );
+                    
+                    if (!$validation_result['valid']) {
+                        $this->session->set_flashdata('old_input', $post);
+                        set_alert('danger', $validation_result['message']);
+                        if ($isCreate) {
+                            redirect(admin_url('student_sponsor_portal/school_student_form'));
+                        } else {
+                            redirect(admin_url('student_sponsor_portal/school_student_form/' . $sid));
+                        }
+                        return;
+                    }
+                }
+
                 $this->session->set_flashdata('old_input', $post);
 
                 if ($isCreate) {
                     $res = $this->school_model->add($cleaned_data);
-                    if (!is_array($res)) { 
-                        $res = $res ? ['success' => true, 'id' => $res] : ['success' => false, 'message' => 'Unable to save.']; 
+                    
+                    // Handle both old format (just ID) and new format (array with success flag)
+                    if (is_array($res)) {
+                        if (!$res['success']) {
+                            $this->session->set_flashdata('old_input', $post);
+                            set_alert('danger', $res['message'] ?? 'Error saving student');
+                            redirect(admin_url('student_sponsor_portal/school_student_form'));
+                            return;
+                        }
+                        $newId = (int)$res['id'];
+                    } else {
+                        $newId = $res ? (int)$res : 0;
+                        if (!$newId) {
+                            $this->session->set_flashdata('old_input', $post);
+                            set_alert('danger', 'Error saving student');
+                            redirect(admin_url('student_sponsor_portal/school_student_form'));
+                            return;
+                        }
                     }
-                    if (!$res['success']) {
-                        $this->session->set_flashdata('old_input', $post);
-                        set_alert('danger', $res['message'] ?? 'Error saving student');
-                        redirect(admin_url('student_sponsor_portal/school_student_form'));
-                    }
-                    $newId = (int)$res['id'];
 
                     // Handle profile photo upload
                     $this->handle_profile_photo_upload($newId);
@@ -161,14 +193,25 @@ class Student_sponsor_portal extends AdminController
                     // Handle profile photo upload for existing student
                     $this->handle_profile_photo_upload($sid);
 
-                    // Log before update
                     log_message('debug', 'Attempting to update student ID: ' . $sid . ' with data: ' . json_encode($cleaned_data));
                     
                     // Get student data before update for comparison
                     $before_update = $this->school_model->get_by_id($sid);
                     log_message('debug', 'Student data BEFORE update: ' . json_encode($before_update));
 
-                    $ok = $this->school_model->update($cleaned_data, $sid);
+                    $result = $this->school_model->update($cleaned_data, $sid);
+                    
+                    // Handle both boolean and array responses
+                    if (is_array($result)) {
+                        if (!$result['success']) {
+                            set_alert('danger', $result['message'] ?? 'Error updating student');
+                            redirect(admin_url('student_sponsor_portal/school_student_form/' . $sid));
+                            return;
+                        }
+                        $ok = true;
+                    } else {
+                        $ok = $result;
+                    }
                     
                     if ($ok) {
                         // Get student data after update for verification
@@ -201,6 +244,7 @@ class Student_sponsor_portal extends AdminController
                             : 'Error saving student. Please check all fields and try again.';
                         set_alert('danger', $msg);
                         redirect(admin_url('student_sponsor_portal/school_student_form/' . $sid));
+                        return;
                     }
 
                     // Handle staff creation for existing student
@@ -245,7 +289,9 @@ class Student_sponsor_portal extends AdminController
             show_error('An error occurred while loading the form: ' . $e->getMessage(), 500);
         }
     }
+    
     // Add this new method to clean and map form data to database fields
+    // Updated clean_school_post_data method in Student_sponsor_portal.php
     private function clean_school_post_data($data)
     {
         $cleaned = [];
@@ -264,6 +310,7 @@ class Student_sponsor_portal extends AdminController
             'school_id' => 'school_id',
             'school_internal_id' => 'school_internal_id',
             'grade' => 'school_grade',
+            'grade_mismatch_reason' => 'grade_mismatch_reason', // Add this mapping
             'school_type' => 'school_type',
             'school_name_id' => 'school_name_id',
             'sponsorship_start' => 'school_sponsorship_start_date',
@@ -330,8 +377,6 @@ class Student_sponsor_portal extends AdminController
         
         return $cleaned;
     }
-
-
     // Add this method to handle profile photo uploads
     private function handle_profile_photo_upload($student_id)
     {
@@ -2472,7 +2517,43 @@ class Student_sponsor_portal extends AdminController
         $this->load->view('student_sponsor_portal/sponsors_list', $data);
     }
 
-    public function sponsor_form($sponsor_id = null)
+   // Add these methods to your Student_sponsor_portal.php controller
+
+    /**
+     * Get available students for sponsor selection
+     */
+    public function get_available_students()
+    {
+        header('Content-Type: application/json');
+        
+        if (!has_permission('student_sponsor_portal', '', 'view')) {
+            echo json_encode(['success' => false, 'message' => 'Access denied']);
+            return;
+        }
+
+        $sponsor_id = (int)($this->input->get('sponsor_id') ?: $this->input->post('sponsor_id'));
+        
+        try {
+            $students_data = $this->sponsor_model->get_available_students($sponsor_id);
+            
+            echo json_encode([
+                'success' => true,
+                'data' => $students_data
+            ]);
+            
+        } catch (Exception $e) {
+            log_message('error', 'Error getting available students: ' . $e->getMessage());
+            echo json_encode([
+                'success' => false,
+                'message' => 'Error loading students: ' . $e->getMessage()
+            ]);
+        }
+    }
+
+    /**
+     * Updated sponsor_form method to handle student selection
+     */
+   public function sponsor_form($sponsor_id = null)
     {
         if (!has_permission('student_sponsor_portal', '', 'view')) {
             access_denied('student_sponsor_portal');
@@ -2483,10 +2564,36 @@ class Student_sponsor_portal extends AdminController
             $post_data = $this->input->post(null, true);
             unset($post_data['sponsor_id']);
 
+            // Handle student selections
+            $school_students = [];
+            $university_students = [];
+            
+            if (!empty($post_data['selected_school_students'])) {
+                $selected_school = json_decode($post_data['selected_school_students'], true);
+                if (is_array($selected_school)) {
+                    $school_students = $selected_school;
+                }
+            }
+            
+            if (!empty($post_data['selected_university_students'])) {
+                $selected_university = json_decode($post_data['selected_university_students'], true);
+                if (is_array($selected_university)) {
+                    $university_students = $selected_university;
+                }
+            }
+
+            // Add student selections to post data
+            $post_data['selected_school_students'] = $school_students;
+            $post_data['selected_university_students'] = $university_students;
+
             if ($id === 0) {
                 if (!has_permission('student_sponsor_portal', '', 'create')) access_denied('student_sponsor_portal');
                 $newId = $this->sponsor_model->add($post_data);
                 if ($newId) {
+                    // Update student selections and sponsor relationships - THIS IS KEY
+                    $this->sponsor_model->update_sponsored_students($newId, $school_students, $university_students);
+                    $this->sponsor_model->update_student_sponsor_relationships($newId, $school_students, $university_students);
+                    
                     set_alert('success', 'Sponsor registered successfully');
                     redirect(admin_url('student_sponsor_portal/sponsors'));
                 }
@@ -2495,6 +2602,10 @@ class Student_sponsor_portal extends AdminController
                 if (!has_permission('student_sponsor_portal', '', 'edit')) access_denied('student_sponsor_portal');
                 $ok = $this->sponsor_model->update($post_data, $id);
                 if ($ok) {
+                    // Update student selections and sponsor relationships - THIS IS KEY
+                    $this->sponsor_model->update_sponsored_students($id, $school_students, $university_students);
+                    $this->sponsor_model->update_student_sponsor_relationships($id, $school_students, $university_students);
+                    
                     set_alert('success', 'Sponsor updated successfully');
                     redirect(admin_url('student_sponsor_portal/sponsors'));
                 }
@@ -2549,7 +2660,218 @@ class Student_sponsor_portal extends AdminController
         $this->load->view('student_sponsor_portal/sponsor_form', $data);
     }
 
+    /**
+     * Get sponsored students for a specific sponsor (for display purposes)
+     */
+    public function get_sponsored_students()
+    {
+        if (!has_permission('student_sponsor_portal', '', 'view')) {
+            echo json_encode(['success' => false, 'message' => 'Access denied']);
+            return;
+        }
 
+        $sponsor_id = (int)$this->input->get('sponsor_id');
+        
+        if ($sponsor_id <= 0) {
+            echo json_encode(['success' => false, 'message' => 'Invalid sponsor ID']);
+            return;
+        }
+
+        try {
+            $sponsored_students = $this->sponsor_model->get_sponsored_students($sponsor_id);
+            
+            echo json_encode([
+                'success' => true,
+                'data' => $sponsored_students
+            ]);
+            
+        } catch (Exception $e) {
+            log_message('error', 'Error getting sponsored students: ' . $e->getMessage());
+            echo json_encode([
+                'success' => false,
+                'message' => 'Error loading sponsored students'
+            ]);
+        }
+    }
+
+    /**
+     * Search students (for AJAX autocomplete)
+     */
+    public function search_students_for_sponsor()
+    {
+        if (!has_permission('student_sponsor_portal', '', 'view')) {
+            echo json_encode(['success' => false, 'message' => 'Access denied']);
+            return;
+        }
+
+        $query = trim($this->input->get('q') ?? '');
+        $type = trim($this->input->get('type') ?? ''); // 'school' or 'university'
+        $limit = min(20, max(5, (int)($this->input->get('limit') ?? 10)));
+
+        $results = [];
+
+        try {
+            // Search school students
+            if (empty($type) || $type === 'school') {
+                if ($this->db->table_exists(db_prefix() . 'school_students')) {
+                    $this->db->select('
+                        school_internal_id as internal_id,
+                        name,
+                        school_grade as grade,
+                        city,
+                        \'school\' as type
+                    ');
+                    $this->db->from(db_prefix() . 'school_students');
+                    $this->db->where('school_internal_id IS NOT NULL');
+                    $this->db->where('school_internal_id !=', '');
+                    
+                    if ($query) {
+                        $this->db->group_start();
+                        $this->db->like('name', $query);
+                        $this->db->or_like('school_internal_id', $query);
+                        $this->db->group_end();
+                    }
+                    
+                    $this->db->order_by('name', 'ASC');
+                    $this->db->limit($limit);
+                    
+                    $school_results = $this->db->get()->result_array();
+                    
+                    foreach ($school_results as $student) {
+                        $results[] = [
+                            'internal_id' => $student['internal_id'],
+                            'name' => $student['name'],
+                            'display' => $student['name'] . ' (Grade ' . $student['grade'] . ') - ' . ($student['city'] ?? 'N/A'),
+                            'type' => 'school',
+                            'grade' => 'Grade ' . $student['grade'],
+                            'location' => $student['city'] ?? 'N/A'
+                        ];
+                    }
+                }
+            }
+
+            // Search university students
+            if (empty($type) || $type === 'university') {
+                if ($this->db->table_exists(db_prefix() . 'university_students')) {
+                    $this->db->select('
+                        us.university_internal_id as internal_id,
+                        us.name,
+                        us.university_year_of_study as year_of_study,
+                        us.city,
+                        un.name as university_name,
+                        \'university\' as type
+                    ');
+                    $this->db->from(db_prefix() . 'university_students us');
+                    $this->db->join(db_prefix() . 'university_name un', 'un.id = us.university_name_id', 'left');
+                    $this->db->where('us.university_internal_id IS NOT NULL');
+                    $this->db->where('us.university_internal_id !=', '');
+                    
+                    if ($query) {
+                        $this->db->group_start();
+                        $this->db->like('us.name', $query);
+                        $this->db->or_like('us.university_internal_id', $query);
+                        $this->db->group_end();
+                    }
+                    
+                    $this->db->order_by('us.name', 'ASC');
+                    $this->db->limit($limit);
+                    
+                    $university_results = $this->db->get()->result_array();
+                    
+                    foreach ($university_results as $student) {
+                        $results[] = [
+                            'internal_id' => $student['internal_id'],
+                            'name' => $student['name'],
+                            'display' => $student['name'] . ' (Year ' . $student['year_of_study'] . ') - ' . ($student['university_name'] ?? 'N/A'),
+                            'type' => 'university',
+                            'grade' => 'Year ' . $student['year_of_study'],
+                            'university' => $student['university_name'] ?? 'N/A',
+                            'location' => $student['city'] ?? 'N/A'
+                        ];
+                    }
+                }
+            }
+
+            echo json_encode([
+                'success' => true,
+                'results' => $results
+            ]);
+            
+        } catch (Exception $e) {
+            log_message('error', 'Error searching students: ' . $e->getMessage());
+            echo json_encode([
+                'success' => false,
+                'message' => 'Error searching students'
+            ]);
+        }
+    }
+
+    /**
+     * Get student details by internal ID (for modals/details view)
+     */
+    public function get_student_details()
+    {
+        if (!has_permission('student_sponsor_portal', '', 'view')) {
+            echo json_encode(['success' => false, 'message' => 'Access denied']);
+            return;
+        }
+
+        $internal_id = trim($this->input->get('internal_id') ?? '');
+        $type = trim($this->input->get('type') ?? '');
+
+        if (empty($internal_id) || empty($type)) {
+            echo json_encode(['success' => false, 'message' => 'Missing parameters']);
+            return;
+        }
+
+        try {
+            $student = null;
+
+            if ($type === 'school' && $this->db->table_exists(db_prefix() . 'school_students')) {
+                $this->db->select('*');
+                $this->db->from(db_prefix() . 'school_students');
+                $this->db->where('school_internal_id', $internal_id);
+                $student = $this->db->get()->row_array();
+                
+                if ($student) {
+                    $student['type'] = 'school';
+                    $student['grade_display'] = 'Grade ' . ($student['school_grade'] ?? 'N/A');
+                }
+                
+            } elseif ($type === 'university' && $this->db->table_exists(db_prefix() . 'university_students')) {
+                $this->db->select('us.*, un.name as university_name, up.name as program_name');
+                $this->db->from(db_prefix() . 'university_students us');
+                $this->db->join(db_prefix() . 'university_name un', 'un.id = us.university_name_id', 'left');
+                $this->db->join(db_prefix() . 'university_program up', 'up.id = us.university_program_id', 'left');
+                $this->db->where('us.university_internal_id', $internal_id);
+                $student = $this->db->get()->row_array();
+                
+                if ($student) {
+                    $student['type'] = 'university';
+                    $student['grade_display'] = 'Year ' . ($student['university_year_of_study'] ?? 'N/A');
+                }
+            }
+
+            if ($student) {
+                echo json_encode([
+                    'success' => true,
+                    'student' => $student
+                ]);
+            } else {
+                echo json_encode([
+                    'success' => false,
+                    'message' => 'Student not found'
+                ]);
+            }
+            
+        } catch (Exception $e) {
+            log_message('error', 'Error getting student details: ' . $e->getMessage());
+            echo json_encode([
+                'success' => false,
+                'message' => 'Error loading student details'
+            ]);
+        }
+    }
     public function ajax_bank_create()
     {
         if (!is_admin() && !has_permission('student_sponsor_portal','','create')) {
@@ -2792,26 +3114,102 @@ class Student_sponsor_portal extends AdminController
         $this->load->view('transactions/list', $data);
     }
 
-    public function transaction($id = null)
-    {
-        if ($id) {
-            if (!has_permission('student_sponsor_portal', '', 'edit')) access_denied('student_sponsor_portal');
-            $data['txn'] = $this->txn_model->get($id);
-            if (!$data['txn']) show_404();
-            $data['title'] = 'Edit Transaction';
-        } else {
-            if (!has_permission('student_sponsor_portal', '', 'create')) access_denied('student_sponsor_portal');
-            $data['txn'] = null;
-            $data['title'] = 'Create Transaction';
+    // public function transaction($id = null)
+    // {
+    //     if ($id) {
+    //         if (!has_permission('student_sponsor_portal', '', 'edit')) access_denied('student_sponsor_portal');
+    //         $data['txn'] = $this->txn_model->get($id);
+    //         if (!$data['txn']) show_404();
+    //         $data['title'] = 'Edit Transaction';
+    //     } else {
+    //         if (!has_permission('student_sponsor_portal', '', 'create')) access_denied('student_sponsor_portal');
+    //         $data['txn'] = null;
+    //         $data['title'] = 'Create Transaction';
+    //     }
+
+    //     $CI = &get_instance();
+    //     $data['sponsors']     = $CI->db->select('id,name')->order_by('name')->get('tblsponsor_records')->result();
+    //     $data['schools']      = $CI->db->select('id,name')->order_by('name')->get('tblschool_students')->result();
+    //     $data['universities'] = $CI->db->select('id,name')->order_by('name')->get('tbluniversity_students')->result();
+
+    //     $this->load->view('transactions/form', $data);
+    // }
+    // In your Student_sponsor_portal controller
+// Make sure your transaction method includes this:
+
+public function transaction($id = null)
+{
+    $this->load->model('student_sponsor_portal/sponsor_transactions_model');
+    
+    if ($id && is_numeric($id)) {
+        // Load transaction data
+        $txn = $this->sponsor_transactions_model->get($id);
+        
+        if (!$txn) {
+            show_404();
         }
-
-        $CI = &get_instance();
-        $data['sponsors']     = $CI->db->select('id,name')->order_by('name')->get('tblsponsor_records')->result();
-        $data['schools']      = $CI->db->select('id,name')->order_by('name')->get('tblschool_students')->result();
-        $data['universities'] = $CI->db->select('id,name')->order_by('name')->get('tbluniversity_students')->result();
-
-        $this->load->view('transactions/form', $data);
+        
+        // Load payments data (your existing code)
+        if (!isset($payments)) {
+            $this->db->where('transaction_id', (int)$txn->id);
+            $this->db->order_by('payment_date', 'DESC');
+            $payments = $this->db->get(db_prefix().'sponsor_payments')->result();
+        }
+        
+        // Load email template - ADD THIS LINE
+        $email_template = $this->sponsor_transactions_model->get_due_email_template($id);
+        
+        // Debug: Add this temporarily to see if it's working
+        // Remove this after testing
+        if ($email_template) {
+            log_message('debug', 'Email template loaded: ' . print_r($email_template, true));
+        } else {
+            log_message('debug', 'Email template is NULL for transaction ID: ' . $id);
+        }
+        
+        // Check for editing payment (your existing code)
+        $payment_to_edit = null;
+        if (isset($_GET['edit_payment'])) {
+            $edit_id = (int) $_GET['edit_payment'];
+            $payment_to_edit = $this->db->where('id', $edit_id)->get(db_prefix().'sponsor_payments')->row();
+        }
+        
+        // Pass data to view
+        $data = [
+            'txn' => $txn,
+            'payments' => $payments,
+            'email_template' => $email_template,  // MAKE SURE THIS IS HERE
+            'payment_to_edit' => $payment_to_edit,
+            'title' => 'Transaction Details'
+        ];
+        
+    } else {
+        // New transaction
+        $data = [
+            'txn' => null,
+            'payments' => [],
+            'email_template' => null,
+            'payment_to_edit' => null,
+            'title' => 'New Transaction'
+        ];
     }
+    
+    $this->load->view('student_sponsor_portal/transactions/form', $data);
+}
+public function send_test_email($id)
+{
+    $this->load->model('student_sponsor_portal/sponsor_transactions_model');
+    
+    $result = $this->sponsor_transactions_model->send_due_email($id);
+    
+    if ($result) {
+        set_alert('success', 'Test email sent successfully!');
+    } else {
+        set_alert('danger', 'Failed to send email. Please check the sponsor\'s email address.');
+    }
+    
+    redirect(admin_url('student_sponsor_portal/transaction/'.$id.'?tab=payments'));
+}
 
     public function transaction_save()
     {
@@ -3023,6 +3421,19 @@ class Student_sponsor_portal extends AdminController
         }
         redirect(admin_url('student_sponsor_portal/transaction/'.$transaction_id.'?tab=payments'));
     }
+
+    public function email_preview($id)
+{
+    $this->load->model('student_sponsor_portal/sponsor_transactions_model');
+    $template = $this->sponsor_transactions_model->get_due_email_template($id);
+
+    $data['template'] = $template;
+    $data['title'] = 'Email Preview';
+    $this->load->view('student_sponsor_portal/transaction/'.$transaction_id, $data);
+}
+
+
+
 
 
     /* =================================================================================== */

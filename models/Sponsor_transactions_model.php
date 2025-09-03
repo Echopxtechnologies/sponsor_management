@@ -469,4 +469,103 @@ public function delete_payment(int $payment_id): bool
             ");
         }
     }
+
+    // In your Sponsor_transactions_model.php
+
+// Make sure your method in Sponsor_transactions_model.php looks exactly like this:
+
+// Replace your get_due_email_template method in the model with this:
+
+public function get_due_email_template($transaction_id)
+{
+    $txn = $this->get($transaction_id);
+    if (!$txn) return false;
+
+    // Get sponsor name
+    $sponsor = $this->db->select('name')->where('id', $txn->sponsor_id)->get(db_prefix().'sponsor_records')->row();
+    $sponsor_name = $sponsor ? $sponsor->name : 'Sponsor';
+
+    // Get student name
+    $student_name = '';
+    if ($txn->school_student_id) {
+        $student = $this->db->select('name')->where('id', $txn->school_student_id)->get(db_prefix().'school_students')->row();
+        $student_name = $student ? $student->name : 'Student';
+    } elseif ($txn->university_student_id) {
+        $student = $this->db->select('name')->where('id', $txn->university_student_id)->get(db_prefix().'university_students')->row();
+        $student_name = $student ? $student->name : 'Student';
+    }
+
+    $due_date = $txn->next_payment_due ? date('m/d/Y', strtotime($txn->next_payment_due)) : 'Not Set';
+    $amount_due = $txn->total_amount - $txn->amount_paid;
+    $currency = strtolower($txn->currency);
+
+    $subject = "Reminder: Payment Due on " . $due_date;
+
+    $body = '
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <p style="color: #4a90e2; font-size: 18px; margin-bottom: 20px;">Hello ' . $sponsor_name . ',</p>
+        
+        <p style="color: #333; line-height: 1.6; margin-bottom: 20px;">
+            This is a reminder that your next payment for <strong>' . $student_name . '</strong> is due on <strong>' . $due_date . '</strong>.
+        </p>
+        
+        <table style="width: 100%; border-collapse: collapse; margin: 20px 0; background-color: #f9f9f9;">
+            <thead>
+                <tr style="background-color: #e8e8e8;">
+                    <th style="border: 1px solid #ddd; padding: 12px; text-align: left; font-weight: bold;">Sponsor</th>
+                    <th style="border: 1px solid #ddd; padding: 12px; text-align: left; font-weight: bold;">Student</th>
+                    <th style="border: 1px solid #ddd; padding: 12px; text-align: left; font-weight: bold;">Total</th>
+                    <th style="border: 1px solid #ddd; padding: 12px; text-align: left; font-weight: bold;">Paid</th>
+                    <th style="border: 1px solid #ddd; padding: 12px; text-align: left; font-weight: bold;">Balance</th>
+                    <th style="border: 1px solid #ddd; padding: 12px; text-align: left; font-weight: bold;">Due Date</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td style="border: 1px solid #ddd; padding: 12px;">' . $sponsor_name . '</td>
+                    <td style="border: 1px solid #ddd; padding: 12px;">' . $student_name . '</td>
+                    <td style="border: 1px solid #ddd; padding: 12px;">' . number_format($txn->total_amount, 2) . '</td>
+                    <td style="border: 1px solid #ddd; padding: 12px;">' . number_format($txn->amount_paid, 2) . ' ' . $currency . '</td>
+                    <td style="border: 1px solid #ddd; padding: 12px;">' . number_format($amount_due, 2) . '</td>
+                    <td style="border: 1px solid #ddd; padding: 12px;">' . $due_date . '</td>
+                </tr>
+            </tbody>
+        </table>
+        
+        <p style="color: #333; line-height: 1.6; margin-top: 20px;">
+            Thank you,<br>
+            <strong>' . get_option('companyname') . '</strong>
+        </p>
+    </div>';
+
+    return [
+        'subject' => $subject,
+        'body'    => $body,
+    ];
+}
+
+public function send_due_email($transaction_id)
+{
+    $CI =& get_instance();
+    $CI->load->model('emails_model');
+
+    $txn = $this->get($transaction_id);
+    if (!$txn) return false;
+
+    $template = $this->get_due_email_template($transaction_id);
+    if (!$template) return false;
+
+    // Fetch sponsor email
+    $sponsor = $this->db->select('email')->where('id', $txn->sponsor_id)->get(db_prefix().'sponsor_records')->row();
+    if (!$sponsor || empty($sponsor->email)) {
+        return false;
+    }
+
+    return $CI->emails_model->send_simple_email(
+        $sponsor->email,
+        $template['subject'],
+        $template['body']
+    );
+}
+
 }

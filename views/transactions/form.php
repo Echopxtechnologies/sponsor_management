@@ -309,13 +309,47 @@
                 <?php endif; ?>
               </div>
             </div><!-- /.tab-content -->
+                    
+
+             
+                <?php if ($txn && isset($email_template) && $email_template): ?>
+                  <hr>
+                  <h4>Due Payment Email Preview</h4>
+                  <div class="row">
+                    <div class="col-md-12">
+                      <div class="panel panel-info">
+                        <div class="panel-heading">
+                          <strong>Subject:</strong> <?php echo html_escape($email_template['subject']); ?>
+                        </div>
+                        <div class="panel-body">
+                          <?php echo $email_template['body']; ?>
+                        </div>
+                      </div>
+                    </div>
+                    
+                  </div>
+                  <div class="col-md-4">
+                      <div class="well">
+                        <h5>Send Email</h5>
+                        <p class="text-muted">Send due payment reminder to sponsor.</p>
+                        <a href="<?php echo admin_url('student_sponsor_portal/send_test_email/'.(int)$txn->id); ?>" 
+                           class="btn btn-success btn-block"
+                           onclick="return confirm('Send due payment reminder email now?');">
+                          <i class="fa fa-envelope"></i> Send Email
+                        </a>
+                      </div>
+                    </div>
+                <?php endif; ?>   <!-- THIS WAS MISSING! -->
+
 
           </div>
         </div>
       </div>
     </div>
   </div>
+  
 </div>
+
 <?php init_tail(); ?>
 
 <!-- Select2 assets AFTER init_tail() -->
