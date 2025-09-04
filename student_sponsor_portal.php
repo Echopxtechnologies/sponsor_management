@@ -8,6 +8,15 @@ Requires at least: 2.3.2
 */
 defined('BASEPATH') or exit('No direct script access allowed');
 
+
+hooks()->add_action('after_cron_run', function () {
+    $CI = &get_instance();
+    $CI->load->model('student_sponsor_portal/sponsor_transactions_model');
+    $res = $CI->sponsor_transactions_model->run_due_reminder_cron();
+    log_message('info', '[SSP] due_reminder_cron: before=' . $res['sent_before'] . ', due_day=' . $res['sent_due_day']);
+});
+
+
 /* ---------------- Activation / Deactivation ---------------- */
 register_activation_hook('student_sponsor_portal', 'student_sponsor_portal_activation_hook');
 register_deactivation_hook('student_sponsor_portal', 'student_sponsor_portal_deactivation_hook');

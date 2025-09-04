@@ -80,39 +80,57 @@
                   </div>
 
                   <div class="row">
-                    <div class="col-md-6"><div class="form-group">
-                      <label>Last Payment Date</label>
-                      <input type="date" class="form-control" 
-                        name="last_payment_date" 
-                        value="<?php echo $txn ? html_escape($txn->last_payment_date) : ''; ?>" 
-                        >
-
-                    </div></div>
-                    <div class="col-md-6"><div class="form-group">
-                      <label>Next Payment Due</label>
-                      <input type="date" class="form-control" 
-                        name="next_payment_due" 
-                        value="<?php echo $txn ? html_escape($txn->next_payment_due) : ''; ?>" 
-                        <?php echo ($txn && $txn->payment_type === 'custom') ? '' : 'readonly'; ?>>
-                    </div></div>
+                    <div class="col-md-6">
+                      <div class="form-group">
+                        <label>Last Payment Date</label>
+                        <input type="date" class="form-control" 
+                          name="last_payment_date" 
+                          value="<?php echo $txn ? html_escape($txn->last_payment_date) : ''; ?>"readonly>
+                      </div>
+                    </div>
+                    <div class="col-md-6">
+                      <div class="form-group">
+                        <label for="next_payment_due">Next Payment Due</label>
+                        <input id="next_payment_due" type="text" name="next_payment_due"
+                               value="<?= _d($txn->next_payment_due ?? '') ?>" readonly class="form-control">
+                      </div>
+                    </div>
                   </div>
 
-
+                  <!-- Toggle (unchecked checkboxes don't submit -> add hidden 0) -->
+                  <input type="hidden" name="due_reminder_active" value="0">
                   <div class="checkbox checkbox-primary">
-                    <input type="checkbox" id="renewal_reminder_active" name="renewal_reminder_active" <?php echo ($txn && (int)$txn->renewal_reminder_active===1)?'checked':''; ?>>
-                    <label for="renewal_reminder_active">Renewal Reminder Active</label>
+                    <input id="due_reminder_active" type="checkbox" name="due_reminder_active" value="1"
+                           <?= !empty($txn->due_reminder_active) ? 'checked' : '' ?>>
+                    <label for="due_reminder_active">Due Reminder Active</label>
                   </div>
 
                   <div class="row">
-                    <div class="col-md-4"><div class="form-group">
-                      <label>Days Before End</label>
-                      <input type="number" class="form-control" name="renewal_reminder_days_before" value="<?php echo $txn ? (int)$txn->renewal_reminder_days_before : 15; ?>">
-                    </div></div>
-                    
-                    <div class="col-md-4" style="margin-top:28px;">
-                      <div class="checkbox checkbox-primary">
-                        <input type="checkbox" id="renewal_reminder_sent" name="renewal_reminder_sent" <?php echo ($txn && (int)$txn->renewal_reminder_sent===1)?'checked':''; ?>>
-                        <label for="renewal_reminder_sent">Renewal Reminder Sent</label>
+                    <div class="col-md-4">
+                      <div class="form-group">
+                        <label for="due_reminder_days_before">Days Before Due</label>
+                        <input id="due_reminder_days_before" type="number" name="due_reminder_days_before" min="0"
+                               value="<?= isset($txn->due_reminder_days_before) ? (int)$txn->due_reminder_days_before : 15 ?>"
+                               class="form-control">
+                      </div>
+                    </div>
+                    <div class="col-md-8" style="margin-top:28px;">
+                      <!-- Read-only status flags -->
+                      <div class="row">
+                        <div class="col-md-6">
+                          <div class="checkbox checkbox-primary">
+                            <input id="due_reminder_sent" type="checkbox"
+                                   <?= ($txn && (int)$txn->due_reminder_sent === 1) ? 'checked' : '' ?> disabled>
+                            <label for="due_reminder_sent">X-days-before Email Sent</label>
+                          </div>
+                        </div>
+                        <div class="col-md-6">
+                          <div class="checkbox checkbox-primary">
+                            <input id="due_day_email_sent" type="checkbox"
+                                   <?= ($txn && !empty($txn->due_day_email_sent)) ? 'checked' : '' ?> disabled>
+                            <label for="due_day_email_sent">Due-Day Email Sent</label>
+                          </div>
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -271,48 +289,45 @@
                       </div>
                     </form>
                   <?php endif; ?>
+
+                  <!-- EMAIL PREVIEW SECTION - MOVED INSIDE PAYMENTS TAB -->
+                  <?php if (isset($email_template) && $email_template): ?>
+                    <hr>
+                    <h4>Due Payment Email Preview</h4>
+                    <div class="row">
+                      <div class="col-md-8">
+                        <div class="panel panel-info">
+                          <div class="panel-heading">
+                            <strong>Subject:</strong> <?php echo html_escape($email_template['subject']); ?>
+                          </div>
+                          <div class="panel-body">
+                            <?php echo $email_template['body']; ?>
+                          </div>
+                        </div>
+                      </div>
+                      <div class="col-md-4">
+                        <div class="well">
+                          <h5>Send Email</h5>
+                          <p class="text-muted">Send due payment reminder to sponsor.</p>
+                          <a href="<?php echo admin_url('student_sponsor_portal/send_test_email/'.(int)$txn->id); ?>" 
+                             class="btn btn-success btn-block"
+                             onclick="return confirm('Send due payment reminder email now?');">
+                            <i class="fa fa-envelope"></i> Send Email
+                          </a>
+                        </div>
+                      </div>
+                    </div>
+                  <?php endif; ?>
+
                 <?php endif; ?>
               </div>
             </div><!-- /.tab-content -->
-                    
-
-             
-                <?php if ($txn && isset($email_template) && $email_template): ?>
-                  <hr>
-                  <h4>Due Payment Email Preview</h4>
-                  <div class="row">
-                    <div class="col-md-12">
-                      <div class="panel panel-info">
-                        <div class="panel-heading">
-                          <strong>Subject:</strong> <?php echo html_escape($email_template['subject']); ?>
-                        </div>
-                        <div class="panel-body">
-                          <?php echo $email_template['body']; ?>
-                        </div>
-                      </div>
-                    </div>
-                    
-                  </div>
-                  <div class="col-md-4">
-                      <div class="well">
-                        <h5>Send Email</h5>
-                        <p class="text-muted">Send due payment reminder to sponsor.</p>
-                        <a href="<?php echo admin_url('student_sponsor_portal/send_test_email/'.(int)$txn->id); ?>" 
-                           class="btn btn-success btn-block"
-                           onclick="return confirm('Send due payment reminder email now?');">
-                          <i class="fa fa-envelope"></i> Send Email
-                        </a>
-                      </div>
-                    </div>
-                <?php endif; ?>   <!-- THIS WAS MISSING! -->
-
 
           </div>
         </div>
       </div>
     </div>
   </div>
-  
 </div>
 
 <?php init_tail(); ?>

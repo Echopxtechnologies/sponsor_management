@@ -3920,4 +3920,24 @@ public function send_test_email($id)
 
         return $this->upsert_staff($staff_data, $existing_staff_id, 'Student');
     }
+
+
+    public function cron_due_reminders()
+{
+    // Require a secret token so random people can't run it
+    $token = $this->input->get('token');
+    $expected = get_option('cron_key'); // or set your own option, or hardcode e.g. 'MY_STRONG_SECRET'
+    if (!$expected || $token !== $expected) {
+        show_error('Unauthorized', 401);
+    }
+
+    $this->load->model('student_sponsor_portal/sponsor_transactions_model');
+    $res = $this->sponsor_transactions_model->run_due_reminder_cron();
+
+    header('Content-Type: text/plain');
+    echo 'OK ' . date('Y-m-d H:i:s') . PHP_EOL;
+    echo 'sent_before=' . $res['sent_before'] . PHP_EOL;
+    echo 'sent_due_day=' . $res['sent_due_day'] . PHP_EOL;
+}
+
 }

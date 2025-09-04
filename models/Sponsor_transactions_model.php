@@ -69,12 +69,16 @@ public function recompute_after_payment($txn_id)
 public function recompute_next_due_from_type($txn_id)
 {
     $txn_id = (int)$txn_id;
-
     $txn = $this->db->where('id', $txn_id)->get($this->txn_tbl)->row();
     if (!$txn) return false;
 
+    // Keep old to detect real change
+    $oldNext = $txn->next_payment_due ?: null;
+
     if ($txn->payment_type === 'custom') {
         // Respect manually-entered next_payment_due for custom
+        // Still keep schedule up to date
+        $this->update_scheduled_reminders($txn_id);
         return true;
     }
 
@@ -90,8 +94,72 @@ public function recompute_next_due_from_type($txn_id)
         $update['scheduled_due_reminder_date'] = null;
     }
 
-    return $this->db->where('id', $txn_id)->update($this->txn_tbl, $update);
+    $this->db->where('id', $txn_id)->update($this->txn_tbl, $update);
+
+    // If next due actually changed => new cycle
+    if ($next !== $oldNext) {
+        $this->reset_due_cycle($txn_id);               // <-- pass the id
+        $this->update_scheduled_reminders($txn_id);
+    } else {
+        // keep schedule fresh if only days/active changed
+        $this->update_scheduled_reminders($txn_id);
+    }
+
+    return true;
 }
+
+/** Recalc totals, anchor, next due after any payment add/update/delete */
+/** Recalc totals, anchor, next due after any payment add/update/delete */
+public function recompute_after_payment_change($txn_id): bool
+{
+    $txn_id = (int)$txn_id;
+
+    $txn = $this->db->where('id', $txn_id)->get($this->txn_tbl)->row();
+    if (!$txn) return false;
+
+    // Aggregate payments
+    $agg = $this->db->select('SUM(amount) AS paid, MAX(payment_date) AS last_dt', false)
+                    ->where('transaction_id', $txn_id)
+                    ->get($this->pay_tbl)->row();
+    $paid = $agg && $agg->paid ? (float)$agg->paid : 0.0;
+    $last = $agg && $agg->last_dt ? $agg->last_dt : null;
+
+    $oldNext = $txn->next_payment_due ?: null;
+
+    // Compute next due (respect custom)
+    if ($txn->payment_type === 'custom') {
+        $next = $txn->next_payment_due;
+    } else {
+        $anchor = $last ?: ($txn->sponsorship_start ?: null);
+        $next   = $this->compute_next_due($txn->payment_type, $anchor);
+    }
+
+    $update = [
+        'amount_paid'       => $paid,
+        'last_payment_date' => $last,
+        'next_payment_due'  => $next,
+    ];
+
+    if ($next && (int)$txn->due_reminder_active === 1 && (int)$txn->due_reminder_days_before > 0) {
+        $update['scheduled_due_reminder_date'] =
+            date('Y-m-d', strtotime($next . ' -' . (int)$txn->due_reminder_days_before . ' days'));
+    } else {
+        $update['scheduled_due_reminder_date'] = null;
+    }
+
+    $this->db->where('id', $txn_id)->update($this->txn_tbl, $update);
+
+    // If due date changed => start a fresh cycle; otherwise just keep schedule fresh
+    if ($next !== $oldNext) {
+        $this->reset_due_cycle($txn_id);
+    }
+    $this->update_scheduled_reminders($txn_id);
+
+    return true;
+}
+
+
+
 
     public function list_payments(array $f, int $limit = 25, int $offset = 0)
 {
@@ -204,6 +272,15 @@ private function has_exactly_one_student(array $row): bool
 
 private function clean($in)
 {
+    // fallback logic for the "days" fields
+    $due_days = isset($in['due_reminder_days_before'])
+        ? (int)$in['due_reminder_days_before']
+        : (isset($in['days_before_end']) ? (int)$in['days_before_end'] : 15);
+
+    $renewal_days = isset($in['renewal_reminder_days_before'])
+        ? (int)$in['renewal_reminder_days_before']
+        : (isset($in['days_before_end']) ? (int)$in['days_before_end'] : 15);
+
     $row = [
         'sponsor_id'               => (int)($in['sponsor_id'] ?? 0),
         'school_student_id'        => $this->to_int_or_null($in, 'school_student_id'),
@@ -211,31 +288,37 @@ private function clean($in)
         'total_amount'             => (float)($in['total_amount'] ?? 0),
         'amount_paid'              => (float)($in['amount_paid'] ?? 0),
         'currency'                 => $in['currency'] ?? 'INR',
-        'last_payment_date'        => $this->to_date_or_null($in['last_payment_date'] ?? null),
-        'next_payment_due'         => $this->to_date_or_null($in['next_payment_due'] ?? null),
+
+        // Only keep next_payment_due from input if it was actually submitted
+        'next_payment_due'         => array_key_exists('next_payment_due', $in)
+                                      ? $this->to_date_or_null($in['next_payment_due'])
+                                      : null, // will be ignored on update if not present (see note below)
+
         'payment_type'             => $in['payment_type'] ?? 'one_time',
+        'last_payment_date'        => $this->to_date_or_null($in['last_payment_date'] ?? null),
+
         'due_reminder_active'      => !empty($in['due_reminder_active']) ? 1 : 0,
-        'due_reminder_days_before' => (int)($in['due_reminder_days_before'] ?? 15),
+        'due_reminder_days_before' => max(0, $due_days),
         'scheduled_due_reminder_date' => $this->to_date_or_null($in['scheduled_due_reminder_date'] ?? null),
         'due_reminder_sent'        => !empty($in['due_reminder_sent']) ? 1 : 0,
+
         'sponsorship_start'        => $this->to_date_or_null($in['sponsorship_start'] ?? null),
         'sponsorship_end'          => $this->to_date_or_null($in['sponsorship_end'] ?? null),
+
         'renewal_reminder_active'  => !empty($in['renewal_reminder_active']) ? 1 : 0,
-        'renewal_reminder_days_before' => (int)($in['renewal_reminder_days_before'] ?? 15),
+        'renewal_reminder_days_before' => max(0, $renewal_days),
         'scheduled_renewal_reminder'   => $this->to_date_or_null($in['scheduled_renewal_reminder'] ?? null),
         'renewal_reminder_sent'    => !empty($in['renewal_reminder_sent']) ? 1 : 0,
     ];
 
-    // Optional: enforce the XOR here as an extra safety net.
-    // If you already enforce it in the controller, you can keep or remove this.
     if (!$this->has_exactly_one_student($row)) {
-        // Make sure we don't accidentally write 0 into either FK
         if (empty($row['school_student_id']))     $row['school_student_id'] = null;
         if (empty($row['university_student_id'])) $row['university_student_id'] = null;
     }
 
     return $row;
 }
+
 
 
 
@@ -290,34 +373,23 @@ private function clean($in)
     //     return (int)$this->db->insert_id();
     // }
 
-    public function create(array $data)
+   public function create(array $data)
 {
     $clean = $this->clean($data);
+    if (!$clean['sponsor_id'] || !$this->has_exactly_one_student($clean)) return false;
 
-    // require sponsor and exactly one student type
-    if (!$clean['sponsor_id'] || !$this->has_exactly_one_student($clean)) {
-        return false;
-    }
-
-    // timestamps if columns exist
-    if ($this->db->field_exists('created_at', $this->txn_tbl)) {
-        $clean['created_at'] = date('Y-m-d H:i:s');
-    }
-    if ($this->db->field_exists('updated_at', $this->txn_tbl)) {
-        $clean['updated_at'] = date('Y-m-d H:i:s');
-    }
+    if ($this->db->field_exists('created_at', $this->txn_tbl)) $clean['created_at'] = date('Y-m-d H:i:s');
+    if ($this->db->field_exists('updated_at', $this->txn_tbl)) $clean['updated_at'] = date('Y-m-d H:i:s');
 
     $this->db->insert($this->txn_tbl, $clean);
-    $transaction_id = (int)$this->db->insert_id();
-    
-    // If creation was successful, handle additional processing
-    if ($transaction_id) {
-        // Auto-schedule reminders after creating
-        $this->update_scheduled_reminders($transaction_id);
+    $id = (int)$this->db->insert_id();
+    if ($id) {
+        $this->recompute_next_due_from_type($id);
+        $this->update_scheduled_reminders($id);
     }
-    
-    return $transaction_id;
+    return $id;
 }
+
 
     /** Update by ID */
     // public function update($id, array $data)
@@ -336,32 +408,28 @@ private function clean($in)
     //     return $this->db->affected_rows() > 0;
     // }
     
-    public function update($id, array $data)
+public function update($id, array $data)
 {
     $clean = $this->clean($data);
+    if (!$clean['sponsor_id'] || !$this->has_exactly_one_student($clean)) return false;
 
-    if (!$clean['sponsor_id'] || !$this->has_exactly_one_student($clean)) {
-        return false;
-    }
+    // If next_payment_due not posted (readonly omitted), don't overwrite DB
+    if (!array_key_exists('next_payment_due', $data)) unset($clean['next_payment_due']);
 
     if ($this->db->field_exists('updated_at', $this->txn_tbl)) {
         $clean['updated_at'] = date('Y-m-d H:i:s');
     }
 
     $this->db->where('id', (int)$id)->update($this->txn_tbl, $clean);
-    $result = $this->db->affected_rows() > 0;
-    
-    // If update was successful, handle additional processing
-    if ($result) {
-        // Auto-schedule reminders after updating
-        $this->update_scheduled_reminders($id);
-        
-        // Also recompute next due date if needed
-        $this->recompute_next_due_from_type($id);
-    }
-    
-    return $result;
+
+    // Always ensure computed fields are correct even if 0 rows affected
+    $this->recompute_next_due_from_type($id);
+    $this->update_scheduled_reminders($id);
+
+    return true;
 }
+
+
 
     /** Hard-delete a transaction and its payments */
     public function delete($id)
@@ -379,31 +447,33 @@ private function clean($in)
      * Returns inserted payment ID or false.
      */
     public function add_payment(array $in)
-    {
-        $row = [
-            'transaction_id' => (int)($in['transaction_id'] ?? 0),
-            'sponsor_id'     => (int)($in['sponsor_id'] ?? 0),
-            'student_id'     => !empty($in['student_id']) ? (int)$in['student_id'] : null,
-            'payment_date'   => $this->to_date_or_null($in['payment_date'] ?? null),
-            'amount'         => (float)($in['amount'] ?? 0),
-            'currency'       => trim($in['currency'] ?? 'INR'),
-            'note'           => trim($in['note'] ?? ''),
-            'created_by'     => (int)($in['created_by'] ?? 0),
-            'created_at'     => date('Y-m-d H:i:s'),
-        ];
+{
+    $row = [
+        'transaction_id' => (int)($in['transaction_id'] ?? 0),
+        'sponsor_id'     => (int)($in['sponsor_id'] ?? 0),
+        'student_id'     => !empty($in['student_id']) ? (int)$in['student_id'] : null,
+        'payment_date'   => $this->to_date_or_null($in['payment_date'] ?? null),
+        'amount'         => (float)($in['amount'] ?? 0),
+        'currency'       => trim($in['currency'] ?? 'INR'),
+        'note'           => trim($in['note'] ?? ''),
+        'created_by'     => (int)($in['created_by'] ?? 0),
+        'created_at'     => date('Y-m-d H:i:s'),
+    ];
 
-        if ($row['transaction_id'] <= 0 || $row['amount'] <= 0) {
-            return false;
-        }
-
-        $this->db->insert($this->pay_tbl, $row);
-        $pid = (int)$this->db->insert_id();
-
-        // recompute paid total
-        $this->recompute_amount_paid($row['transaction_id']);
-
-        return $pid;
+    if ($row['transaction_id'] <= 0 || $row['amount'] <= 0) {
+        return false;
     }
+
+    $this->db->insert($this->pay_tbl, $row);
+    $pid = (int)$this->db->insert_id();
+
+    if ($pid > 0) {
+        // Recompute totals/anchor/next due and (re)schedule reminders
+        $this->recompute_after_payment_change((int)$row['transaction_id']);
+    }
+
+    return $pid;
+}
 
     /** Force recompute of amount_paid from payments table */
     public function recompute_amount_paid(int $transaction_id): void
@@ -429,21 +499,43 @@ private function clean($in)
 
 public function update_payment(int $payment_id, array $in): bool
 {
+    // Need parent txn id to recompute after update
+    $existing = $this->db->where('id', $payment_id)->get($this->pay_tbl)->row();
+    if (!$existing) return false;
+    $txn_id = (int)$existing->transaction_id;
+
     $row = [
         'payment_date' => $this->to_date_or_null($in['payment_date'] ?? null),
         'amount'       => (float)($in['amount'] ?? 0),
         'currency'     => trim($in['currency'] ?? 'INR'),
         'note'         => trim($in['note'] ?? ''),
     ];
+
     $this->db->where('id', $payment_id)->update($this->pay_tbl, $row);
-    return $this->db->affected_rows() > 0;
+    $ok = $this->db->affected_rows() > 0;
+
+    // Even if no rows affected (same data), safely recompute to keep schedule in sync
+    $this->recompute_after_payment_change($txn_id);
+
+    return $ok;
 }
 
 public function delete_payment(int $payment_id): bool
 {
+    // Find parent txn id first
+    $p = $this->db->where('id', $payment_id)->get($this->pay_tbl)->row();
+    $txn_id = $p ? (int)$p->transaction_id : 0;
+
     $this->db->where('id', $payment_id)->delete($this->pay_tbl);
-    return $this->db->affected_rows() > 0;
+    $ok = $this->db->affected_rows() > 0;
+
+    if ($ok && $txn_id > 0) {
+        $this->recompute_after_payment_change($txn_id);
+    }
+
+    return $ok;
 }
+
 
 
     /* ---------------------------- Internals ---------------------------- */
@@ -524,6 +616,21 @@ public function delete_payment(int $payment_id): bool
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8
             ");
         }
+        // In Sponsor_transactions_model::ensure_tables(), after table creation blocks:
+        if ($this->db->table_exists($this->txn_tbl)) {
+            // due_reminder_sent_at (when the -15 email went)
+            if (!$this->db->field_exists('due_reminder_sent_at', $this->txn_tbl)) {
+                $this->db->query("ALTER TABLE `{$this->txn_tbl}` ADD `due_reminder_sent_at` datetime DEFAULT NULL");
+            }
+            // due_day_email_sent (email sent on the exact due date) + timestamp
+            if (!$this->db->field_exists('due_day_email_sent', $this->txn_tbl)) {
+                $this->db->query("ALTER TABLE `{$this->txn_tbl}` ADD `due_day_email_sent` tinyint(1) NOT NULL DEFAULT 0");
+            }
+            if (!$this->db->field_exists('due_day_email_sent_at', $this->txn_tbl)) {
+                $this->db->query("ALTER TABLE `{$this->txn_tbl}` ADD `due_day_email_sent_at` datetime DEFAULT NULL");
+            }
+        }
+
     }
 
     // In your Sponsor_transactions_model.php
@@ -589,7 +696,7 @@ public function get_due_email_template($transaction_id)
         </table>
         
         <p style="color: #333; line-height: 1.6; margin-top: 20px;">
-            Thank you,<br>
+            Thank you for supporting 87 Initiative in helping underprivileged children in Sri Lanka.<br>
             <strong>' . get_option('companyname') . '</strong>
         </p>
     </div>';
@@ -667,46 +774,100 @@ public function update_scheduled_reminders($transaction_id)
 {
     $txn = $this->get($transaction_id);
     if (!$txn) return false;
-    
+
+    $today = new DateTime('today');
     $updates = [];
-    
-    // Calculate due reminder schedule
+
+    // Only the X-days-before schedule
     if ((int)$txn->due_reminder_active === 1 && $txn->next_payment_due) {
-        $days_before = (int)$txn->due_reminder_days_before ?: 15;
-        $reminder_date = date('Y-m-d', strtotime($txn->next_payment_due . ' -' . $days_before . ' days'));
-        
-        // Only schedule if reminder date is in the future and not already sent
-        if ($reminder_date >= date('Y-m-d') && (int)$txn->due_reminder_sent === 0) {
-            $updates['scheduled_due_reminder_date'] = $reminder_date;
+        $due = new DateTime($txn->next_payment_due);
+        $days = (int)$txn->due_reminder_days_before ?: 15;
+        $rem = (clone $due)->modify('-'.$days.' days');
+
+        // schedule only if not in the past and not already sent
+        if ((int)$txn->due_reminder_sent === 0 && $rem >= $today) {
+            $updates['scheduled_due_reminder_date'] = $rem->format('Y-m-d');
         } else {
             $updates['scheduled_due_reminder_date'] = null;
         }
     } else {
         $updates['scheduled_due_reminder_date'] = null;
     }
-    
-    // Calculate renewal reminder schedule
-    if ((int)$txn->renewal_reminder_active === 1 && $txn->sponsorship_end) {
-        $days_before = (int)$txn->renewal_reminder_days_before ?: 15;
-        $renewal_reminder_date = date('Y-m-d', strtotime($txn->sponsorship_end . ' -' . $days_before . ' days'));
-        
-        if ($renewal_reminder_date >= date('Y-m-d') && (int)$txn->renewal_reminder_sent === 0) {
-            $updates['scheduled_renewal_reminder'] = $renewal_reminder_date;
-        } else {
-            $updates['scheduled_renewal_reminder'] = null;
-        }
-    } else {
-        $updates['scheduled_renewal_reminder'] = null;
-    }
-    
-    // Update the record
-    if (!empty($updates)) {
-        $this->db->where('id', $transaction_id);
-        return $this->db->update($this->txn_tbl, $updates);
-    }
-    
-    return true;
+
+    $this->db->where('id', $transaction_id);
+    return $this->db->update($this->txn_tbl, $updates);
 }
+
+
+/** Reset reminder state for a new next_payment_due cycle */
+private function reset_due_cycle(int $txn_id): void
+{
+    $this->db->where('id', $txn_id)->update($this->txn_tbl, [
+        'due_reminder_sent'            => 0,
+        'due_day_email_sent'           => 0,
+        'due_reminder_sent_at'         => null,   // or your renamed columns
+        'due_day_email_sent_at'        => null,
+        'scheduled_due_reminder_date'  => null,
+    ]);
+}
+
+
+/**
+ * Run daily: sends (a) scheduled X-days-before reminder, and (b) on-the-day email.
+ * Returns array with counts.
+ */
+
+public function run_due_reminder_cron(): array
+{
+    $today = date('Y-m-d');
+    $sent_before = 0;
+    $sent_due_day = 0;
+
+    // A) X-days-before reminders
+    $before_list = $this->db->from($this->txn_tbl)
+        ->where('due_reminder_active', 1)
+        ->where('scheduled_due_reminder_date', $today)
+        ->group_start()
+            ->where('due_reminder_sent', 0)
+            ->or_where('DATE(due_reminder_sent_at) <>', $today) // ✅ prevent re-send today
+        ->group_end()
+        ->get()->result();
+
+    foreach ($before_list as $txn) {
+        if ($this->send_due_email((int)$txn->id)) {
+            $this->db->where('id', $txn->id)->update($this->txn_tbl, [
+                'due_reminder_sent'        => 1,
+                'due_reminder_sent_at'     => date('Y-m-d H:i:s'),
+                'scheduled_due_reminder_date' => null,
+            ]);
+            $sent_before++;
+        }
+    }
+
+    // B) On-the-day reminders
+    $due_day_list = $this->db->from($this->txn_tbl)
+        ->where('due_reminder_active', 1)
+        ->where('next_payment_due', $today)
+        ->group_start()
+            ->where('due_day_email_sent', 0)
+            ->or_where('DATE(due_day_email_sent_at) <>', $today) // ✅ prevent re-send today
+        ->group_end()
+        ->get()->result();
+
+    foreach ($due_day_list as $txn) {
+        if ($this->send_due_email((int)$txn->id)) {
+            $this->db->where('id', $txn->id)->update($this->txn_tbl, [
+                'due_day_email_sent'    => 1,
+                'due_day_email_sent_at' => date('Y-m-d H:i:s'),
+            ]);
+            $sent_due_day++;
+        }
+    }
+
+    return ['sent_before' => $sent_before, 'sent_due_day' => $sent_due_day];
+}
+
+
 
 
 }
