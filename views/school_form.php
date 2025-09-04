@@ -5,7 +5,7 @@
     <div class="row">
       <div class="col-md-10 col-md-offset-1">
         <div class="panel_s">
-          <div class="panel-body">
+          <div class="panel-body school-student-form-wrapper">
             <!-- Header -->
             <div class="row">
               <div class="col-md-8">
@@ -60,26 +60,8 @@
             <input type="hidden" name="school_name" id="school_name">
             <input type="hidden" name="calculated_age" id="calculated_age_hidden">
 
-            <?php if(isset($student) && !empty($student)): ?>
-              <?php
-              $essential_fields = ['name','email','contact_no','address','city','school_grade','school_student_dob'];
-              $completed = 0;
-              foreach($essential_fields as $field) { 
-                if (!empty($student[$field])) $completed++; 
-              }
-              $completion = round(($completed / count($essential_fields)) * 100);
-              ?>
-              <div class="alert alert-info" id="profile-completion-wrap">
-                <i class="fa fa-info-circle"></i>
-                Profile Completion: <strong id="profile-completion-value"><?php echo $completion; ?>%</strong>
-                <div class="progress" style="margin-top:5px;">
-                  <div class="progress-bar" id="profile-completion-bar" style="width:<?php echo $completion; ?>%"></div>
-                </div>
-              </div>
-            <?php endif; ?>
-
             <!-- Tab Navigation -->
-            <ul class="nav nav-tabs" role="tablist">
+            <ul class="nav nav-tabs student-form-tabs" role="tablist">
               <li role="presentation" class="active">
                 <a href="#student-info" aria-controls="student-info" role="tab" data-toggle="tab">
                   <i class="fa fa-user"></i> 
@@ -124,7 +106,7 @@
               <?php endif; ?>
             </ul>
 
-            <div class="tab-content" style="margin-top:20px;">
+            <div class="tab-content student-form-content" style="margin-top:0;">
 
               <!-- Student Info Tab -->
               <div role="tabpanel" class="tab-pane active" id="student-info">
@@ -269,31 +251,33 @@
                       </div>
                     </div>
 
-                    <?php if(!isset($is_school_student) || !$is_school_student): ?>
-                      <!-- Admin-only fields -->
-                      <div class="form-group">
-                        <label for="school_id" class="control-label">School Student ID</label>
-                        <input type="text" name="school_id" id="school_id" class="form-control"
-                          value="<?php echo isset($student) ? html_escape($student['school_id'] ?? '') : (isset($old['school_id']) ? html_escape($old['school_id']) : ''); ?>" 
-                          placeholder="Enter school student ID">
-                      </div>
+                    <!-- School ID - Editable for both admin and students -->
+                    <div class="form-group">
+                      <label for="school_id" class="control-label">School Student ID</label>
+                      <input type="text" name="school_id" id="school_id" class="form-control"
+                        value="<?php echo isset($student) ? html_escape($student['school_id'] ?? '') : (isset($old['school_id']) ? html_escape($old['school_id']) : ''); ?>" 
+                        placeholder="Enter school student ID">
+                    </div>
 
+                    <!-- Internal ID - Always read-only display -->
+                    <?php if(isset($student) && !empty($student['school_internal_id'])): ?>
                       <div class="form-group">
-                        <label for="school_internal_id" class="control-label">Internal Student ID</label>
+                        <label class="control-label">Internal Student ID</label>
+                        <p class="form-control-static">
+                          <strong><?php echo html_escape($student['school_internal_id']); ?></strong>
+                        </p>
+                      </div>
+                    <?php endif; ?>
+
+                    <?php if(!isset($is_school_student) || !$is_school_student): ?>
+                      <!-- Admin can still edit internal ID if needed -->
+                      <div class="form-group">
+                        <label for="school_internal_id" class="control-label">Edit Internal Student ID</label>
                         <input type="text" name="school_internal_id" id="school_internal_id" class="form-control"
                           value="<?php echo isset($student) ? html_escape($student['school_internal_id'] ?? '') : (isset($old['school_internal_id']) ? html_escape($old['school_internal_id']) : ''); ?>" 
                           placeholder="Internal tracking ID">
+                        <small class="text-muted">Admin only: Modify internal tracking ID</small>
                       </div>
-                    <?php else: ?>
-                      <!-- Display-only for school students -->
-                      <?php if(isset($student)): ?>
-                        <div class="form-group">
-                          <label class="control-label">Student ID</label>
-                          <p class="form-control-static">
-                            <strong><?php echo html_escape($student['school_internal_id'] ?? 'Not assigned'); ?></strong>
-                          </p>
-                        </div>
-                      <?php endif; ?>
                     <?php endif; ?>
                   </div>
                 </div>
@@ -327,69 +311,58 @@
                       </select>
                     </div>
 
-                    <!-- Grade Mismatch Reason Field (Initially Hidden) -->
+                    <!-- Grade Mismatch Reason Field - Now editable for both admin and students -->
                     <div class="form-group" id="grade-mismatch-group" style="display: none;">
                       <label for="grade_mismatch_reason" class="control-label">Grade Mismatch Reason *</label>
                       <textarea name="grade_mismatch_reason" id="grade_mismatch_reason" class="form-control" rows="3" 
-                        placeholder="Explain why the student's age doesn't match the typical age for their grade"
-                        <?php echo (isset($is_school_student) && $is_school_student) ? 'readonly' : ''; ?>><?php echo isset($student) ? html_escape($student['grade_mismatch_reason'] ?? '') : (isset($old['grade_mismatch_reason']) ? html_escape($old['grade_mismatch_reason']) : ''); ?></textarea>
-                      <?php if(isset($is_school_student) && $is_school_student): ?>
-                        <small class="text-muted">This field can only be modified by administrators.</small>
-                      <?php else: ?>
-                        <small class="text-muted">Required when student's age doesn't match typical age range for the selected grade.</small>
-                      <?php endif; ?>
+                        placeholder="Explain why your age doesn't match the typical age for your grade"><?php echo isset($student) ? html_escape($student['grade_mismatch_reason'] ?? '') : (isset($old['grade_mismatch_reason']) ? html_escape($old['grade_mismatch_reason']) : ''); ?></textarea>
+                      <small class="text-muted">Required when your age doesn't match the typical age range for the selected grade.</small>
                     </div>
 
-                    <?php if(!isset($is_school_student) || !$is_school_student): ?>
-                      <div class="form-group">
-                        <label for="school_type" class="control-label">School Type</label>
-                        <input type="text" name="school_type" id="school_type" class="form-control"
-                          value="<?php echo isset($student) ? html_escape($student['school_type'] ?? '') : (isset($old['school_type']) ? html_escape($old['school_type']) : ''); ?>" 
-                          placeholder="e.g. Type 1AB">
-                      </div>
-                    <?php else: ?>
-                      <!-- Display-only for school students -->
-                      <?php if(isset($student) && !empty($student['school_type'])): ?>
-                        <div class="form-group">
-                          <label class="control-label">School Type</label>
-                          <p class="form-control-static"><?php echo html_escape($student['school_type']); ?></p>
-                        </div>
-                      <?php endif; ?>
-                    <?php endif; ?>
+                    <!-- School Type - Editable for both admin and students -->
+                    <div class="form-group">
+                      <label for="school_type" class="control-label">School Type</label>
+  <select name="school_type" id="school_type" class="form-control">
+    <option value="">Select School Type</option>
+    <?php
+      $school_types = ['Type 1AB', 'Type 1C', 'Type 2', 'Type 3'];
+      $selected_type = isset($student) ? ($student['school_type'] ?? '') : (isset($old['school_type']) ? $old['school_type'] : '');
+      
+      foreach($school_types as $type) {
+        $is_selected = ($selected_type === $type) ? 'selected' : '';
+        echo '<option value="' . html_escape($type) . '" ' . $is_selected . '>' . html_escape($type) . '</option>';
+      }
+    ?>
+  </select>
+                    </div>
                   </div>
 
                   <div class="col-md-6">
+                    <!-- School Name - Editable for both admin and students with add button -->
                     <div class="form-group">
                       <label for="school_name_id" class="control-label">School Name</label>
+                      <div class="school-select-wrapper">
+                        <select id="school_name_id" name="school_name_id" class="form-control selectpicker" data-live-search="true" data-none-selected-text="Select School">
+                          <option value="">Select School</option>
+                          <?php if(!empty($schools)): foreach($schools as $row): ?>
+                            <?php
+                              $sid   = (int)($row['id'] ?? 0);
+                              $sname = (string)($row['name'] ?? '');
+                              $school_selected = (isset($student) && (int)($student['school_name_id'] ?? 0) === $sid) ||
+                                               (isset($old['school_name_id']) && (int)$old['school_name_id'] === $sid);
+                            ?>
+                            <option value="<?php echo $sid; ?>" data-name="<?php echo html_escape($sname); ?>"
+                              <?php echo $school_selected ? 'selected' : ''; ?>>
+                              <?php echo html_escape($sname); ?>
+                            </option>
+                          <?php endforeach; endif; ?>
+                        </select>
+                        <button type="button" class="btn btn-default btn-sm add-new-btn" data-toggle="modal" data-target="#addSchoolModal" title="Add New School">
+                          <i class="fa fa-plus"></i>
+                        </button>
+                      </div>
                       <?php if(isset($is_school_student) && $is_school_student): ?>
-                        <!-- Display-only for school students -->
-                        <p class="form-control-static">
-                          <strong><?php echo isset($student) ? html_escape($student['school_name'] ?? 'Not assigned') : 'Not assigned'; ?></strong>
-                        </p>
-                        <!-- Hidden field to maintain the value -->
-                        <input type="hidden" name="school_name_id" value="<?php echo isset($student) ? (int)($student['school_name_id'] ?? 0) : 0; ?>">
-                      <?php else: ?>
-                        <!-- Admin version with add button -->
-                        <div class="school-select-wrapper">
-                          <select id="school_name_id" name="school_name_id" class="form-control selectpicker" data-live-search="true" data-none-selected-text="Select School">
-                            <option value="">Select School</option>
-                            <?php if(!empty($schools)): foreach($schools as $row): ?>
-                              <?php
-                                $sid   = (int)($row['id'] ?? 0);
-                                $sname = (string)($row['name'] ?? '');
-                                $school_selected = (isset($student) && (int)($student['school_name_id'] ?? 0) === $sid) ||
-                                                 (isset($old['school_name_id']) && (int)$old['school_name_id'] === $sid);
-                              ?>
-                              <option value="<?php echo $sid; ?>" data-name="<?php echo html_escape($sname); ?>"
-                                <?php echo $school_selected ? 'selected' : ''; ?>>
-                                <?php echo html_escape($sname); ?>
-                              </option>
-                            <?php endforeach; endif; ?>
-                          </select>
-                          <button type="button" class="btn btn-default btn-sm add-new-btn" data-toggle="modal" data-target="#addSchoolModal" title="Add New School">
-                            <i class="fa fa-plus"></i>
-                          </button>
-                        </div>
+                        <small class="text-muted">Select your school from the list or add a new one if it's not listed.</small>
                       <?php endif; ?>
                     </div>
                   </div>
@@ -427,20 +400,6 @@
                     </div>
                   </div>
                 </div>
-
-                <!-- Display sponsorship info for school students (read-only) -->
-                <?php if(isset($student) && !empty($student['school_sponsorship_start_date'])): ?>
-                  <div class="alert alert-info">
-                    <h5><i class="fa fa-heart"></i> Sponsorship Information</h5>
-                    <p><strong>Start Date:</strong> <?php echo date('F j, Y', strtotime($student['school_sponsorship_start_date'])); ?></p>
-                    <?php if(!empty($student['school_sponsorship_end_date'])): ?>
-                      <p><strong>End Date:</strong> <?php echo date('F j, Y', strtotime($student['school_sponsorship_end_date'])); ?></p>
-                    <?php endif; ?>
-                    <?php if(!empty($student['school_introducedby'])): ?>
-                      <p><strong>Introduced By:</strong> <?php echo html_escape($student['school_introducedby']); ?></p>
-                    <?php endif; ?>
-                  </div>
-                <?php endif; ?>
               </div>
               <?php endif; ?>
 
@@ -595,7 +554,7 @@
                 <?php if(isset($student) && !empty($student['id'])): ?>
                   <div class="row">
                     <div class="col-md-12">
-                      <h5><i class="fa fa-upload"></i> Upload Report Card</h5>
+                      <h5 id="repo"><i class="fa fa-upload"></i> Upload Report Card</h5>
                       <hr>
                       <input type="hidden" id="rc_student_school_id" value="<?php echo (int)$student['id']; ?>">
                       <div class="row">
@@ -643,7 +602,7 @@
 
                   <div class="row" style="margin-top: 30px;">
                     <div class="col-md-12">
-                      <h5><i class="fa fa-files-o"></i> My Report Cards</h5>
+                      <h5><i class="fa fa-files-o"></i> <?php echo (isset($is_school_student) && $is_school_student) ? 'My Report Cards' : 'Report Cards'; ?></h5>
                       <hr>
                       <div class="table-responsive">
                         <table class="table table-striped" id="reportCardsTable">
@@ -751,7 +710,7 @@
     </div>
   </div>
 
-  <!-- Modals (Admin Only) -->
+  <!-- Modals (Admin Only - except School Modal) -->
   <?php if(!isset($is_school_student) || !$is_school_student): ?>
   
   <!-- Add Country Modal -->
@@ -776,29 +735,6 @@
         <div class="modal-footer">
           <button type="button" class="btn btn-default" data-dismiss="modal">Cancel</button>
           <button type="button" class="btn btn-primary" id="btnAddCountry" onclick="return addCountry();">Add Country</button>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- Add School Modal -->
-  <div class="modal fade" id="addSchoolModal" tabindex="-1" role="dialog">
-    <div class="modal-dialog modal-sm" role="document">
-      <div class="modal-content">
-        <div class="modal-header">
-          <button type="button" class="close" data-dismiss="modal">&times;</button>
-          <h4 class="modal-title">Add New School</h4>
-        </div>
-        <div class="modal-body">
-          <div class="form-group">
-            <label for="modal_school_name">School Name *</label>
-            <input type="text" id="modal_school_name" class="form-control" required placeholder="Enter school name">
-          </div>
-          <small class="text-muted">This will be created instantly.</small>
-        </div>
-        <div class="modal-footer">
-          <button type="button" class="btn btn-default" data-dismiss="modal">Cancel</button>
-          <button type="button" class="btn btn-primary" id="btnAddSchool" onclick="return addSchool();">Add School</button>
         </div>
       </div>
     </div>
@@ -829,6 +765,29 @@
 
   <?php endif; ?>
 
+  <!-- Add School Modal (Available to both admin and students) -->
+  <div class="modal fade" id="addSchoolModal" tabindex="-1" role="dialog">
+    <div class="modal-dialog modal-sm" role="document">
+      <div class="modal-content">
+        <div class="modal-header">
+          <button type="button" class="close" data-dismiss="modal">&times;</button>
+          <h4 class="modal-title">Add New School</h4>
+        </div>
+        <div class="modal-body">
+          <div class="form-group">
+            <label for="modal_school_name">School Name *</label>
+            <input type="text" id="modal_school_name" class="form-control" required placeholder="Enter school name">
+          </div>
+          <small class="text-muted">This will be created instantly.</small>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-default" data-dismiss="modal">Cancel</button>
+          <button type="button" class="btn btn-primary" id="btnAddSchool" onclick="return addSchool();">Add School</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- Age Validation Modal -->
   <div class="modal fade" id="ageValidationModal" tabindex="-1" role="dialog">
     <div class="modal-dialog" role="document">
@@ -839,18 +798,10 @@
         </div>
         <div class="modal-body">
           <p><strong>Warning:</strong> <span id="age-validation-message"></span></p>
-          <?php if(!isset($is_school_student) || !$is_school_student): ?>
-            <p>Please provide a reason for this grade/age mismatch to continue.</p>
-          <?php else: ?>
-            <p>Please contact your administrator to resolve this issue.</p>
-          <?php endif; ?>
+          <p>Please provide a reason for this grade/age mismatch to continue.</p>
         </div>
         <div class="modal-footer">
-          <?php if(!isset($is_school_student) || !$is_school_student): ?>
-            <button type="button" class="btn btn-primary" data-dismiss="modal">I'll Provide Reason</button>
-          <?php else: ?>
-            <button type="button" class="btn btn-primary" data-dismiss="modal">OK</button>
-          <?php endif; ?>
+          <button type="button" class="btn btn-primary" data-dismiss="modal">I'll Provide Reason</button>
         </div>
       </div>
     </div>
@@ -858,21 +809,188 @@
 </div>
 
 <style>
-.nav-tabs>li>a{font-weight:500}
-.nav-tabs>li.active>a,.nav-tabs>li.active>a:hover,.nav-tabs>li.active>a:focus{background:#f8f9fa;border-bottom-color:transparent}
-.tab-content{background:#f8f9fa;padding:20px;border:1px solid #ddd;border-top:none;border-radius:0 0 4px 4px}
-.tab-content h5{color:#337ab7;margin-top:20px;margin-bottom:10px}
-.tab-content h5:first-child{margin-top:0}
-.tab-content hr{margin:10px 0 20px}
-.has-error{border-color:#d9534f}
-.school-select-wrapper,.bank-select-wrapper,.country-select-wrapper{position:relative;display:flex;align-items:stretch}
-.school-select-wrapper .bootstrap-select,.bank-select-wrapper .bootstrap-select,.country-select-wrapper .bootstrap-select{flex:1;margin-right:5px;width:auto!important}
-.add-new-btn{border-left:0;border-radius:0 4px 4px 0!important;padding:8px 12px;margin-left:0;z-index:5;flex-shrink:0;height:34px}
-.add-new-btn:hover{background-color:#337ab7;color:#fff;border-color:#2e6da4}
-.school-select-wrapper .btn-group.bootstrap-select,.bank-select-wrapper .btn-group.bootstrap-select,.country-select-wrapper .btn-group.bootstrap-select{flex:1;width:auto!important;display:flex!important}
-.school-select-wrapper .btn-group.bootstrap-select .btn,.bank-select-wrapper .btn-group.bootstrap-select .btn,.country-select-wrapper .btn-group.bootstrap-select .btn{width:100%;border-top-right-radius:0!important;border-bottom-right-radius:0!important;text-align:left}
+/* Enhanced Student Form Styling - Compatible with both Portal and Admin views */
 
-#grade-mismatch-group.show {
+/* Main wrapper */
+.school-student-form-wrapper {
+  background: #fff;
+  border-radius: 4px;
+}
+
+/* Tab Navigation */
+.school-student-form-wrapper .student-form-tabs {
+  border-bottom: 2px solid #e8e8e8;
+  background: linear-gradient(to bottom, #f8f9fa 0%, #f1f3f4 100%);
+  margin: 0 0 0 0;
+  padding: 0 15px;
+  border-radius: 4px 4px 0 0;
+  overflow-x: auto;
+  white-space: nowrap;
+}
+
+.school-student-form-wrapper .student-form-tabs > li {
+  margin-bottom: -2px;
+  position: relative;
+  display: inline-block;
+  float: none;
+}
+
+.school-student-form-wrapper .student-form-tabs > li > a {
+  font-weight: 500;
+  color: #555;
+  border: 1px solid transparent;
+  border-radius: 4px 4px 0 0;
+  padding: 12px 16px;
+  margin-right: 2px;
+  transition: all 0.2s ease-in-out;
+  background: transparent;
+  text-decoration: none;
+  position: relative;
+}
+
+.school-student-form-wrapper .student-form-tabs > li > a:hover {
+  background: rgba(255, 255, 255, 0.8);
+  border-color: #ddd #ddd transparent;
+  color: #337ab7;
+  text-decoration: none;
+}
+
+.school-student-form-wrapper .student-form-tabs > li.active > a,
+.school-student-form-wrapper .student-form-tabs > li.active > a:hover,
+.school-student-form-wrapper .student-form-tabs > li.active > a:focus {
+  color: #337ab7;
+  background: #fff;
+  border: 1px solid #ddd;
+  border-bottom-color: #fff;
+  cursor: default;
+  font-weight: 600;
+  box-shadow: 0 -2px 4px rgba(0,0,0,0.1);
+  text-decoration: none;
+}
+
+.school-student-form-wrapper .student-form-tabs > li.active > a::after {
+  content: '';
+  position: absolute;
+  bottom: -2px;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: #337ab7;
+}
+
+/* Tab Content */
+.school-student-form-wrapper .student-form-content {
+  background: #fff;
+  padding: 25px;
+  border: 1px solid #ddd;
+  border-top: none;
+  border-radius: 0 0 4px 4px;
+  min-height: 400px;
+}
+
+/* Section Headers in tabs */
+.school-student-form-wrapper .student-form-content h5 {
+  color: #337ab7;
+  margin-top: 25px;
+  margin-bottom: 12px;
+  font-weight: 600;
+  font-size: 16px;
+  border-left: 4px solid #337ab7;
+  padding-left: 12px;
+}
+
+.school-student-form-wrapper .student-form-content h5:first-child {
+  margin-top: 0;
+}
+
+.school-student-form-wrapper .student-form-content hr {
+  margin: 15px 0 20px;
+  border-color: #e8e8e8;
+}
+
+/* Form Controls */
+.school-student-form-wrapper .form-group {
+  margin-bottom: 20px;
+}
+
+.school-student-form-wrapper .form-control {
+  border: 1px solid #d0d0d0;
+  border-radius: 4px;
+  transition: border-color 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+}
+
+.school-student-form-wrapper .form-control:focus {
+  border-color: #337ab7;
+  box-shadow: 0 0 5px rgba(51, 122, 183, 0.3);
+}
+
+.school-student-form-wrapper .control-label {
+  font-weight: 500;
+  color: #333;
+  margin-bottom: 6px;
+}
+
+/* Error States */
+.school-student-form-wrapper .has-error,
+.school-student-form-wrapper .field-error {
+  border-color: #d9534f !important;
+  box-shadow: inset 0 1px 1px rgba(0,0,0,.075), 0 0 6px rgba(217,83,79,.6) !important;
+}
+
+/* Select Wrappers */
+.school-student-form-wrapper .school-select-wrapper,
+.school-student-form-wrapper .bank-select-wrapper,
+.school-student-form-wrapper .country-select-wrapper {
+  position: relative;
+  display: flex;
+  align-items: stretch;
+}
+
+.school-student-form-wrapper .school-select-wrapper .bootstrap-select,
+.school-student-form-wrapper .bank-select-wrapper .bootstrap-select,
+.school-student-form-wrapper .country-select-wrapper .bootstrap-select {
+  flex: 1;
+  margin-right: 5px;
+  width: auto !important;
+}
+
+.school-student-form-wrapper .add-new-btn {
+  border-left: 0;
+  border-radius: 0 4px 4px 0 !important;
+  padding: 8px 12px;
+  margin-left: 0;
+  z-index: 5;
+  flex-shrink: 0;
+  height: 34px;
+  background: #f8f9fa;
+  border-color: #ccc;
+}
+
+.school-student-form-wrapper .add-new-btn:hover {
+  background-color: #337ab7;
+  color: #fff;
+  border-color: #2e6da4;
+}
+
+.school-student-form-wrapper .school-select-wrapper .btn-group.bootstrap-select,
+.school-student-form-wrapper .bank-select-wrapper .btn-group.bootstrap-select,
+.school-student-form-wrapper .country-select-wrapper .btn-group.bootstrap-select {
+  flex: 1;
+  width: auto !important;
+  display: flex !important;
+}
+
+.school-student-form-wrapper .school-select-wrapper .btn-group.bootstrap-select .btn,
+.school-student-form-wrapper .bank-select-wrapper .btn-group.bootstrap-select .btn,
+.school-student-form-wrapper .country-select-wrapper .btn-group.bootstrap-select .btn {
+  width: 100%;
+  border-top-right-radius: 0 !important;
+  border-bottom-right-radius: 0 !important;
+  text-align: left;
+}
+
+/* Grade mismatch animation */
+.school-student-form-wrapper #grade-mismatch-group.show {
   display: block !important;
   animation: slideDown 0.3s ease-in-out;
 }
@@ -882,18 +1000,84 @@
   to { opacity: 1; max-height: 200px; }
 }
 
-.field-error {
-  border-color: #d9534f !important;
-  box-shadow: inset 0 1px 1px rgba(0,0,0,.075), 0 0 6px rgba(217,83,79,.6) !important;
-}
-
-.form-control-static {
+/* Form control static styling */
+.school-student-form-wrapper .form-control-static {
   padding-top: 7px;
   padding-bottom: 7px;
   margin-bottom: 0;
   min-height: 34px;
   font-weight: 500;
   color: #555;
+}
+/* Alert styling */
+.school-student-form-wrapper .alert {
+  border-radius: 4px;
+  border: 1px solid transparent;
+}
+
+/* Button styling */
+.school-student-form-wrapper .btn {
+  border-radius: 4px;
+  font-weight: 500;
+}
+
+.school-student-form-wrapper .btn-primary {
+  background-color: #337ab7;
+  border-color: #2e6da4;
+}
+
+.school-student-form-wrapper .btn-primary:hover {
+  background-color: #286090;
+  border-color: #204d74;
+}
+
+/* Table styling in report cards */
+.school-student-form-wrapper .table {
+  margin-bottom: 0;
+}
+
+.school-student-form-wrapper .table > thead > tr > th {
+  border-bottom: 2px solid #ddd;
+  background-color: #f8f9fa;
+  font-weight: 600;
+}
+
+.school-student-form-wrapper .table-striped > tbody > tr:nth-of-type(odd) {
+  background-color: #f9f9f9;
+}
+
+/* Responsive tabs for mobile */
+@media (max-width: 768px) {
+  .school-student-form-wrapper .student-form-tabs {
+    padding: 0 10px;
+  }
+  
+  .school-student-form-wrapper .student-form-tabs > li > a {
+    padding: 10px 12px;
+    font-size: 12px;
+  }
+  
+  .school-student-form-wrapper .student-form-content {
+    padding: 15px;
+  }
+}
+
+/* Ensure consistent styling across different contexts */
+.school-student-form-wrapper * {
+  box-sizing: border-box;
+}
+
+/* Override any conflicting Perfex styles */
+.school-student-form-wrapper .nav-tabs {
+  border-bottom: 2px solid #e8e8e8 !important;
+}
+
+.school-student-form-wrapper .nav-tabs > li.active > a {
+  border-bottom-color: #fff !important;
+}
+
+.school-student-form-wrapper .tab-content {
+  border-top: none !important;
 }
 </style>
 
@@ -902,7 +1086,7 @@
 if (typeof alert_float !== 'function') { window.alert_float = function(type, message){ alert(message); }; }
 
 (function($){
-  // Check if user is a school student
+  // Check if user is a school student - using passed data from controller
   var isSchoolStudent = <?php echo json_encode(isset($is_school_student) && $is_school_student); ?>;
   var canEditRestricted = <?php echo json_encode(isset($can_edit_restricted_fields) && $can_edit_restricted_fields); ?>;
 
@@ -934,10 +1118,8 @@ if (typeof alert_float !== 'function') { window.alert_float = function(type, mes
     $('#grade_mismatch_reason').removeClass('field-error');
     $('#grade-mismatch-group').removeClass('show');
     
-    // Only require grade mismatch reason for admins
-    if (!isSchoolStudent) {
-      $('#grade_mismatch_reason').prop('required', false);
-    }
+    // Both admin and students can now edit grade mismatch reason
+    $('#grade_mismatch_reason').prop('required', false);
 
     if (!grade || !age || age <= 0) {
       return true; // Allow if no grade or age specified
@@ -971,24 +1153,18 @@ if (typeof alert_float !== 'function') { window.alert_float = function(type, mes
       return false;
     }
 
-    // If age is exactly one year older than max, show mismatch field for admins
+    // If age is exactly one year older than max, show mismatch field
     if (age === (maxAge + 1)) {
       $('#grade-mismatch-group').addClass('show');
+      $('#grade_mismatch_reason').prop('required', true);
       
-      if (!isSchoolStudent) {
-        $('#grade_mismatch_reason').prop('required', true);
-        
-        // If no reason provided, show validation message
-        if (!gradeReason) {
-          var message = "Age " + age + " is one year older than typical for " + expected.name + " (expected " + minAge + "-" + maxAge + " years). Please provide a grade mismatch reason below.";
-          $('#age-validation-message').text(message);
-          $('#ageValidationModal').modal('show');
-          $('#grade').addClass('field-error');
-          return false;
-        }
-      } else {
-        // For school students, just show the field as readonly
-        $('#grade_mismatch_reason').prop('readonly', true);
+      // If no reason provided, show validation message
+      if (!gradeReason) {
+        var message = "Age " + age + " is one year older than typical for " + expected.name + " (expected " + minAge + "-" + maxAge + " years). Please provide a grade mismatch reason below.";
+        $('#age-validation-message').text(message);
+        $('#ageValidationModal').modal('show');
+        $('#grade').addClass('field-error');
+        return false;
       }
       
       return true;
@@ -1004,21 +1180,6 @@ if (typeof alert_float !== 'function') { window.alert_float = function(type, mes
     }
 
     return true;
-  }
-
-  function recalcProfileCompletion(){
-    var $wrap = $('#profile-completion-wrap');
-    if(!$wrap.length) return;
-    
-    // Essential fields for completion calculation
-    var checks = [
-      !!$('#name').val(), !!$('#email').val(), !!$('#phone').val(), 
-      !!$('#address').val(), !!$('#city').val(), !!$('#grade').val(), !!$('#dob').val()
-    ];
-    
-    var pct = Math.round((checks.filter(Boolean).length/checks.length)*100);
-    $('#profile-completion-value').text(pct+'%');
-    $('#profile-completion-bar').css('width', pct+'%');
   }
 
   function calculateAge(){
@@ -1047,17 +1208,13 @@ if (typeof alert_float !== 'function') { window.alert_float = function(type, mes
   }
 
   function syncSchoolNameHidden(){
-    if (!canEditRestricted) return; // School students can't change school
-    
     var $opt = $('#school_name_id option:selected');
     var name = $opt.data('name') || $opt.text() || '';
     $('#school_name').val($.trim(name));
   }
 
   // Event handlers
-  if (!isSchoolStudent) {
-    $('#school_name_id').on('changed.bs.select change', syncSchoolNameHidden);
-  }
+  $('#school_name_id').on('changed.bs.select change', syncSchoolNameHidden);
 
   // Grade change handler
   $('#grade').on('change', function() {
@@ -1065,14 +1222,44 @@ if (typeof alert_float !== 'function') { window.alert_float = function(type, mes
     recalcProfileCompletion();
   });
 
-  // Grade mismatch reason change handler (admin only)
-  if (!isSchoolStudent) {
-    $('#grade_mismatch_reason').on('input', function() {
-      validateAgeGrade();
-    });
-  }
+  // Grade mismatch reason change handler
+  $('#grade_mismatch_reason').on('input', function() {
+    validateAgeGrade();
+  });
 
-  // Admin-only functions
+  // School functions - now available to both admin and students
+  window.addSchool = function(){
+    var $btn = $('#btnAddSchool').prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> Adding...');
+    var name = $.trim($('#modal_school_name').val());
+    if(!name){ alert('Enter school name'); $btn.prop('disabled', false).text('Add School'); return false; }
+
+    $.ajax({
+      url: '<?php echo admin_url("student_sponsor_portal/add_school_name"); ?>',
+      type: 'POST', dataType: 'json',
+      data: { name: name }
+    }).done(function(r){
+      if(r && r.success){
+        var $sel = $('#school_name_id');
+        var id   = r.id || r.school_name_id || '';
+        var txt  = r.name || name;
+        if(id){
+          $sel.append($('<option/>',{value:id, text:txt, selected:true, 'data-name': txt}));
+          refreshSelectpicker($sel);
+          syncSchoolNameHidden();
+        }
+        $('#addSchoolModal').modal('hide'); $('#modal_school_name').val('');
+        alert_float('success', r.message || 'School added');
+        recalcProfileCompletion();
+      } else {
+        alert(r && r.message ? r.message : 'Failed to add school');
+      }
+    }).fail(function(){ alert('Error adding school.'); })
+      .always(function(){ $btn.prop('disabled', false).text('Add School'); });
+
+    return false;
+  };
+
+  // Admin-only functions (keep country and bank admin-only)
   if (!isSchoolStudent) {
     // Add Country
     window.addCountry = function(){
@@ -1094,38 +1281,6 @@ if (typeof alert_float !== 'function') { window.alert_float = function(type, mes
       $('#modal_country_name').val(''); $('#modal_country_phone').val('');
       alert_float('success','Country will be added on Save');
       recalcProfileCompletion();
-      return false;
-    };
-
-    // Add School (instant via AJAX)
-    window.addSchool = function(){
-      var $btn = $('#btnAddSchool').prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> Adding...');
-      var name = $.trim($('#modal_school_name').val());
-      if(!name){ alert('Enter school name'); $btn.prop('disabled', false).text('Add School'); return false; }
-
-      $.ajax({
-        url: '<?php echo admin_url("student_sponsor_portal/add_school_name"); ?>',
-        type: 'POST', dataType: 'json',
-        data: { name: name }
-      }).done(function(r){
-        if(r && r.success){
-          var $sel = $('#school_name_id');
-          var id   = r.id || r.school_name_id || '';
-          var txt  = r.name || name;
-          if(id){
-            $sel.append($('<option/>',{value:id, text:txt, selected:true, 'data-name': txt}));
-            refreshSelectpicker($sel);
-            syncSchoolNameHidden();
-          }
-          $('#addSchoolModal').modal('hide'); $('#modal_school_name').val('');
-          alert_float('success', r.message || 'School added');
-          recalcProfileCompletion();
-        } else {
-          alert(r && r.message ? r.message : 'Failed to add school');
-        }
-      }).fail(function(){ alert('Error adding school.'); })
-        .always(function(){ $btn.prop('disabled', false).text('Add School'); });
-
       return false;
     };
 
@@ -1159,6 +1314,10 @@ if (typeof alert_float !== 'function') { window.alert_float = function(type, mes
 
       return false;
     };
+  } else {
+    // For school students, disable admin-only functions
+    window.addCountry = function(){ return false; };
+    window.addBank = function(){ return false; };
   }
 
   // Report cards - Load existing cards
@@ -1178,7 +1337,7 @@ if (typeof alert_float !== 'function') { window.alert_float = function(type, mes
           
           var actionsHtml = '<a href="'+dl+'" class="btn btn-xs btn-default" title="Download"><i class="fa fa-download"></i></a>';
           
-          // Only show delete button for admins or if user can edit
+          // Only show delete button for admins
           if (!isSchoolStudent) {
             actionsHtml += ' <button type="button" class="btn btn-xs btn-danger btn-del-card" title="Delete"><i class="fa fa-trash"></i></button>';
           }
@@ -1306,10 +1465,8 @@ if (typeof alert_float !== 'function') { window.alert_float = function(type, mes
       reader.readAsDataURL(f);
     });
 
-    // keep hidden school_name synced (admin only)
-    if (!isSchoolStudent) {
-      syncSchoolNameHidden();
-    }
+    // keep hidden school_name synced
+    syncSchoolNameHidden();
 
     // age + completion
     $('#dob').on('change input', function(){ calculateAge(); recalcProfileCompletion(); });
@@ -1333,7 +1490,7 @@ if (typeof alert_float !== 'function') { window.alert_float = function(type, mes
       var currentTab = $('.nav-tabs li.active a').attr('href') || '#student-info';
       $('#active_tab').val(currentTab);
 
-      // Validate age-grade combination before submission (admin only for grade mismatch reason)
+      // Validate age-grade combination before submission
       if (!validateAgeGrade()) {
         e.preventDefault();
         $('a[href="#student-info"]').tab('show'); // Switch to student info tab
@@ -1367,53 +1524,5 @@ if (typeof alert_float !== 'function') { window.alert_float = function(type, mes
     // Show completion calculation after page load
     setTimeout(recalcProfileCompletion, 200);
   });
-$('#school-student-form').on('submit', function(e){
-    console.log('=== FORM SUBMISSION STARTED ===');
-    
-    // Check if form is valid
-    var formValid = this.checkValidity();
-    console.log('Form HTML5 validity:', formValid);
-    
-    // Log all form data
-    var formData = new FormData(this);
-    var formObject = {};
-    
-    for (var pair of formData.entries()) {
-        formObject[pair[0]] = pair[1];
-    }
-    
-    console.log('Form data being submitted:', formObject);
-    console.log('Form action:', this.action);
-    console.log('Form method:', this.method);
-    
-    // Check critical fields
-    console.log('=== CRITICAL FIELDS ===');
-    console.log('student_id:', formData.get('student_id'));
-    console.log('name:', formData.get('name'));
-    console.log('email:', formData.get('email'));
-    console.log('phone:', formData.get('phone'));
-    console.log('grade:', formData.get('grade'));
-    console.log('calculated_age:', formData.get('calculated_age'));
-    
-    // Check if we have CSRF token
-    var csrfTokenName = '<?php echo $this->security->get_csrf_token_name(); ?>';
-    var csrfTokenValue = formData.get(csrfTokenName);
-    console.log('CSRF Token (' + csrfTokenName + '):', csrfTokenValue);
-    
-    console.log('==============================');
-    
-    // Don't prevent default - let it submit and see what happens
-    // You can add e.preventDefault(); here if you want to stop submission for testing
-});
-
-// Also debug when the page loads
-$(document).ready(function() {
-    console.log('=== PAGE LOAD DEBUG ===');
-    console.log('Form exists:', $('#school-student-form').length > 0);
-    console.log('Student ID field value:', $('input[name="student_id"]').val());
-    console.log('Current URL:', window.location.href);
-    console.log('Is school student:', <?php echo json_encode(isset($is_school_student) && $is_school_student); ?>);
-    console.log('========================');
-});
 })(jQuery);
 </script>

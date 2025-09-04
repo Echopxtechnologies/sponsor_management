@@ -204,196 +204,216 @@ class Student_sponsor_portal extends AdminController
         }
     }
 // Add this to your Student_sponsor_portal.php controller
-    
+
     // In the school_student_form method, update the validation and saving logic:
-    public function school_student_form($student_id = null)
-    {
-        if (!has_permission('student_sponsor_portal', '', 'view')) access_denied('student_sponsor_portal');
+  public function school_student_form($student_id = null)
+{
+    if (!has_permission('student_sponsor_portal', '', 'view')) access_denied('student_sponsor_portal');
 
-        try {
-            log_message('debug', 'Loading school student form for ID: ' . ($student_id ?: 'new'));
+    try {
+        log_message('debug', 'Loading school student form for ID: ' . ($student_id ?: 'new'));
 
-            if ($this->input->post()) {
-                $isCreate = empty($this->input->post('student_id'));
-                if ($isCreate && !has_permission('student_sponsor_portal', '', 'create')) access_denied('student_sponsor_portal');
-                if (!$isCreate && !has_permission('student_sponsor_portal', '', 'edit')) access_denied('student_sponsor_portal');
+        // IMPORTANT: Define $current_student at the beginning to avoid undefined variable error
+        $current_student = $this->is_school_student_user();
+        $is_school_student = (bool)$current_student;
 
-                $post = $this->input->post();
-                $sid = (int)($post['student_id'] ?? 0);
-                unset($post['student_id']);
+        if ($this->input->post()) {
+            $isCreate = empty($this->input->post('student_id'));
+            if ($isCreate && !has_permission('student_sponsor_portal', '', 'create')) access_denied('student_sponsor_portal');
+            if (!$isCreate && !has_permission('student_sponsor_portal', '', 'edit')) access_denied('student_sponsor_portal');
 
-                log_message('debug', 'Raw POST data: ' . json_encode($post));
+            $post = $this->input->post();
+            $sid = (int)($post['student_id'] ?? 0);
+            unset($post['student_id']);
 
-                // Clean and map form data to database fields
-                $cleaned_data = $this->clean_school_post_data($post, $current_student ? true : false);
+            log_message('debug', 'Raw POST data: ' . json_encode($post));
 
-                // Validate age-grade combination if both are present
-                if (!empty($cleaned_data['school_grade']) && !empty($cleaned_data['school_age'])) {
-                    $validation_result = $this->school_model->validate_age_grade(
-                        $cleaned_data['school_grade'], 
-                        $cleaned_data['school_age'], 
-                        $cleaned_data['grade_mismatch_reason'] ?? null
-                    );
-                    
-                    if (!$validation_result['valid']) {
+            // Clean and map form data to database fields
+            $cleaned_data = $this->clean_school_post_data($post, $is_school_student);
+
+            // Validate age-grade combination if both are present
+            if (!empty($cleaned_data['school_grade']) && !empty($cleaned_data['school_age'])) {
+                $validation_result = $this->school_model->validate_age_grade(
+                    $cleaned_data['school_grade'], 
+                    $cleaned_data['school_age'], 
+                    $cleaned_data['grade_mismatch_reason'] ?? null
+                );
+                
+                if (!$validation_result['valid']) {
+                    $this->session->set_flashdata('old_input', $post);
+                    set_alert('danger', $validation_result['message']);
+                    if ($isCreate) {
+                        redirect(admin_url('student_sponsor_portal/school_student_form'));
+                    } else {
+                        redirect(admin_url('student_sponsor_portal/school_student_form/' . $sid));
+                    }
+                    return;
+                }
+            }
+
+            $this->session->set_flashdata('old_input', $post);
+
+            if ($isCreate) {
+                $res = $this->school_model->add($cleaned_data);
+                
+                // Handle both old format (just ID) and new format (array with success flag)
+                if (is_array($res)) {
+                    if (!$res['success']) {
                         $this->session->set_flashdata('old_input', $post);
-                        set_alert('danger', $validation_result['message']);
-                        if ($isCreate) {
-                            redirect(admin_url('student_sponsor_portal/school_student_form'));
-                        } else {
-                            redirect(admin_url('student_sponsor_portal/school_student_form/' . $sid));
-                        }
+                        set_alert('danger', $res['message'] ?? 'Error saving student');
+                        redirect(admin_url('student_sponsor_portal/school_student_form'));
+                        return;
+                    }
+                    $newId = (int)$res['id'];
+                } else {
+                    $newId = $res ? (int)$res : 0;
+                    if (!$newId) {
+                        $this->session->set_flashdata('old_input', $post);
+                        set_alert('danger', 'Error saving student');
+                        redirect(admin_url('student_sponsor_portal/school_student_form'));
                         return;
                     }
                 }
 
-                $this->session->set_flashdata('old_input', $post);
+                // Handle profile photo upload
+                $this->handle_profile_photo_upload($newId);
 
-                if ($isCreate) {
-                    $res = $this->school_model->add($cleaned_data);
-                    
-                    // Handle both old format (just ID) and new format (array with success flag)
-                    if (is_array($res)) {
-                        if (!$res['success']) {
-                            $this->session->set_flashdata('old_input', $post);
-                            set_alert('danger', $res['message'] ?? 'Error saving student');
-                            redirect(admin_url('student_sponsor_portal/school_student_form'));
-                            return;
-                        }
-                        $newId = (int)$res['id'];
-                    } else {
-                        $newId = $res ? (int)$res : 0;
-                        if (!$newId) {
-                            $this->session->set_flashdata('old_input', $post);
-                            set_alert('danger', 'Error saving student');
-                            redirect(admin_url('student_sponsor_portal/school_student_form'));
-                            return;
-                        }
+                // Handle staff creation
+                if (!empty($this->input->post('create_staff'))) {
+                    $existing = $this->school_model->get_by_id($newId);
+                    $existing_staff_id = $existing['staff_id'] ?? null;
+
+                    $this->ensure_three_min_roles();
+                    $staff_id = $this->create_or_update_staff_from_student($this->input->post(), $existing_staff_id);
+
+                    if ($staff_id) {
+                        $this->db->where('id', $newId)->update(db_prefix() . 'school_students', [
+                            'staff_id' => $staff_id,
+                            'staff_active' => !empty($this->input->post('staff_active')) ? 1 : 0,
+                        ]);
                     }
-
-                    // Handle profile photo upload
-                    $this->handle_profile_photo_upload($newId);
-
-                    // Handle staff creation
-                    if (!empty($this->input->post('create_staff'))) {
-                        $existing = $this->school_model->get_by_id($newId);
-                        $existing_staff_id = $existing['staff_id'] ?? null;
-
-                        $this->ensure_three_min_roles();
-                        $staff_id = $this->create_or_update_staff_from_student($this->input->post(), $existing_staff_id);
-
-                        if ($staff_id) {
-                            $this->db->where('id', $newId)->update(db_prefix() . 'school_students', [
-                                'staff_id' => $staff_id,
-                                'staff_active' => !empty($this->input->post('staff_active')) ? 1 : 0,
-                            ]);
-                        }
-                    } else {
-                        $this->db->where('id', $newId)->update(db_prefix() . 'school_students', ['staff_active' => 0]);
-                    }
-
-                    set_alert('success', 'School student registered successfully');
-                    redirect(admin_url('student_sponsor_portal/school_students'));
                 } else {
-                    // Handle profile photo upload for existing student
-                    $this->handle_profile_photo_upload($sid);
+                    $this->db->where('id', $newId)->update(db_prefix() . 'school_students', ['staff_active' => 0]);
+                }
 
-                    log_message('debug', 'Attempting to update student ID: ' . $sid . ' with data: ' . json_encode($cleaned_data));
-                    
-                    // Get student data before update for comparison
-                    $before_update = $this->school_model->get_by_id($sid);
-                    log_message('debug', 'Student data BEFORE update: ' . json_encode($before_update));
+                set_alert('success', 'School student registered successfully');
+                redirect(admin_url('student_sponsor_portal/school_students'));
+            } else {
+                // Handle profile photo upload for existing student
+                $this->handle_profile_photo_upload($sid);
 
-                    $result = $this->school_model->update($cleaned_data, $sid);
-                    
-                    // Handle both boolean and array responses
-                    if (is_array($result)) {
-                        if (!$result['success']) {
-                            set_alert('danger', $result['message'] ?? 'Error updating student');
-                            redirect(admin_url('student_sponsor_portal/school_student_form/' . $sid));
-                            return;
-                        }
-                        $ok = true;
-                    } else {
-                        $ok = $result;
-                    }
-                    
-                    if ($ok) {
-                        // Get student data after update for verification
-                        $after_update = $this->school_model->get_by_id($sid);
-                        log_message('debug', 'Student data AFTER update: ' . json_encode($after_update));
-                        
-                        // Check if anything actually changed
-                        $changes_made = false;
-                        foreach ($cleaned_data as $field => $new_value) {
-                            if (isset($before_update[$field]) && $before_update[$field] != $new_value) {
-                                $changes_made = true;
-                                log_message('debug', "Field '{$field}' changed from '{$before_update[$field]}' to '{$new_value}'");
-                            } elseif (!isset($before_update[$field]) && $new_value !== null && $new_value !== '') {
-                                $changes_made = true;
-                                log_message('debug', "New field '{$field}' set to '{$new_value}'");
-                            }
-                        }
-                        
-                        if (!$changes_made) {
-                            log_message('warning', 'Update reported success but no changes detected in database for student ID: ' . $sid);
-                            set_alert('warning', 'Update completed but no changes were detected. Please verify your data.');
-                        } else {
-                            set_alert('success', 'School student updated successfully');
-                        }
-                    } else {
-                        $err = $this->db->error();
-                        log_message('error', 'Database update failed for student ID: ' . $sid . '. Error: ' . json_encode($err));
-                        $msg = (!empty($err['code']) && (int)$err['code'] === 1062)
-                            ? 'Duplicate value detected (e.g., email). Please use a different value.'
-                            : 'Error saving student. Please check all fields and try again.';
-                        set_alert('danger', $msg);
+                log_message('debug', 'Attempting to update student ID: ' . $sid . ' with data: ' . json_encode($cleaned_data));
+                
+                // Get student data before update for comparison
+                $before_update = $this->school_model->get_by_id($sid);
+                log_message('debug', 'Student data BEFORE update: ' . json_encode($before_update));
+
+                $result = $this->school_model->update($cleaned_data, $sid);
+                
+                // Handle both boolean and array responses
+                if (is_array($result)) {
+                    if (!$result['success']) {
+                        set_alert('danger', $result['message'] ?? 'Error updating student');
                         redirect(admin_url('student_sponsor_portal/school_student_form/' . $sid));
                         return;
                     }
-
-                    // Handle staff creation for existing student
-                    if (!empty($this->input->post('create_staff'))) {
-                        $existing = $this->school_model->get_by_id($sid);
-                        $existing_staff_id = $existing['staff_id'] ?? null;
-
-                        $this->ensure_three_min_roles();
-                        $staff_id = $this->create_or_update_staff_from_student($this->input->post(), $existing_staff_id);
-
-                        if ($staff_id) {
-                            $this->db->where('id', $sid)->update(db_prefix() . 'school_students', [
-                                'staff_id' => $staff_id,
-                                'staff_active' => !empty($this->input->post('staff_active')) ? 1 : 0,
-                            ]);
+                    $ok = true;
+                } else {
+                    $ok = $result;
+                }
+                
+                if ($ok) {
+                    // Get student data after update for verification
+                    $after_update = $this->school_model->get_by_id($sid);
+                    log_message('debug', 'Student data AFTER update: ' . json_encode($after_update));
+                    
+                    // Check if anything actually changed
+                    $changes_made = false;
+                    foreach ($cleaned_data as $field => $new_value) {
+                        if (isset($before_update[$field]) && $before_update[$field] != $new_value) {
+                            $changes_made = true;
+                            log_message('debug', "Field '{$field}' changed from '{$before_update[$field]}' to '{$new_value}'");
+                        } elseif (!isset($before_update[$field]) && $new_value !== null && $new_value !== '') {
+                            $changes_made = true;
+                            log_message('debug', "New field '{$field}' set to '{$new_value}'");
                         }
                     }
-
-                    redirect(admin_url('student_sponsor_portal/school_students'));
+                    
+                    if (!$changes_made) {
+                        log_message('warning', 'Update reported success but no changes detected in database for student ID: ' . $sid);
+                        set_alert('warning', 'Update completed but no changes were detected. Please verify your data.');
+                    } else {
+                        set_alert('success', 'School student updated successfully');
+                    }
+                } else {
+                    $err = $this->db->error();
+                    log_message('error', 'Database update failed for student ID: ' . $sid . '. Error: ' . json_encode($err));
+                    $msg = (!empty($err['code']) && (int)$err['code'] === 1062)
+                        ? 'Duplicate value detected (e.g., email). Please use a different value.'
+                        : 'Error saving student. Please check all fields and try again.';
+                    set_alert('danger', $msg);
+                    redirect(admin_url('student_sponsor_portal/school_student_form/' . $sid));
+                    return;
                 }
-            }
 
-            $data['title'] = 'Register School Student';
-            if ($student_id) {
-                $student = $this->school_model->get_by_id((int)$student_id);
-                if (!$student) { 
-                    set_alert('danger', 'Student not found');
-                    redirect(admin_url('student_sponsor_portal/school_students')); 
+                // Handle staff creation for existing student
+                if (!empty($this->input->post('create_staff'))) {
+                    $existing = $this->school_model->get_by_id($sid);
+                    $existing_staff_id = $existing['staff_id'] ?? null;
+
+                    $this->ensure_three_min_roles();
+                    $staff_id = $this->create_or_update_staff_from_student($this->input->post(), $existing_staff_id);
+
+                    if ($staff_id) {
+                        $this->db->where('id', $sid)->update(db_prefix() . 'school_students', [
+                            'staff_id' => $staff_id,
+                            'staff_active' => !empty($this->input->post('staff_active')) ? 1 : 0,
+                        ]);
+                    }
                 }
-                $data['student'] = $student;
-                $data['title'] = 'Edit School Student';
+
+                redirect(admin_url('student_sponsor_portal/school_students'));
             }
-            $data['old'] = $this->session->flashdata('old_input') ?: [];
-            $data['banks'] = $this->db->select('id,name')->order_by('name', 'ASC')->get(db_prefix() . 'bank')->result_array();
-            $data['schools'] = $this->school_model->get_schools();
-            $data['countries'] = $this->_get_countries();
-            
-            $this->load->view('student_sponsor_portal/school_form', $data);
-            
-        } catch (Exception $e) {
-            log_message('error', 'Error in school_student_form: ' . $e->getMessage());
-            show_error('An error occurred while loading the form: ' . $e->getMessage(), 500);
         }
+
+        // If school student, force them to only access their own record
+        if ($current_student) {
+            $student_id = (int)$current_student->id;
+        }
+
+        $data['title'] = 'Register School Student';
+        if ($student_id) {
+            $student = $this->school_model->get_by_id((int)$student_id);
+            if (!$student) { 
+                set_alert('danger', 'Student not found');
+                redirect(admin_url('student_sponsor_portal/school_students')); 
+            }
+            
+            // Access control: school students can only view their own record
+            if ($current_student && (int)$student['id'] !== (int)$current_student->id) {
+                access_denied('student_sponsor_portal');
+            }
+            
+            $data['student'] = $student;
+            $data['title'] = $is_school_student ? 'My Profile' : 'Edit School Student';
+        }
+
+        // Pass the school student flag to the view
+        $data['is_school_student'] = $is_school_student;
+        $data['can_edit_restricted_fields'] = !$is_school_student;
+
+        $data['old'] = $this->session->flashdata('old_input') ?: [];
+        $data['banks'] = $this->db->select('id,name')->order_by('name', 'ASC')->get(db_prefix() . 'bank')->result_array();
+        $data['schools'] = $this->school_model->get_schools();
+        $data['countries'] = $this->_get_countries();
+        
+        $this->load->view('student_sponsor_portal/school_form', $data);
+        
+    } catch (Exception $e) {
+        log_message('error', 'Error in school_student_form: ' . $e->getMessage());
+        show_error('An error occurred while loading the form: ' . $e->getMessage(), 500);
     }
+}
     
     // Add this new method to clean and map form data to database fields
     // Updated clean_school_post_data method in Student_sponsor_portal.php
@@ -424,15 +444,15 @@ class Student_sponsor_portal extends AdminController
             'guardian_name' => 'school_guardian_name',
             'guardian_income' => 'school_guardian_income',
             'background_information' => 'background_info',
+            'school_id' => 'school_id',
+            'school_internal_id' => 'school_internal_id',
+            'school_type' => 'school_type',
+            'grade_mismatch_reason' => 'grade_mismatch_reason', 
+            'school_name_id' => 'school_name_id',
         ];
 
         // Admin-only fields (students CANNOT edit these)
         $admin_only_fields = [
-            'school_id' => 'school_id',
-            'school_internal_id' => 'school_internal_id',
-            'school_type' => 'school_type',
-            'school_name_id' => 'school_name_id',
-            'grade_mismatch_reason' => 'grade_mismatch_reason',
             'sponsorship_start' => 'school_sponsorship_start_date',
             'sponsorship_end' => 'school_sponsorship_end_date',
             'introduced_by' => 'school_introducedby',
@@ -493,40 +513,191 @@ class Student_sponsor_portal extends AdminController
     }
     // Add this method to handle profile photo uploads
     private function handle_profile_photo_upload($student_id)
-    {
-        if (!isset($_FILES['profile_photo']) || $_FILES['profile_photo']['error'] !== UPLOAD_ERR_OK) {
-            return false;
-        }
-        
-        $allowed_types = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif'];
-        $max_size = 2 * 1024 * 1024; // 2MB
-        
-        $file = $_FILES['profile_photo'];
-        
-        if ($file['size'] > $max_size) {
-            set_alert('warning', 'Profile photo must be less than 2MB');
-            return false;
-        }
-        
-        $finfo = finfo_open(FILEINFO_MIME_TYPE);
-        $mime_type = finfo_file($finfo, $file['tmp_name']);
-        finfo_close($finfo);
-        
-        if (!in_array($mime_type, $allowed_types)) {
-            set_alert('warning', 'Profile photo must be JPG, PNG, or GIF');
-            return false;
-        }
-        
-        $image_data = file_get_contents($file['tmp_name']);
-        
-        if ($image_data) {
-            $this->db->where('id', (int)$student_id)
-                    ->update(db_prefix() . 'school_students', ['profile_photo' => $image_data]);
-            return true;
-        }
-        
+{
+    if (!isset($_FILES['profile_photo']) || $_FILES['profile_photo']['error'] !== UPLOAD_ERR_OK) {
+        log_message('debug', 'No profile photo uploaded or upload error for student ID: ' . $student_id);
         return false;
     }
+    
+    $allowed_types = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif'];
+    $allowed_extensions = ['jpg', 'jpeg', 'png', 'gif'];
+    $max_size = 2 * 1024 * 1024; // 2MB
+    
+    $file = $_FILES['profile_photo'];
+    
+    // Size validation
+    if ($file['size'] > $max_size) {
+        log_message('error', 'Profile photo too large: ' . $file['size'] . ' bytes for student ID: ' . $student_id);
+        set_alert('warning', 'Profile photo must be less than 2MB');
+        return false;
+    }
+    
+    // Extension validation (first line of defense)
+    $file_extension = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
+    if (!in_array($file_extension, $allowed_extensions)) {
+        log_message('error', 'Invalid file extension: ' . $file_extension . ' for student ID: ' . $student_id);
+        set_alert('warning', 'Profile photo must be JPG, PNG, or GIF format');
+        return false;
+    }
+    
+    // MIME type detection with multiple fallbacks
+    $mime_type = $this->detect_mime_type($file['tmp_name'], $file['type']);
+    
+    if (!in_array($mime_type, $allowed_types)) {
+        log_message('error', 'Invalid MIME type: ' . $mime_type . ' for student ID: ' . $student_id);
+        set_alert('warning', 'Profile photo must be a valid image file (JPG, PNG, or GIF)');
+        return false;
+    }
+    
+    // Read file content
+    $image_data = file_get_contents($file['tmp_name']);
+    
+    if ($image_data === false) {
+        log_message('error', 'Could not read uploaded file for student ID: ' . $student_id);
+        set_alert('warning', 'Could not process uploaded image');
+        return false;
+    }
+    
+    // Additional image validation using GD library if available
+    if (function_exists('getimagesizefromstring')) {
+        $image_info = getimagesizefromstring($image_data);
+        if ($image_info === false) {
+            log_message('error', 'Invalid image data for student ID: ' . $student_id);
+            set_alert('warning', 'Uploaded file is not a valid image');
+            return false;
+        }
+        
+        // Validate image dimensions (optional - prevent extremely large images)
+        if ($image_info[0] > 3000 || $image_info[1] > 3000) {
+            log_message('warning', 'Image dimensions too large: ' . $image_info[0] . 'x' . $image_info[1] . ' for student ID: ' . $student_id);
+            set_alert('warning', 'Image dimensions too large. Please use an image smaller than 3000x3000 pixels');
+            return false;
+        }
+    }
+    
+    // Save to database
+    try {
+        $this->db->where('id', (int)$student_id);
+        $result = $this->db->update(db_prefix() . 'school_students', ['profile_photo' => $image_data]);
+        
+        if ($result) {
+            log_message('debug', 'Profile photo updated successfully for student ID: ' . $student_id . ', size: ' . strlen($image_data) . ' bytes');
+            return true;
+        } else {
+            log_message('error', 'Database update failed for profile photo, student ID: ' . $student_id);
+            set_alert('warning', 'Failed to save profile photo to database');
+            return false;
+        }
+    } catch (Exception $e) {
+        log_message('error', 'Exception saving profile photo for student ID: ' . $student_id . ': ' . $e->getMessage());
+        set_alert('warning', 'Error saving profile photo: ' . $e->getMessage());
+        return false;
+    }
+}
+
+/**
+ * Detect MIME type with multiple fallback methods
+ * Handles cases where finfo_open() is not available
+ */
+private function detect_mime_type($file_path, $uploaded_type = null)
+{
+    $mime_type = 'application/octet-stream'; // Default fallback
+    
+    // Method 1: Try finfo (preferred method)
+    if (function_exists('finfo_open')) {
+        try {
+            $finfo = finfo_open(FILEINFO_MIME_TYPE);
+            if ($finfo !== false) {
+                $detected_mime = finfo_file($finfo, $file_path);
+                finfo_close($finfo);
+                if ($detected_mime !== false) {
+                    $mime_type = $detected_mime;
+                    log_message('debug', 'MIME type detected using finfo: ' . $mime_type);
+                    return strtolower($mime_type);
+                }
+            }
+        } catch (Exception $e) {
+            log_message('warning', 'finfo_open failed: ' . $e->getMessage());
+        }
+    }
+    
+    // Method 2: Try getimagesize (for images only)
+    if (function_exists('getimagesize')) {
+        try {
+            $image_info = getimagesize($file_path);
+            if ($image_info !== false && isset($image_info['mime'])) {
+                $mime_type = $image_info['mime'];
+                log_message('debug', 'MIME type detected using getimagesize: ' . $mime_type);
+                return strtolower($mime_type);
+            }
+        } catch (Exception $e) {
+            log_message('warning', 'getimagesize failed: ' . $e->getMessage());
+        }
+    }
+    
+    // Method 3: Try mime_content_type (deprecated but may be available)
+    if (function_exists('mime_content_type')) {
+        try {
+            $detected_mime = mime_content_type($file_path);
+            if ($detected_mime !== false) {
+                $mime_type = $detected_mime;
+                log_message('debug', 'MIME type detected using mime_content_type: ' . $mime_type);
+                return strtolower($mime_type);
+            }
+        } catch (Exception $e) {
+            log_message('warning', 'mime_content_type failed: ' . $e->getMessage());
+        }
+    }
+    
+    // Method 4: Use uploaded type as fallback (with validation)
+    if (!empty($uploaded_type)) {
+        $uploaded_type = strtolower(trim($uploaded_type));
+        $valid_types = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif'];
+        if (in_array($uploaded_type, $valid_types)) {
+            log_message('debug', 'Using uploaded MIME type as fallback: ' . $uploaded_type);
+            return $uploaded_type;
+        }
+    }
+    
+    // Method 5: Guess from file extension (last resort)
+    $file_extension = strtolower(pathinfo($file_path, PATHINFO_EXTENSION));
+    $extension_map = [
+        'jpg'  => 'image/jpeg',
+        'jpeg' => 'image/jpeg',
+        'png'  => 'image/png',
+        'gif'  => 'image/gif',
+    ];
+    
+    if (isset($extension_map[$file_extension])) {
+        $mime_type = $extension_map[$file_extension];
+        log_message('debug', 'MIME type guessed from extension: ' . $mime_type);
+        return $mime_type;
+    }
+    
+    // Method 6: Basic file signature detection
+    if (is_readable($file_path)) {
+        $file_content = file_get_contents($file_path, false, null, 0, 10);
+        if ($file_content !== false) {
+            // Check common image signatures
+            if (substr($file_content, 0, 3) === "\xFF\xD8\xFF") {
+                log_message('debug', 'MIME type detected by signature: image/jpeg');
+                return 'image/jpeg';
+            }
+            if (substr($file_content, 0, 4) === "\x89PNG") {
+                log_message('debug', 'MIME type detected by signature: image/png');
+                return 'image/png';
+            }
+            if (substr($file_content, 0, 3) === "GIF") {
+                log_message('debug', 'MIME type detected by signature: image/gif');
+                return 'image/gif';
+            }
+        }
+    }
+    
+    log_message('warning', 'Could not determine MIME type, using fallback: ' . $mime_type);
+    return $mime_type;
+}
+
 
     // Add this method to create new countries
     private function create_new_country($name, $phone_code)

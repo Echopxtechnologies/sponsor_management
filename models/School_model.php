@@ -200,38 +200,151 @@ class School_model extends App_Model
 
     /* ----------------- PHOTO ----------------- */
 
-    private function handle_profile_photo_upload()
-    {
-        if (!isset($_FILES['profile_photo'])) return null;
-        if ($_FILES['profile_photo']['error'] === UPLOAD_ERR_NO_FILE) return null;
-        if ($_FILES['profile_photo']['error'] !== UPLOAD_ERR_OK) {
-            throw new Exception('Upload failed (code '.$_FILES['profile_photo']['error'].')');
-        }
 
-        $tmp  = $_FILES['profile_photo']['tmp_name'];
-        $size = (int)$_FILES['profile_photo']['size'];
-
-        if ($size <= 0 || $size > 5*1024*1024) {
-            throw new Exception('File size too large. Max 5MB.');
-        }
-
-        $mime = 'application/octet-stream';
-        if (function_exists('finfo_open')) {
-            $f = finfo_open(FILEINFO_MIME_TYPE);
-            if ($f) { $m = @finfo_file($f, $tmp); if ($m) $mime = strtolower($m); finfo_close($f); }
-        } elseif (function_exists('getimagesize')) {
-            $gi = @getimagesize($tmp);
-            if ($gi && !empty($gi['mime'])) $mime = strtolower($gi['mime']);
-        }
-
-        $allowed = ['image/jpeg','image/jpg','image/png','image/gif','image/webp'];
-        if (!in_array($mime, $allowed, true)) throw new Exception('Invalid file type. Only JPG/PNG/GIF/WebP allowed.');
-
-        $bytes = @file_get_contents($tmp);
-        if ($bytes === false) throw new Exception('Could not read uploaded file.');
-
-        return $bytes;
+private function handle_profile_photo_upload()
+{
+    if (!isset($_FILES['profile_photo'])) return null;
+    if ($_FILES['profile_photo']['error'] === UPLOAD_ERR_NO_FILE) return null;
+    if ($_FILES['profile_photo']['error'] !== UPLOAD_ERR_OK) {
+        throw new Exception('Upload failed (code '.$_FILES['profile_photo']['error'].')');
     }
+
+    $tmp  = $_FILES['profile_photo']['tmp_name'];
+    $size = (int)$_FILES['profile_photo']['size'];
+    $name = $_FILES['profile_photo']['name'];
+
+    if ($size <= 0 || $size > 5*1024*1024) {
+        throw new Exception('File size too large. Max 5MB.');
+    }
+
+    // Enhanced MIME detection with multiple fallbacks
+    $mime = $this->detect_mime_type($tmp, $_FILES['profile_photo']['type']);
+
+    $allowed = ['image/jpeg','image/jpg','image/png','image/gif','image/webp'];
+    if (!in_array($mime, $allowed, true)) {
+        throw new Exception('Invalid file type. Only JPG/PNG/GIF/WebP allowed. Detected: ' . $mime);
+    }
+
+    // Additional validation using file extension
+    $file_extension = strtolower(pathinfo($name, PATHINFO_EXTENSION));
+    $allowed_extensions = ['jpg', 'jpeg', 'png', 'gif', 'webp'];
+    if (!in_array($file_extension, $allowed_extensions)) {
+        throw new Exception('Invalid file extension: ' . $file_extension);
+    }
+
+    $bytes = @file_get_contents($tmp);
+    if ($bytes === false) throw new Exception('Could not read uploaded file.');
+
+    // Additional image validation using GD library if available
+    if (function_exists('getimagesizefromstring')) {
+        $image_info = getimagesizefromstring($bytes);
+        if ($image_info === false) {
+            throw new Exception('Invalid image data - not a valid image file');
+        }
+        
+        // Validate image dimensions (prevent extremely large images)
+        if ($image_info[0] > 3000 || $image_info[1] > 3000) {
+            throw new Exception('Image dimensions too large: ' . $image_info[0] . 'x' . $image_info[1] . '. Maximum: 3000x3000 pixels');
+        }
+    }
+
+    return $bytes;
+}
+
+/**
+ * Detect MIME type with multiple fallback methods
+ * Handles cases where finfo_open() is not available
+ */
+private function detect_mime_type($file_path, $uploaded_type = null)
+{
+    $mime_type = 'application/octet-stream'; // Default fallback
+    
+    // Method 1: Try finfo (preferred method)
+    if (function_exists('finfo_open')) {
+        try {
+            $finfo = finfo_open(FILEINFO_MIME_TYPE);
+            if ($finfo !== false) {
+                $detected_mime = finfo_file($finfo, $file_path);
+                finfo_close($finfo);
+                if ($detected_mime !== false) {
+                    return strtolower($detected_mime);
+                }
+            }
+        } catch (Exception $e) {
+            log_message('warning', 'finfo_open failed in School_model: ' . $e->getMessage());
+        }
+    }
+    
+    // Method 2: Try getimagesize (for images only)
+    if (function_exists('getimagesize')) {
+        try {
+            $image_info = getimagesize($file_path);
+            if ($image_info !== false && isset($image_info['mime'])) {
+                return strtolower($image_info['mime']);
+            }
+        } catch (Exception $e) {
+            log_message('warning', 'getimagesize failed in School_model: ' . $e->getMessage());
+        }
+    }
+    
+    // Method 3: Try mime_content_type (deprecated but may be available)
+    if (function_exists('mime_content_type')) {
+        try {
+            $detected_mime = mime_content_type($file_path);
+            if ($detected_mime !== false) {
+                return strtolower($detected_mime);
+            }
+        } catch (Exception $e) {
+            log_message('warning', 'mime_content_type failed in School_model: ' . $e->getMessage());
+        }
+    }
+    
+    // Method 4: Use uploaded type as fallback (with validation)
+    if (!empty($uploaded_type)) {
+        $uploaded_type = strtolower(trim($uploaded_type));
+        $valid_types = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
+        if (in_array($uploaded_type, $valid_types)) {
+            return $uploaded_type;
+        }
+    }
+    
+    // Method 5: Guess from file extension (last resort)
+    $file_extension = strtolower(pathinfo($file_path, PATHINFO_EXTENSION));
+    $extension_map = [
+        'jpg'  => 'image/jpeg',
+        'jpeg' => 'image/jpeg',
+        'png'  => 'image/png',
+        'gif'  => 'image/gif',
+        'webp' => 'image/webp',
+    ];
+    
+    if (isset($extension_map[$file_extension])) {
+        return $extension_map[$file_extension];
+    }
+    
+    // Method 6: Basic file signature detection
+    if (is_readable($file_path)) {
+        $file_content = file_get_contents($file_path, false, null, 0, 12);
+        if ($file_content !== false) {
+            // Check common image signatures
+            if (substr($file_content, 0, 3) === "\xFF\xD8\xFF") {
+                return 'image/jpeg';
+            }
+            if (substr($file_content, 0, 4) === "\x89PNG") {
+                return 'image/png';
+            }
+            if (substr($file_content, 0, 3) === "GIF") {
+                return 'image/gif';
+            }
+            if (substr($file_content, 0, 4) === "RIFF" && substr($file_content, 8, 4) === "WEBP") {
+                return 'image/webp';
+            }
+        }
+    }
+    
+    log_message('warning', 'Could not determine MIME type in School_model, using fallback: ' . $mime_type);
+    return $mime_type;
+}
 
     public function get_profile_photo($student_id)
     {
@@ -312,165 +425,165 @@ class School_model extends App_Model
         }
     }
 
-
-public function update($data, $id)
-{
-    try {
-        $id = (int)$id;
-        if ($id <= 0) {
-            log_message('error', 'School_model::update - Invalid ID: ' . $id);
-            return false;
-        }
-
-        log_message('debug', 'School_model::update - Starting update for ID: ' . $id);
-        log_message('debug', 'School_model::update - Input data: ' . json_encode($data));
-
-        // Validate age-grade combination first
-        $grade = $data['school_grade'] ?? null;
-        $age = $data['school_age'] ?? null;
-        $grade_mismatch_reason = $data['grade_mismatch_reason'] ?? null;
-        
-        if (!empty($grade) && !empty($age)) {
-            $validation = $this->validate_age_grade($grade, $age, $grade_mismatch_reason);
-            if (!$validation['valid']) {
-                log_message('error', 'School_model::update - Age-grade validation failed: ' . $validation['message']);
-                return ['success' => false, 'message' => $validation['message']];
-            }
-        }
-
-        // Handle profile photo upload
-        $update_data = [];
+    public function update($data, $id)
+    {
         try {
-            $photo = $this->handle_profile_photo_upload();
-            if ($photo !== null) {
-                $update_data['profile_photo'] = $photo;
-                log_message('debug', 'School_model::update - Profile photo will be updated');
+            $id = (int)$id;
+            if ($id <= 0) {
+                log_message('error', 'School_model::update - Invalid ID: ' . $id);
+                return false;
             }
-        } catch (Exception $e) {
-            log_message('error', 'School_model::update - Photo upload error: ' . $e->getMessage());
-        }
 
-        // Map all the possible fields from the cleaned data
-        $field_mappings = [
-            'name' => 'name',
-            'email' => 'email',
-            'contact_no' => 'contact_no',
-            'address' => 'address',
-            'city' => 'city',
-            'zip' => 'zip',
-            'country_id' => 'country_id',
-            'school_id' => 'school_id',
-            'school_internal_id' => 'school_internal_id',
-            'school_type' => 'school_type',
-            'school_name_id' => 'school_name_id',
-            'school_grade' => 'school_grade',
-            'grade_mismatch_reason' => 'grade_mismatch_reason',
-            'school_student_dob' => 'school_student_dob',
-            'school_age' => 'school_age',
-            'bank_id' => 'bank_id',
-            'school_bank_account_no' => 'school_bank_account_no',
-            'school_bank_branch_number' => 'school_bank_branch_number',
-            'school_bank_branch_info' => 'school_bank_branch_info',
-            'school_sponsorship_start_date' => 'school_sponsorship_start_date',
-            'school_sponsorship_end_date' => 'school_sponsorship_end_date',
-            'school_introducedby' => 'school_introducedby',
-            'school_introducedph' => 'school_introducedph',
-            'school_father_name' => 'school_father_name',
-            'school_mother_name' => 'school_mother_name',
-            'school_guardian_name' => 'school_guardian_name',
-            'school_father_income' => 'school_father_income',
-            'school_mother_income' => 'school_mother_income',
-            'school_guardian_income' => 'school_guardian_income',
-            'background_info' => 'background_info',
-            'internal_comment' => 'internal_comment',
-            'external_comment' => 'external_comment'
-        ];
+            log_message('debug', 'School_model::update - Starting update for ID: ' . $id);
+            log_message('debug', 'School_model::update - Input data: ' . json_encode($data));
 
-        // Process each field from the input data
-        foreach ($field_mappings as $db_field => $target_field) {
-            if (array_key_exists($db_field, $data)) {
-                $value = $data[$db_field];
-                
-                log_message('debug', 'School_model::update - Processing field: ' . $db_field . ' = ' . var_export($value, true));
-                
-                // Handle foreign key fields with validation
-                if (in_array($db_field, ['country_id', 'bank_id', 'school_name_id'], true)) {
-                    if ($value === '' || $value === null) {
-                        $update_data[$target_field] = null;
-                    } else {
-                        $fk_id = (int)$value;
-                        if ($this->validateForeignKey($db_field, $fk_id)) {
-                            $update_data[$target_field] = $fk_id;
-                        } else {
-                            log_message('warning', 'Invalid foreign key: ' . $db_field . ' = ' . $fk_id . ' does not exist');
+            // Validate age-grade combination first
+            $grade = $data['school_grade'] ?? null;
+            $age = $data['school_age'] ?? null;
+            $grade_mismatch_reason = $data['grade_mismatch_reason'] ?? null;
+            
+            if (!empty($grade) && !empty($age)) {
+                $validation = $this->validate_age_grade($grade, $age, $grade_mismatch_reason);
+                if (!$validation['valid']) {
+                    log_message('error', 'School_model::update - Age-grade validation failed: ' . $validation['message']);
+                    return ['success' => false, 'message' => $validation['message']];
+                }
+            }
+
+            // Handle profile photo upload
+            $update_data = [];
+            try {
+                $photo = $this->handle_profile_photo_upload();
+                if ($photo !== null) {
+                    $update_data['profile_photo'] = $photo;
+                    log_message('debug', 'School_model::update - Profile photo will be updated');
+                }
+            } catch (Exception $e) {
+                log_message('error', 'School_model::update - Photo upload error: ' . $e->getMessage());
+            }
+
+            // Map all the possible fields from the cleaned data
+            $field_mappings = [
+                'name' => 'name',
+                'email' => 'email',
+                'contact_no' => 'contact_no',
+                'address' => 'address',
+                'city' => 'city',
+                'zip' => 'zip',
+                'country_id' => 'country_id',
+                'school_id' => 'school_id',
+                'school_internal_id' => 'school_internal_id',
+                'school_type' => 'school_type',
+                'school_name_id' => 'school_name_id',
+                'school_grade' => 'school_grade',
+                'grade_mismatch_reason' => 'grade_mismatch_reason',
+                'school_student_dob' => 'school_student_dob',
+                'school_age' => 'school_age',
+                'bank_id' => 'bank_id',
+                'school_bank_account_no' => 'school_bank_account_no',
+                'school_bank_branch_number' => 'school_bank_branch_number',
+                'school_bank_branch_info' => 'school_bank_branch_info',
+                'school_sponsorship_start_date' => 'school_sponsorship_start_date',
+                'school_sponsorship_end_date' => 'school_sponsorship_end_date',
+                'school_introducedby' => 'school_introducedby',
+                'school_introducedph' => 'school_introducedph',
+                'school_father_name' => 'school_father_name',
+                'school_mother_name' => 'school_mother_name',
+                'school_guardian_name' => 'school_guardian_name',
+                'school_father_income' => 'school_father_income',
+                'school_mother_income' => 'school_mother_income',
+                'school_guardian_income' => 'school_guardian_income',
+                'background_info' => 'background_info',
+                'internal_comment' => 'internal_comment',
+                'external_comment' => 'external_comment'
+            ];
+
+            // Process each field from the input data
+            foreach ($field_mappings as $db_field => $target_field) {
+                if (array_key_exists($db_field, $data)) {
+                    $value = $data[$db_field];
+                    
+                    log_message('debug', 'School_model::update - Processing field: ' . $db_field . ' = ' . var_export($value, true));
+                    
+                    // Handle foreign key fields with validation
+                    if (in_array($db_field, ['country_id', 'bank_id', 'school_name_id'], true)) {
+                        if ($value === '' || $value === null) {
                             $update_data[$target_field] = null;
+                        } else {
+                            $fk_id = (int)$value;
+                            if ($this->validateForeignKey($db_field, $fk_id)) {
+                                $update_data[$target_field] = $fk_id;
+                            } else {
+                                log_message('warning', 'Invalid foreign key: ' . $db_field . ' = ' . $fk_id . ' does not exist');
+                                $update_data[$target_field] = null;
+                            }
                         }
                     }
+                    // Handle numeric fields
+                    elseif (in_array($db_field, ['school_father_income', 'school_mother_income', 'school_guardian_income', 'school_age'], true)) {
+                        $update_data[$target_field] = ($value === '' || $value === null) ? null : (is_numeric($value) ? (float)$value : null);
+                    }
+                    // Handle string fields
+                    else {
+                        $update_data[$target_field] = ($value === '' || $value === null) ? null : $value;
+                    }
+                    
+                    log_message('debug', 'School_model::update - Mapped ' . $db_field . ' -> ' . $target_field . ' = ' . var_export($update_data[$target_field], true));
                 }
-                // Handle numeric fields
-                elseif (in_array($db_field, ['school_father_income', 'school_mother_income', 'school_guardian_income', 'school_age'], true)) {
-                    $update_data[$target_field] = ($value === '' || $value === null) ? null : (is_numeric($value) ? (float)$value : null);
-                }
-                // Handle string fields
-                else {
-                    $update_data[$target_field] = ($value === '' || $value === null) ? null : $value;
-                }
-                
-                log_message('debug', 'School_model::update - Mapped ' . $db_field . ' -> ' . $target_field . ' = ' . var_export($update_data[$target_field], true));
             }
-        }
 
-        // Calculate age if DOB is provided and age not already set
-        if (!empty($update_data['school_student_dob']) && !isset($update_data['school_age'])) {
-            try {
-                $dob = new DateTime($update_data['school_student_dob']);
-                $now = new DateTime();
-                $calculated_age = $dob->diff($now)->y;
-                $update_data['school_age'] = $calculated_age;
-                log_message('debug', 'School_model::update - Calculated age from DOB: ' . $calculated_age);
-            } catch (Exception $e) {
-                log_message('error', 'School_model::update - Error calculating age: ' . $e->getMessage());
+            // Calculate age if DOB is provided and age not already set
+            if (!empty($update_data['school_student_dob']) && !isset($update_data['school_age'])) {
+                try {
+                    $dob = new DateTime($update_data['school_student_dob']);
+                    $now = new DateTime();
+                    $calculated_age = $dob->diff($now)->y;
+                    $update_data['school_age'] = $calculated_age;
+                    log_message('debug', 'School_model::update - Calculated age from DOB: ' . $calculated_age);
+                } catch (Exception $e) {
+                    log_message('error', 'School_model::update - Error calculating age: ' . $e->getMessage());
+                }
             }
-        }
 
-        // Filter to only existing database columns
-        $update_data = $this->filter_existing_columns($this->tbl_students, $update_data);
-        
-        log_message('debug', 'School_model::update - Final update data after column filtering: ' . json_encode($update_data));
+            // Filter to only existing database columns
+            $update_data = $this->filter_existing_columns($this->tbl_students, $update_data);
+            
+            log_message('debug', 'School_model::update - Final update data after column filtering: ' . json_encode($update_data));
 
-        if (empty($update_data)) {
-            log_message('warning', 'School_model::update - No valid data to update for ID: ' . $id);
-            return true; // Return true since there's nothing to update
-        }
+            if (empty($update_data)) {
+                log_message('warning', 'School_model::update - No valid data to update for ID: ' . $id);
+                return true; // Return true since there's nothing to update
+            }
 
-        // Perform the database update
-        $this->db->where('id', $id);
-        
-        // Enable query logging for debugging
-        $this->db->start_cache();
-        $query = $this->db->get_compiled_update($this->tbl_students, $update_data);
-        $this->db->stop_cache();
-        log_message('debug', 'School_model::update - Generated SQL: ' . $query);
-        
-        $result = $this->db->update($this->tbl_students, $update_data);
+            // Perform the database update
+            $this->db->where('id', $id);
+            
+            // Enable query logging for debugging
+            $this->db->start_cache();
+            $query = $this->db->get_compiled_update($this->tbl_students, $update_data);
+            $this->db->stop_cache();
+            log_message('debug', 'School_model::update - Generated SQL: ' . $query);
+            
+            $result = $this->db->update($this->tbl_students, $update_data);
 
-        if (!$result) {
-            $error = $this->db->error();
-            log_message('error', 'School_model::update - Database update failed for ID ' . $id . ': ' . json_encode($error));
+            if (!$result) {
+                $error = $this->db->error();
+                log_message('error', 'School_model::update - Database update failed for ID ' . $id . ': ' . json_encode($error));
+                return false;
+            }
+
+            $affected_rows = $this->db->affected_rows();
+            log_message('debug', 'School_model::update - Update successful for ID ' . $id . ' - affected rows: ' . $affected_rows);
+            
+            // Even if affected_rows is 0, the update was successful (no changes != failure)
+            return true;
+
+        } catch (Exception $e) {
+            log_message('error', 'School_model::update - Exception: ' . $e->getMessage());
             return false;
         }
-
-        $affected_rows = $this->db->affected_rows();
-        log_message('debug', 'School_model::update - Update successful for ID ' . $id . ' - affected rows: ' . $affected_rows);
-        
-        // Even if affected_rows is 0, the update was successful (no changes != failure)
-        return true;
-
-    } catch (Exception $e) {
-        log_message('error', 'School_model::update - Exception: ' . $e->getMessage());
-        return false;
     }
-}
+
     public function update_student($data, $id) { return $this->update($data, $id); }
 
     public function delete($id)

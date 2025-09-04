@@ -94,13 +94,13 @@ function student_sponsor_portal_admin_menu()
             'icon'     => 'fa fa-user-circle',
         ]);
 
-        // Add report cards as a separate menu item
-        $CI->app_menu->add_sidebar_menu_item('my-reports', [
-            'name'     => 'My Report Cards',
-            'href'     => admin_url('student_sponsor_portal/school_student_form/' . $is_school_student->id . '#report-cards'),
-            'position' => 2,
-            'icon'     => 'fa fa-file-text',
-        ]);
+        // // Add report cards as a separate menu item
+        // $CI->app_menu->add_sidebar_menu_item('my-reports', [
+        //     'name'     => 'My Report Cards',
+        //     'href'     => admin_url('student_sponsor_portal/school_student_form/' . $is_school_student->id . '#repo'),
+        //     'position' => 2,
+        //     'icon'     => 'fa fa-file-text',
+        // ]);
 
         return; // Don't show admin menu items for school students
     }

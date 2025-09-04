@@ -110,7 +110,7 @@
                           <div class="media-body">
                             <strong><?php echo html_escape($name); ?></strong>
                             <div class="row-options" style="display:none;">
-                              <a href="javascript:void(0)" onclick="viewStudent(<?php echo $sid; ?>)">View</a> |
+                             
                               <a href="<?php echo admin_url('student_sponsor_portal/school_student_form/' . $sid); ?>">Edit</a> |
                               <a href="#" onclick="deleteStudent(<?php echo $sid; ?>); return false;" class="text-danger">Delete</a>
                             </div>
