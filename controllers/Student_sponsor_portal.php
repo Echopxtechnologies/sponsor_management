@@ -27,7 +27,7 @@ class Student_sponsor_portal extends AdminController
         $this->load->model('student_sponsor_portal/sponsor_model',    'sponsor_model');
         $this->load->model('student_sponsor_portal/university_model', 'university_model');
         $this->load->model('student_sponsor_portal/Sponsor_transactions_model', 'txn_model');
-        
+        $this->_check_university_student_access(); 
         // Add access control check on every request
         $this->_check_school_student_access();
         
@@ -38,6 +38,13 @@ class Student_sponsor_portal extends AdminController
 
     public function index()
     {
+            // Check if user is a university student - redirect to their form
+        $current_university_student = $this->is_university_student_user();
+        if ($current_university_student) {
+            redirect(admin_url('student_sponsor_portal/university_student_form/' . $current_university_student->id));
+            return;
+        }
+        
         // Check if user is a school student - redirect to their form
         $current_student = $this->is_school_student_user();
         if ($current_student) {
@@ -1369,7 +1376,97 @@ private function detect_mime_type($file_path, $uploaded_type = null)
     /* =================================================================================== */
     /* =====================            UNIVERSITY STUDENTS            =================== */
     /* =================================================================================== */
+    private function is_university_student_user()
+    {
+        if (!is_staff_logged_in()) {
+            return false;
+        }
+        
+        $staff_id = get_staff_user_id();
+        
+        // Check if this staff member is linked to a university student
+        $student = $this->db->select('id, entity_type, university_internal_id, name')
+                        ->where('staff_id', $staff_id)
+                        ->where('entity_type', 'university')
+                        ->where('active', 1) // or 'staff_active' depending on your column name
+                        ->get(db_prefix() . 'university_students')
+                        ->row();
+        
+        return $student ? $student : false;
+    }
+    private function get_current_university_student_record()
+    {
+        $staff_id = get_staff_user_id();
+        
+        return $this->db->where('staff_id', $staff_id)
+                    ->where('entity_type', 'university')
+                    ->get(db_prefix() . 'university_students')
+                    ->row_array();
+    }
+    private function can_access_university_student($student_id)
+    {
+        // Admin can access all
+        if (is_admin()) {
+            return true;
+        }
+        
+        // Check if user is a university student trying to access their own record
+        $current_student = $this->is_university_student_user();
+        if ($current_student) {
+            return (int)$current_student->id === (int)$student_id;
+        }
+        
+        // Regular permission check for other staff
+        return has_permission('student_sponsor_portal', '', 'view');
+    }
+    private function _check_university_student_access()
+    {
+        // Skip access control for AJAX requests and specific methods
+        if ($this->input->is_ajax_request()) {
+            return;
+        }
+        
+        $current_student = $this->is_university_student_user();
+        
+        if ($current_student) {
+            $method = $this->router->fetch_method();
+            
+            // Allowed methods for university students
+            $allowed_methods = [
+                'index',  // Add this to prevent redirect loops
+                'university_student_form',
+                'get_university_student', 
+                'display_profile_photo',
+                'upload_university_report_card',
+                'get_university_report_cards',
+                'download_university_report_card',
+                // Add AJAX methods for form helpers
+                'add_university_ajax',
+                'add_program_ajax',
+                'add_country_ajax',
+                'add_bank_ajax'
+            ];
+            
+            // Only redirect if accessing truly forbidden methods
+            if (!in_array($method, $allowed_methods)) {
+                // Use a more gentle redirect that preserves session
+                set_alert('info', 'You have been redirected to your profile.');
+                redirect(admin_url('student_sponsor_portal/university_student_form/' . $current_student->id));
+            }
+        }
+    }
+    private function create_or_update_staff_from_university_student(array $student_data, ?int $existing_staff_id): ?int
+    {
+        $staff_data = [
+            'staff_email'     => $student_data['email'] ?? '',
+            'staff_firstname' => $student_data['name'] ?? '',
+            'staff_lastname'  => '',
+            'staff_password'  => $student_data['staff_password'] ?? '',
+            'active'          => !empty($student_data['staff_active']) ? 1 : 0,
+        ];
 
+        return $this->upsert_staff($staff_data, $existing_staff_id, 'University Student');
+}
     public function university_students()
     {
     $current_student = $this->is_school_student_user();
@@ -1436,6 +1533,10 @@ private function detect_mime_type($file_path, $uploaded_type = null)
         try {
             log_message('debug', 'Loading university student form for ID: ' . ($student_id ?: 'new'));
 
+            // IMPORTANT: Define $current_student at the beginning to avoid undefined variable error
+            $current_university_student = $this->is_university_student_user();
+            $is_university_student = (bool)$current_university_student;
+
             if ($this->input->post()) {
                 $isCreate = empty($this->input->post('student_id'));
                 if ($isCreate && !has_permission('student_sponsor_portal', '', 'create')) access_denied('student_sponsor_portal');
@@ -1445,36 +1546,45 @@ private function detect_mime_type($file_path, $uploaded_type = null)
                 $sid = (int)($post['student_id'] ?? 0);
                 unset($post['student_id']);
 
-                // Log raw POST data for debugging
                 log_message('debug', 'Raw POST data: ' . json_encode($post));
 
                 // Clean and map form data to database fields
-                $cleaned_data = $this->clean_university_post_data($post);
+                $cleaned_data = $this->clean_university_post_data($post, $is_university_student);
 
                 $this->session->set_flashdata('old_input', $post);
 
                 if ($isCreate) {
                     $res = $this->university_model->add($cleaned_data);
-                    if (!is_array($res)) { 
-                        $res = $res ? ['success' => true, 'id' => $res] : ['success' => false, 'message' => 'Unable to save.']; 
+                    
+                    // Handle both old format (just ID) and new format (array with success flag)
+                    if (is_array($res)) {
+                        if (!$res['success']) {
+                            $this->session->set_flashdata('old_input', $post);
+                            set_alert('danger', $res['message'] ?? 'Error saving student');
+                            redirect(admin_url('student_sponsor_portal/university_student_form'));
+                            return;
+                        }
+                        $newId = (int)$res['id'];
+                    } else {
+                        $newId = $res ? (int)$res : 0;
+                        if (!$newId) {
+                            $this->session->set_flashdata('old_input', $post);
+                            set_alert('danger', 'Error saving student');
+                            redirect(admin_url('student_sponsor_portal/university_student_form'));
+                            return;
+                        }
                     }
-                    if (!$res['success']) {
-                        $this->session->set_flashdata('old_input', $post);
-                        set_alert('danger', $res['message'] ?? 'Error saving student');
-                        redirect(admin_url('student_sponsor_portal/university_student_form'));
-                    }
-                    $newId = (int)$res['id'];
 
                     // Handle profile photo upload
                     $this->handle_university_profile_photo_upload($newId);
 
-                    // Handle staff creation
+                    // Handle staff creation - FIXED FOR UNIVERSITY STUDENTS
                     if (!empty($this->input->post('create_staff'))) {
                         $existing = $this->university_model->get_by_id($newId);
                         $existing_staff_id = $existing['staff_id'] ?? null;
 
                         $this->ensure_three_min_roles();
-                        $staff_id = $this->create_or_update_staff_from_student($this->input->post(), $existing_staff_id);
+                        $staff_id = $this->create_or_update_staff_from_university_student($this->input->post(), $existing_staff_id);
 
                         if ($staff_id) {
                             $this->db->where('id', $newId)->update(db_prefix() . 'university_students', [
@@ -1492,38 +1602,32 @@ private function detect_mime_type($file_path, $uploaded_type = null)
                     // Handle profile photo upload for existing student
                     $this->handle_university_profile_photo_upload($sid);
 
-                    // Log before update
                     log_message('debug', 'Attempting to update university student ID: ' . $sid . ' with data: ' . json_encode($cleaned_data));
                     
                     // Get student data before update for comparison
                     $before_update = $this->university_model->get_by_id($sid);
                     log_message('debug', 'University student data BEFORE update: ' . json_encode($before_update));
 
-                    $ok = $this->university_model->update_student($cleaned_data, $sid);
+                    $result = $this->university_model->update_student($cleaned_data, $sid);
+                    
+                    // Handle both boolean and array responses
+                    if (is_array($result)) {
+                        if (!$result['success']) {
+                            set_alert('danger', $result['message'] ?? 'Error updating student');
+                            redirect(admin_url('student_sponsor_portal/university_student_form/' . $sid));
+                            return;
+                        }
+                        $ok = true;
+                    } else {
+                        $ok = $result;
+                    }
                     
                     if ($ok) {
                         // Get student data after update for verification
                         $after_update = $this->university_model->get_by_id($sid);
                         log_message('debug', 'University student data AFTER update: ' . json_encode($after_update));
                         
-                        // Check if anything actually changed
-                        $changes_made = false;
-                        foreach ($cleaned_data as $field => $new_value) {
-                            if (isset($before_update[$field]) && $before_update[$field] != $new_value) {
-                                $changes_made = true;
-                                log_message('debug', "Field '{$field}' changed from '{$before_update[$field]}' to '{$new_value}'");
-                            } elseif (!isset($before_update[$field]) && $new_value !== null && $new_value !== '') {
-                                $changes_made = true;
-                                log_message('debug', "New field '{$field}' set to '{$new_value}'");
-                            }
-                        }
-                        
-                        if (!$changes_made) {
-                            log_message('warning', 'Update reported success but no changes detected in database for university student ID: ' . $sid);
-                            set_alert('warning', 'Update completed but no changes were detected. Please verify your data.');
-                        } else {
-                            set_alert('success', 'University student updated successfully');
-                        }
+                        set_alert('success', 'University student updated successfully');
                     } else {
                         $err = $this->db->error();
                         log_message('error', 'Database update failed for university student ID: ' . $sid . '. Error: ' . json_encode($err));
@@ -1532,15 +1636,16 @@ private function detect_mime_type($file_path, $uploaded_type = null)
                             : 'Error saving student. Please check all fields and try again.';
                         set_alert('danger', $msg);
                         redirect(admin_url('student_sponsor_portal/university_student_form/' . $sid));
+                        return;
                     }
 
-                    // Handle staff creation for existing student
+                    // Handle staff creation for existing student - FIXED
                     if (!empty($this->input->post('create_staff'))) {
                         $existing = $this->university_model->get_by_id($sid);
                         $existing_staff_id = $existing['staff_id'] ?? null;
 
                         $this->ensure_three_min_roles();
-                        $staff_id = $this->create_or_update_staff_from_student($this->input->post(), $existing_staff_id);
+                        $staff_id = $this->create_or_update_staff_from_university_student($this->input->post(), $existing_staff_id);
 
                         if ($staff_id) {
                             $this->db->where('id', $sid)->update(db_prefix() . 'university_students', [
@@ -1550,8 +1655,18 @@ private function detect_mime_type($file_path, $uploaded_type = null)
                         }
                     }
 
-                    redirect(admin_url('student_sponsor_portal/university_students'));
+                    // FIXED: Proper redirect for university students
+                    if ($is_university_student) {
+                        redirect(admin_url('student_sponsor_portal/university_student_form/' . $sid));
+                    } else {
+                        redirect(admin_url('student_sponsor_portal/university_students'));
+                    }
                 }
+            }
+
+            // If university student, force them to only access their own record
+            if ($current_university_student) {
+                $student_id = (int)$current_university_student->id;
             }
 
             $data['title'] = 'Register University Student';
@@ -1561,9 +1676,20 @@ private function detect_mime_type($file_path, $uploaded_type = null)
                     set_alert('danger', 'Student not found');
                     redirect(admin_url('student_sponsor_portal/university_students')); 
                 }
+                
+                // Access control: university students can only view their own record
+                if ($current_university_student && (int)$student['id'] !== (int)$current_university_student->id) {
+                    access_denied('student_sponsor_portal');
+                }
+                
                 $data['student'] = $student;
-                $data['title'] = 'Edit University Student';
+                $data['title'] = $is_university_student ? 'My Profile' : 'Edit University Student';
             }
+
+            // Pass the university student flag to the view
+            $data['is_university_student'] = $is_university_student;
+            $data['can_edit_restricted_fields'] = !$is_university_student;
+
             $data['old'] = $this->session->flashdata('old_input') ?: [];
             $data['banks'] = $this->db->select('id,name')->order_by('name', 'ASC')->get(db_prefix() . 'bank')->result_array();
             $data['universities'] = $this->university_model->get_universities();
@@ -1613,11 +1739,17 @@ private function detect_mime_type($file_path, $uploaded_type = null)
         
         return false;
     }
-     public function upload_university_report_card()
+    
+    public function upload_university_report_card()
     {
         header('Content-Type: application/json');
 
-        if (!has_permission('student_sponsor_portal', '', 'create')) {
+        // Check if user is a university student with access to their own records
+        $current_university_student = $this->is_university_student_user();
+        $is_university_student = (bool)$current_university_student;
+        
+        // Allow access if user is admin with permissions OR if they're a university student
+        if (!$is_university_student && !has_permission('student_sponsor_portal', '', 'create')) {
             echo json_encode(['success' => false, 'message' => 'No permission']);
             return;
         }
@@ -1630,6 +1762,12 @@ private function detect_mime_type($file_path, $uploaded_type = null)
 
         if ($student_id <= 0) {
             echo json_encode(['success' => false, 'message' => 'Student ID is required']);
+            return;
+        }
+
+        // If user is a university student, ensure they can only upload to their own record
+        if ($is_university_student && (int)$current_university_student->id !== $student_id) {
+            echo json_encode(['success' => false, 'message' => 'Access denied - can only upload to your own profile']);
             return;
         }
 
@@ -1649,6 +1787,11 @@ private function detect_mime_type($file_path, $uploaded_type = null)
             return;
         }
 
+        if ($semester_end_month === null || $semester_end_year === null) {
+            echo json_encode(['success' => false, 'message' => 'Semester end month and year are required']);
+            return;
+        }
+
         $origName = (string)$_FILES['report_card_file']['name'];
         $tmpName = (string)$_FILES['report_card_file']['tmp_name'];
         $size = (int)$_FILES['report_card_file']['size'];
@@ -1664,18 +1807,8 @@ private function detect_mime_type($file_path, $uploaded_type = null)
             return;
         }
 
-        $mime = null;
-        if (function_exists('finfo_open')) {
-            $f = finfo_open(FILEINFO_MIME_TYPE);
-            if ($f) { 
-                $mime = @finfo_file($f, $tmpName); 
-                finfo_close($f); 
-            }
-        }
-        if (!$mime && !empty($_FILES['report_card_file']['type'])) {
-            $mime = $_FILES['report_card_file']['type'];
-        }
-        $mime = strtolower((string)$mime) ?: 'application/octet-stream';
+        // Enhanced MIME detection
+        $mime = $this->detect_mime_type($tmpName, $_FILES['report_card_file']['type'] ?? '');
 
         // Validate file type
         $allowed_types = ['application/pdf', 'image/jpeg', 'image/jpg', 'image/png', 'image/gif'];
@@ -1823,7 +1956,6 @@ private function detect_mime_type($file_path, $uploaded_type = null)
 
         echo json_encode(['success' => true, 'message' => 'Report card uploaded successfully']);
     }
-
     public function get_university_report_cards($student_id)
     {
         if (!has_permission('student_sponsor_portal', '', 'view')) {
@@ -1922,7 +2054,9 @@ private function detect_mime_type($file_path, $uploaded_type = null)
         }
     }
     // /update
-    private function clean_university_post_data($data)
+    // Update your clean_university_post_data method in Student_sponsor_portal.php controller
+
+    private function clean_university_post_data($data, $is_university_student = false)
     {
         $cleaned = [];
         
@@ -1942,10 +2076,6 @@ private function detect_mime_type($file_path, $uploaded_type = null)
             'university_name_id' => 'university_name_id',
             'university_program_id' => 'university_program_id',
             'year_of_study' => 'university_year_of_study',
-            'sponsorship_start' => 'university_sponsorship_start_date',
-            'sponsorship_end' => 'university_sponsorship_end_date',
-            'introduced_by' => 'university_introducedby',
-            'introduced_phone' => 'university_introducedph',
             'bank_id' => 'bank_id',
             'bank_account_number' => 'university_bank_account_no',
             'bank_branch_number' => 'university_bank_branch_number',
@@ -1956,11 +2086,24 @@ private function detect_mime_type($file_path, $uploaded_type = null)
             'mother_income' => 'university_mother_income',
             'guardian_name' => 'university_guardian_name',
             'guardian_income' => 'university_guardian_income',
-            'sponsor_id' => 'sponsor_id',
             'background_information' => 'background_info',
+        ];
+
+        // Admin-only fields (university students CANNOT edit these)
+        $admin_only_fields = [
+            'sponsorship_start' => 'university_sponsorship_start_date',
+            'sponsorship_end' => 'university_sponsorship_end_date',
+            'introduced_by' => 'university_introducedby',
+            'introduced_phone' => 'university_introducedph',
+            'sponsor_id' => 'sponsor_id',
             'internal_comment' => 'internal_comment',
             'external_comment' => 'external_comment'
         ];
+
+        // Add admin-only fields to mappings only if user is admin
+        if (!$is_university_student) {
+            $field_mappings = array_merge($field_mappings, $admin_only_fields);
+        }
         
         foreach ($field_mappings as $form_field => $db_field) {
             if (isset($data[$form_field])) {
@@ -1968,7 +2111,6 @@ private function detect_mime_type($file_path, $uploaded_type = null)
                 
                 // Handle different data types
                 if ($value === '' || $value === null) {
-                    // For updates, we want to actually set empty values, not skip them
                     $cleaned[$db_field] = ($value === '') ? '' : null;
                 } elseif (in_array($form_field, ['father_income', 'mother_income', 'guardian_income'])) {
                     $cleaned[$db_field] = is_numeric($value) ? (float)$value : null;
@@ -1991,42 +2133,46 @@ private function detect_mime_type($file_path, $uploaded_type = null)
             }
         }
         
-        // Set entity_type (required field with default value)
-        $cleaned['entity_type'] = 'university';
+        // IMPORTANT: Don't set entity_type for student updates to avoid conflicts
+        if (!$is_university_student) {
+            $cleaned['entity_type'] = 'university';
+        }
         
-        // Handle new country creation
-        if (!empty($data['new_country_name']) && !empty($data['new_country_phone_code'])) {
-            $country_id = $this->create_new_country($data['new_country_name'], $data['new_country_phone_code']);
-            if ($country_id) {
-                $cleaned['country_id'] = $country_id;
+        // Handle new item creation (admin only)
+        if (!$is_university_student) {
+            // Handle new country creation
+            if (!empty($data['new_country_name']) && !empty($data['new_country_phone_code'])) {
+                $country_id = $this->create_new_country($data['new_country_name'], $data['new_country_phone_code']);
+                if ($country_id) {
+                    $cleaned['country_id'] = $country_id;
+                }
+            }
+            
+            // Handle new university creation
+            if (!empty($data['new_university_name'])) {
+                $university_id = $this->create_new_university($data['new_university_name']);
+                if ($university_id) {
+                    $cleaned['university_name_id'] = $university_id;
+                }
+            }
+            
+            // Handle new program creation
+            if (!empty($data['new_program_name'])) {
+                $program_id = $this->create_new_program($data['new_program_name']);
+                if ($program_id) {
+                    $cleaned['university_program_id'] = $program_id;
+                }
+            }
+            
+            // Handle new bank creation
+            if (!empty($data['new_bank_name'])) {
+                $bank_id = $this->create_new_bank($data['new_bank_name']);
+                if ($bank_id) {
+                    $cleaned['bank_id'] = $bank_id;
+                }
             }
         }
         
-        // Handle new university creation
-        if (!empty($data['new_university_name'])) {
-            $university_id = $this->create_new_university($data['new_university_name']);
-            if ($university_id) {
-                $cleaned['university_name_id'] = $university_id;
-            }
-        }
-        
-        // Handle new program creation
-        if (!empty($data['new_program_name'])) {
-            $program_id = $this->create_new_program($data['new_program_name']);
-            if ($program_id) {
-                $cleaned['university_program_id'] = $program_id;
-            }
-        }
-        
-        // Handle new bank creation
-        if (!empty($data['new_bank_name'])) {
-            $bank_id = $this->create_new_bank($data['new_bank_name']);
-            if ($bank_id) {
-                $cleaned['bank_id'] = $bank_id;
-            }
-        }
-        
-        // Log what we're about to save for debugging
         log_message('debug', 'Cleaned university student data: ' . json_encode($cleaned));
         
         return $cleaned;

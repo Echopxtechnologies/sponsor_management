@@ -5,27 +5,44 @@
     <div class="row">
       <div class="col-md-10 col-md-offset-1">
         <div class="panel_s">
-          <div class="panel-body">
+          <div class="panel-body university-student-form-wrapper">
             <!-- Header -->
             <div class="row">
               <div class="col-md-8">
                 <h4 class="customer-profile-group-heading">
                   <i class="fa fa-university"></i>
-                  <?php echo isset($student) ? 'Edit University Student' : 'Register University Student'; ?>
+                  <?php if(isset($is_university_student) && $is_university_student): ?>
+                    My Profile
+                  <?php else: ?>
+                    <?php echo isset($student) ? 'Edit University Student' : 'Register University Student'; ?>
+                  <?php endif; ?>
                 </h4>
+                <?php if(isset($is_university_student) && $is_university_student): ?>
+                  <p class="text-muted"><i class="fa fa-info-circle"></i> Update your personal information below</p>
+                <?php endif; ?>
               </div>
               <div class="col-md-4 text-right">
-                <a href="<?php echo admin_url('student_sponsor_portal/university_students'); ?>" class="btn btn-default">
-                  <i class="fa fa-arrow-left"></i> Back to List
-                </a>
+                <?php if(!isset($is_university_student) || !$is_university_student): ?>
+                  <a href="<?php echo admin_url('student_sponsor_portal/university_students'); ?>" class="btn btn-default">
+                    <i class="fa fa-arrow-left"></i> Back to List
+                  </a>
+                <?php endif; ?>
               </div>
             </div>
             <hr class="hr-panel-heading">
 
             <?php
+              if (isset($is_university_student) && $is_university_student && isset($student) && !empty($student['id'])) {
+                  // For university students accessing their portal - include student ID in URL
+                  $form_action = admin_url('student_sponsor_portal/university_student_form/' . (int)$student['id']);
+              } else {
+                  // For admins using normal form - use base URL (existing behavior)
+                  $form_action = admin_url('student_sponsor_portal/university_student_form');
+              }
+
               echo form_open_multipart(
-                admin_url('student_sponsor_portal/university_student_form'),
-                ['id' => 'university-student-form', 'novalidate' => 'novalidate', 'autocomplete'=>'off']
+                  $form_action,
+                  ['id' => 'university-student-form', 'novalidate' => 'novalidate', 'autocomplete'=>'off']
               );
             ?>
             <?php if(isset($student)): ?>
@@ -35,12 +52,14 @@
             <!-- remember last active tab -->
             <input type="hidden" name="active_tab" id="active_tab" value="<?php echo html_escape($this->input->post('active_tab') ?? ($active_tab ?? '#student-info')); ?>">
 
-            <!-- hidden fields that carry "new" items to server on Save -->
-            <input type="hidden" name="new_country_name" id="new_country_name">
-            <input type="hidden" name="new_country_phone_code" id="new_country_phone_code">
-            <input type="hidden" name="new_university_name" id="new_university_name">
-            <input type="hidden" name="new_program_name" id="new_program_name">
-            <input type="hidden" name="new_bank_name" id="new_bank_name">
+            <!-- hidden fields that carry "new" items to server on Save (admin only) -->
+            <?php if(!isset($is_university_student) || !$is_university_student): ?>
+              <input type="hidden" name="new_country_name" id="new_country_name">
+              <input type="hidden" name="new_country_phone_code" id="new_country_phone_code">
+              <input type="hidden" name="new_university_name" id="new_university_name">
+              <input type="hidden" name="new_program_name" id="new_program_name">
+              <input type="hidden" name="new_bank_name" id="new_bank_name">
+            <?php endif; ?>
             <input type="hidden" name="calculated_age" id="calculated_age_hidden">
 
             <?php if(isset($student) && !empty($student)): ?>
@@ -59,18 +78,55 @@
               </div>
             <?php endif; ?>
 
-            <ul class="nav nav-tabs" role="tablist">
-              <li role="presentation" class="active"><a href="#student-info" aria-controls="student-info" role="tab" data-toggle="tab"><i class="fa fa-user"></i> Student Info</a></li>
-              <li role="presentation"><a href="#sponsorship" aria-controls="sponsorship" role="tab" data-toggle="tab"><i class="fa fa-heart"></i> Sponsorship</a></li>
-              <li role="presentation"><a href="#bank-info" aria-controls="bank-info" role="tab" data-toggle="tab"><i class="fa fa-bank"></i> Bank Info</a></li>
-              <li role="presentation"><a href="#additional-info" aria-controls="additional-info" role="tab" data-toggle="tab"><i class="fa fa-info-circle"></i> Additional Info</a></li>
-              <li role="presentation"><a href="#report-cards" aria-controls="report-cards" role="tab" data-toggle="tab"><i class="fa fa-file-text"></i> Report Cards</a></li>
-              <li role="presentation"><a href="#tab_staff" data-toggle="tab"><i class="fa fa-user-circle"></i> Staff Account</a></li>
+            <!-- Tab Navigation -->
+            <ul class="nav nav-tabs student-form-tabs" role="tablist">
+              <li role="presentation" class="active">
+                <a href="#student-info" aria-controls="student-info" role="tab" data-toggle="tab">
+                  <i class="fa fa-user"></i> 
+                  <?php echo (isset($is_university_student) && $is_university_student) ? 'My Info' : 'Student Info'; ?>
+                </a>
+              </li>
+              <?php if(!isset($is_university_student) || !$is_university_student): ?>
+                <li role="presentation">
+                  <a href="#sponsorship" aria-controls="sponsorship" role="tab" data-toggle="tab">
+                    <i class="fa fa-heart"></i> Sponsorship
+                  </a>
+                </li>
+              <?php endif; ?>
+              <li role="presentation">
+                <a href="#bank-info" aria-controls="bank-info" role="tab" data-toggle="tab">
+                  <i class="fa fa-bank"></i> Bank Info
+                </a>
+              </li>
+              <li role="presentation">
+                <a href="#family-info" aria-controls="family-info" role="tab" data-toggle="tab">
+                  <i class="fa fa-users"></i> Family Info
+                </a>
+              </li>
+              <?php if(!isset($is_university_student) || !$is_university_student): ?>
+                <li role="presentation">
+                  <a href="#additional-info" aria-controls="additional-info" role="tab" data-toggle="tab">
+                    <i class="fa fa-info-circle"></i> Additional Info
+                  </a>
+                </li>
+              <?php endif; ?>
+              <li role="presentation">
+                <a href="#report-cards" aria-controls="report-cards" role="tab" data-toggle="tab">
+                  <i class="fa fa-file-text"></i> Report Cards
+                </a>
+              </li>
+              <?php if(!isset($is_university_student) || !$is_university_student): ?>
+                <li role="presentation">
+                  <a href="#tab_staff" data-toggle="tab">
+                    <i class="fa fa-user-circle"></i> Staff Account
+                  </a>
+                </li>
+              <?php endif; ?>
             </ul>
 
-            <div class="tab-content" style="margin-top:20px;">
+            <div class="tab-content student-form-content" style="margin-top:0;">
 
-              <!-- Student Info -->
+              <!-- Student Info Tab -->
               <div role="tabpanel" class="tab-pane active" id="student-info">
                 <h5><i class="fa fa-user"></i> Basic Information</h5>
                 <hr>
@@ -79,13 +135,15 @@
                     <div class="form-group">
                       <label for="name" class="control-label">Full Name *</label>
                       <input type="text" name="name" id="name" required class="form-control"
-                        value="<?php echo isset($student) ? html_escape($student['name'] ?? '') : (isset($old['name']) ? html_escape($old['name']) : ''); ?>" placeholder="Enter student's full name">
+                        value="<?php echo isset($student) ? html_escape($student['name'] ?? '') : (isset($old['name']) ? html_escape($old['name']) : ''); ?>" 
+                        placeholder="Enter student's full name">
                     </div>
 
                     <div class="form-group">
                       <label for="email" class="control-label">Email Address</label>
                       <input type="email" name="email" id="email" class="form-control"
-                        value="<?php echo isset($student) ? html_escape($student['email'] ?? '') : (isset($old['email']) ? html_escape($old['email']) : ''); ?>" placeholder="Enter email address">
+                        value="<?php echo isset($student) ? html_escape($student['email'] ?? '') : (isset($old['email']) ? html_escape($old['email']) : ''); ?>" 
+                        placeholder="Enter email address">
                     </div>
 
                     <div class="form-group">
@@ -93,7 +151,7 @@
                       <div class="input-group">
                         <div class="input-group-addon" id="phone-code-display">
                           <?php
-                            $phone_code = '+1';
+                            $phone_code = '+1'; // Default to US
                             if(isset($student) && !empty($student['country_id']) && !empty($countries)) {
                               foreach($countries as $country) {
                                 $cid = (int)($country['id'] ?? 0);
@@ -105,7 +163,8 @@
                           ?>
                         </div>
                         <input type="text" name="phone" id="phone" class="form-control"
-                          value="<?php echo isset($student) ? html_escape($student['contact_no'] ?? '') : (isset($old['phone']) ? html_escape($old['phone']) : ''); ?>" placeholder="Enter phone number">
+                          value="<?php echo isset($student) ? html_escape($student['contact_no'] ?? '') : (isset($old['phone']) ? html_escape($old['phone']) : ''); ?>" 
+                          placeholder="Enter phone number">
                       </div>
                     </div>
 
@@ -118,7 +177,8 @@
                     <div class="form-group">
                       <label class="control-label">Age</label>
                       <input type="text" id="calculated-age" class="form-control" readonly
-                        value="<?php echo isset($student) && !empty($student['university_age']) ? $student['university_age'] . ' years' : ''; ?>" placeholder="Will be calculated from DOB">
+                        value="<?php echo isset($student) && !empty($student['university_age']) ? $student['university_age'] . ' years' : ''; ?>" 
+                        placeholder="Will be calculated from DOB">
                     </div>
 
                     <div class="form-group">
@@ -136,10 +196,11 @@
                   </div>
 
                   <div class="col-md-6">
-                    <!-- Country dropdown + add -->
+                    <!-- Country dropdown + add (admin only can add new) -->
                     <div class="form-group">
                       <label for="country_id" class="control-label">Country</label>
-                      <div class="country-select-wrapper">
+                      <?php if(isset($is_university_student) && $is_university_student): ?>
+                        <!-- Simple dropdown for university students -->
                         <select name="country_id" id="country_id" class="form-control selectpicker" data-live-search="true" data-none-selected-text="Select Country">
                           <option value="">Select Country</option>
                           <?php if(!empty($countries)): foreach($countries as $c): ?>
@@ -157,10 +218,31 @@
                             </option>
                           <?php endforeach; endif; ?>
                         </select>
-                        <button type="button" class="btn btn-default btn-sm add-new-btn" data-toggle="modal" data-target="#addCountryModal" title="Add New Country">
-                          <i class="fa fa-plus"></i>
-                        </button>
-                      </div>
+                      <?php else: ?>
+                        <!-- Admin version with add button -->
+                        <div class="country-select-wrapper">
+                          <select name="country_id" id="country_id" class="form-control selectpicker" data-live-search="true" data-none-selected-text="Select Country">
+                            <option value="">Select Country</option>
+                            <?php if(!empty($countries)): foreach($countries as $c): ?>
+                              <?php
+                                $cid   = (int)($c['id'] ?? 0);
+                                $cname = $c['name'] ?? $c['short_name'] ?? '';
+                                $pcode = $c['phone_code'] ?? $c['calling_code'] ?? '';
+                                $selected = (isset($student) && (int)($student['country_id'] ?? 0) === $cid) ||
+                                           (isset($old['country_id']) && (int)$old['country_id'] === $cid);
+                              ?>
+                              <option value="<?php echo $cid; ?>"
+                                data-phone-code="<?php echo html_escape($pcode); ?>"
+                                <?php echo $selected ? 'selected' : ''; ?>>
+                                <?php echo html_escape($cname); ?><?php echo $pcode!=='' ? ' ('.html_escape($pcode).')' : ''; ?>
+                              </option>
+                            <?php endforeach; endif; ?>
+                          </select>
+                          <button type="button" class="btn btn-default btn-sm add-new-btn" data-toggle="modal" data-target="#addCountryModal" title="Add New Country">
+                            <i class="fa fa-plus"></i>
+                          </button>
+                        </div>
+                      <?php endif; ?>
                     </div>
 
                     <div class="form-group">
@@ -173,29 +255,48 @@
                         <div class="form-group">
                           <label for="city" class="control-label">City / District</label>
                           <input type="text" name="city" id="city" class="form-control"
-                            value="<?php echo isset($student) ? html_escape($student['city'] ?? '') : (isset($old['city']) ? html_escape($old['city']) : ''); ?>" placeholder="City / District">
+                            value="<?php echo isset($student) ? html_escape($student['city'] ?? '') : (isset($old['city']) ? html_escape($old['city']) : ''); ?>" 
+                            placeholder="City / District">
                         </div>
                       </div>
                       <div class="col-md-6">
                         <div class="form-group">
                           <label for="postal_code" class="control-label">Postal Code</label>
                           <input type="text" name="postal_code" id="postal_code" class="form-control"
-                            value="<?php echo isset($student) ? html_escape($student['zip'] ?? '') : (isset($old['postal_code']) ? html_escape($old['postal_code']) : ''); ?>" placeholder="Postal code">
+                            value="<?php echo isset($student) ? html_escape($student['zip'] ?? '') : (isset($old['postal_code']) ? html_escape($old['postal_code']) : ''); ?>" 
+                            placeholder="Postal code">
                         </div>
                       </div>
                     </div>
 
+                    <!-- University ID - Editable for both admin and students -->
                     <div class="form-group">
                       <label for="university_id" class="control-label">University Student ID</label>
                       <input type="text" name="university_id" id="university_id" class="form-control"
-                        value="<?php echo isset($student) ? html_escape($student['university_id'] ?? '') : (isset($old['university_id']) ? html_escape($old['university_id']) : ''); ?>" placeholder="Enter university student ID">
+                        value="<?php echo isset($student) ? html_escape($student['university_id'] ?? '') : (isset($old['university_id']) ? html_escape($old['university_id']) : ''); ?>" 
+                        placeholder="Enter university student ID">
                     </div>
 
-                    <div class="form-group">
-                      <label for="university_internal_id" class="control-label">Internal Student ID</label>
-                      <input type="text" name="university_internal_id" id="university_internal_id" class="form-control"
-                        value="<?php echo isset($student) ? html_escape($student['university_internal_id'] ?? '') : (isset($old['university_internal_id']) ? html_escape($old['university_internal_id']) : ''); ?>" placeholder="Internal tracking ID">
-                    </div>
+                    <!-- Internal ID - Always read-only display -->
+                    <?php if(isset($student) && !empty($student['university_internal_id'])): ?>
+                      <div class="form-group">
+                        <label class="control-label">Internal Student ID</label>
+                        <p class="form-control-static">
+                          <strong><?php echo html_escape($student['university_internal_id']); ?></strong>
+                        </p>
+                      </div>
+                    <?php endif; ?>
+
+                    <?php if(!isset($is_university_student) || !$is_university_student): ?>
+                      <!-- Admin can still edit internal ID if needed -->
+                      <div class="form-group">
+                        <label for="university_internal_id" class="control-label">Edit Internal Student ID</label>
+                        <input type="text" name="university_internal_id" id="university_internal_id" class="form-control"
+                          value="<?php echo isset($student) ? html_escape($student['university_internal_id'] ?? '') : (isset($old['university_internal_id']) ? html_escape($old['university_internal_id']) : ''); ?>" 
+                          placeholder="Internal tracking ID">
+                        <small class="text-muted">Admin only: Modify internal tracking ID</small>
+                      </div>
+                    <?php endif; ?>
                   </div>
                 </div>
 
@@ -221,9 +322,11 @@
                             </option>
                           <?php endforeach; endif; ?>
                         </select>
-                        <button type="button" class="btn btn-default btn-sm add-new-btn" data-toggle="modal" data-target="#addUniversityModal" title="Add New University">
-                          <i class="fa fa-plus"></i>
-                        </button>
+                        <?php if(!isset($is_university_student) || !$is_university_student): ?>
+                          <button type="button" class="btn btn-default btn-sm add-new-btn" data-toggle="modal" data-target="#addUniversityModal" title="Add New University">
+                            <i class="fa fa-plus"></i>
+                          </button>
+                        <?php endif; ?>
                       </div>
                     </div>
 
@@ -245,9 +348,11 @@
                             </option>
                           <?php endforeach; endif; ?>
                         </select>
-                        <button type="button" class="btn btn-default btn-sm add-new-btn" data-toggle="modal" data-target="#addProgramModal" title="Add New Program">
-                          <i class="fa fa-plus"></i>
-                        </button>
+                        <?php if(!isset($is_university_student) || !$is_university_student): ?>
+                          <button type="button" class="btn btn-default btn-sm add-new-btn" data-toggle="modal" data-target="#addProgramModal" title="Add New Program">
+                            <i class="fa fa-plus"></i>
+                          </button>
+                        <?php endif; ?>
                       </div>
                     </div>
                   </div>
@@ -275,13 +380,14 @@
                 </div>
               </div>
 
-              <!-- Sponsorship -->
+              <!-- Sponsorship Tab (Admin Only) -->
+              <?php if(!isset($is_university_student) || !$is_university_student): ?>
               <div role="tabpanel" class="tab-pane" id="sponsorship">
                 <div class="row">
                   <div class="col-md-6">
                     <div class="form-group">
                       <label for="sponsor_id" class="control-label">Main Sponsor</label>
-                      <select name="sponsor_id" id="sponsor_id" class="form-control">
+                      <select name="sponsor_id" id="sponsor_id" class="form-control selectpicker" data-live-search="true" data-none-selected-text="Select Sponsor">
                         <option value="">Select Sponsor</option>
                         <?php if(!empty($sponsors)): foreach($sponsors as $sponsor): ?>
                           <?php
@@ -310,18 +416,21 @@
                     <div class="form-group">
                       <label for="introduced_by" class="control-label">Introduced By</label>
                       <input type="text" name="introduced_by" id="introduced_by" class="form-control"
-                        value="<?php echo isset($student) ? html_escape($student['university_introducedby'] ?? '') : (isset($old['introduced_by']) ? html_escape($old['introduced_by']) : ''); ?>" placeholder="Person who introduced the student">
+                        value="<?php echo isset($student) ? html_escape($student['university_introducedby'] ?? '') : (isset($old['introduced_by']) ? html_escape($old['introduced_by']) : ''); ?>" 
+                        placeholder="Person who introduced the student">
                     </div>
                     <div class="form-group">
                       <label for="introduced_phone" class="control-label">Introducer's Phone</label>
                       <input type="text" name="introduced_phone" id="introduced_phone" class="form-control"
-                        value="<?php echo isset($student) ? html_escape($student['university_introducedph'] ?? '') : (isset($old['introduced_phone']) ? html_escape($old['introduced_phone']) : ''); ?>" placeholder="Contact number">
+                        value="<?php echo isset($student) ? html_escape($student['university_introducedph'] ?? '') : (isset($old['introduced_phone']) ? html_escape($old['introduced_phone']) : ''); ?>" 
+                        placeholder="Contact number">
                     </div>
                   </div>
                 </div>
               </div>
+              <?php endif; ?>
 
-              <!-- Bank Info -->
+              <!-- Bank Info Tab -->
               <div role="tabpanel" class="tab-pane" id="bank-info">
                 <div class="row">
                   <div class="col-md-6">
@@ -340,16 +449,19 @@
                             </option>
                           <?php endforeach; endif; ?>
                         </select>
-                        <button type="button" class="btn btn-default btn-sm add-new-btn" data-toggle="modal" data-target="#addBankModal" title="Add New Bank">
-                          <i class="fa fa-plus"></i>
-                        </button>
+                        <?php if(!isset($is_university_student) || !$is_university_student): ?>
+                          <button type="button" class="btn btn-default btn-sm add-new-btn" data-toggle="modal" data-target="#addBankModal" title="Add New Bank">
+                            <i class="fa fa-plus"></i>
+                          </button>
+                        <?php endif; ?>
                       </div>
                     </div>
 
                     <div class="form-group">
                       <label for="bank_account_number" class="control-label">Bank Account Number</label>
                       <input type="text" name="bank_account_number" id="bank_account_number" class="form-control"
-                        value="<?php echo isset($student) ? html_escape($student['university_bank_account_no'] ?? '') : (isset($old['bank_account_number']) ? html_escape($old['bank_account_number']) : ''); ?>" placeholder="Account number">
+                        value="<?php echo isset($student) ? html_escape($student['university_bank_account_no'] ?? '') : (isset($old['bank_account_number']) ? html_escape($old['bank_account_number']) : ''); ?>" 
+                        placeholder="Account number">
                     </div>
                   </div>
 
@@ -357,7 +469,8 @@
                     <div class="form-group">
                       <label for="bank_branch_number" class="control-label">Bank Branch Number</label>
                       <input type="text" name="bank_branch_number" id="bank_branch_number" class="form-control"
-                        value="<?php echo isset($student) ? html_escape($student['university_bank_branch_number'] ?? '') : (isset($old['bank_branch_number']) ? html_escape($old['bank_branch_number']) : ''); ?>" placeholder="Branch code/number">
+                        value="<?php echo isset($student) ? html_escape($student['university_bank_branch_number'] ?? '') : (isset($old['bank_branch_number']) ? html_escape($old['bank_branch_number']) : ''); ?>" 
+                        placeholder="Branch code/number">
                     </div>
                     <div class="form-group">
                       <label for="bank_branch_info" class="control-label">Bank Branch Information</label>
@@ -367,8 +480,8 @@
                 </div>
               </div>
 
-              <!-- Additional Info -->
-              <div role="tabpanel" class="tab-pane" id="additional-info">
+              <!-- Family Info Tab -->
+              <div role="tabpanel" class="tab-pane" id="family-info">
                 <div class="row">
                   <div class="col-md-4">
                     <div class="form-group">
@@ -379,7 +492,8 @@
                     <div class="form-group">
                       <label for="father_income" class="control-label">Father's Income</label>
                       <input type="number" step="0.01" name="father_income" id="father_income" class="form-control"
-                        value="<?php echo isset($student) ? html_escape($student['university_father_income'] ?? '') : (isset($old['father_income']) ? html_escape($old['father_income']) : ''); ?>" placeholder="Monthly income">
+                        value="<?php echo isset($student) ? html_escape($student['university_father_income'] ?? '') : (isset($old['father_income']) ? html_escape($old['father_income']) : ''); ?>" 
+                        placeholder="Monthly income">
                     </div>
                   </div>
 
@@ -392,7 +506,8 @@
                     <div class="form-group">
                       <label for="mother_income" class="control-label">Mother's Income</label>
                       <input type="number" step="0.01" name="mother_income" id="mother_income" class="form-control"
-                        value="<?php echo isset($student) ? html_escape($student['university_mother_income'] ?? '') : (isset($old['mother_income']) ? html_escape($old['mother_income']) : ''); ?>" placeholder="Monthly income">
+                        value="<?php echo isset($student) ? html_escape($student['university_mother_income'] ?? '') : (isset($old['mother_income']) ? html_escape($old['mother_income']) : ''); ?>" 
+                        placeholder="Monthly income">
                     </div>
                   </div>
 
@@ -405,7 +520,8 @@
                     <div class="form-group">
                       <label for="guardian_income" class="control-label">Guardian's Income</label>
                       <input type="number" step="0.01" name="guardian_income" id="guardian_income" class="form-control"
-                        value="<?php echo isset($student) ? html_escape($student['university_guardian_income'] ?? '') : (isset($old['guardian_income']) ? html_escape($old['guardian_income']) : ''); ?>" placeholder="Monthly income">
+                        value="<?php echo isset($student) ? html_escape($student['university_guardian_income'] ?? '') : (isset($old['guardian_income']) ? html_escape($old['guardian_income']) : ''); ?>" 
+                        placeholder="Monthly income">
                     </div>
                   </div>
                 </div>
@@ -414,28 +530,44 @@
                   <div class="col-md-12">
                     <div class="form-group">
                       <label for="background_information" class="control-label">Background Information</label>
-                      <textarea name="background_information" id="background_information" class="form-control" rows="3" placeholder="Student background, family situation, etc."><?php echo isset($student) ? html_escape($student['background_info'] ?? '') : (isset($old['background_information']) ? html_escape($old['background_information']) : ''); ?></textarea>
-                    </div>
-                    <div class="form-group">
-                      <label for="internal_comment" class="control-label">Internal Comment</label>
-                      <textarea name="internal_comment" id="internal_comment" class="form-control" rows="3" placeholder="Internal notes (not visible to sponsors)"><?php echo isset($student) ? html_escape($student['internal_comment'] ?? '') : (isset($old['internal_comment']) ? html_escape($old['internal_comment']) : ''); ?></textarea>
-                    </div>
-                    <div class="form-group">
-                      <label for="external_comment" class="control-label">External Comment</label>
-                      <textarea name="external_comment" id="external_comment" class="form-control" rows="3" placeholder="Comments visible to sponsors"><?php echo isset($student) ? html_escape($student['external_comment'] ?? '') : (isset($old['external_comment']) ? html_escape($old['external_comment']) : ''); ?></textarea>
+                      <textarea name="background_information" id="background_information" class="form-control" rows="3" 
+                        placeholder="Student background, family situation, etc."><?php echo isset($student) ? html_escape($student['background_info'] ?? '') : (isset($old['background_information']) ? html_escape($old['background_information']) : ''); ?></textarea>
                     </div>
                   </div>
                 </div>
               </div>
 
-              <!-- Report Cards (NO nested form, NO required attrs) -->
+              <!-- Additional Info Tab (Admin Only) -->
+              <?php if(!isset($is_university_student) || !$is_university_student): ?>
+              <div role="tabpanel" class="tab-pane" id="additional-info">
+                <div class="row">
+                  <div class="col-md-6">
+                    <div class="form-group">
+                      <label for="internal_comment" class="control-label">Internal Comment</label>
+                      <textarea name="internal_comment" id="internal_comment" class="form-control" rows="3" 
+                        placeholder="Internal notes (not visible to sponsors)"><?php echo isset($student) ? html_escape($student['internal_comment'] ?? '') : (isset($old['internal_comment']) ? html_escape($old['internal_comment']) : ''); ?></textarea>
+                      <small class="text-muted">These comments are only visible to staff/administrators.</small>
+                    </div>
+                  </div>
+                  <div class="col-md-6">
+                    <div class="form-group">
+                      <label for="external_comment" class="control-label">External Comment</label>
+                      <textarea name="external_comment" id="external_comment" class="form-control" rows="3" 
+                        placeholder="Comments visible to sponsors"><?php echo isset($student) ? html_escape($student['external_comment'] ?? '') : (isset($old['external_comment']) ? html_escape($old['external_comment']) : ''); ?></textarea>
+                      <small class="text-muted">These comments may be visible to sponsors and other stakeholders.</small>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <?php endif; ?>
+
+              <!-- Report Cards Tab -->
               <div role="tabpanel" class="tab-pane" id="report-cards">
                 <?php if(isset($student) && !empty($student['id'])): ?>
                   <div class="row">
                     <div class="col-md-12">
-                      <h5><i class="fa fa-upload"></i> Upload Report Card</h5>
+                      <h5 id="repo"><i class="fa fa-upload"></i> Upload Report Card</h5>
                       <hr>
-                      <!-- Standalone inputs (not part of the main form validation) -->
                       <input type="hidden" id="rc_student_university_id" value="<?php echo (int)$student['id']; ?>">
                       <div class="row">
                         <div class="col-md-4">
@@ -500,7 +632,7 @@
 
                   <div class="row" style="margin-top: 30px;">
                     <div class="col-md-12">
-                      <h5><i class="fa fa-files-o"></i> Existing Report Cards</h5>
+                      <h5><i class="fa fa-files-o"></i> <?php echo (isset($is_university_student) && $is_university_student) ? 'My Report Cards' : 'Report Cards'; ?></h5>
                       <hr>
                       <div class="table-responsive">
                         <table class="table table-striped" id="reportCardsTable">
@@ -527,7 +659,8 @@
                 <?php endif; ?>
               </div>
 
-              <!-- Staff Account Tab -->
+              <!-- Staff Account Tab (Admin Only) -->
+              <?php if(!isset($is_university_student) || !$is_university_student): ?>
               <div class="tab-pane" id="tab_staff">
                 <div class="checkbox checkbox-primary">
                   <input type="checkbox" id="create_staff" name="create_staff" value="1" <?php echo (!empty($student['staff_id']) || isset($old['create_staff'])) ? 'checked' : ''; ?>>
@@ -577,17 +710,27 @@
                   <button type="submit" class="btn btn-danger"  formaction="<?php echo admin_url('student_sponsor_portal/revoke_university_access'); ?>" formmethod="post">Revoke Portal Access</button>
                 <?php endif; ?>
               </div>
+              <?php endif; ?>
 
             </div>
 
+            <!-- Action Buttons -->
             <div class="row" style="margin-top: 20px;">
               <div class="col-md-12">
                 <button type="submit" id="btn-save-student" class="btn btn-primary btn-lg">
-                  <i class="fa fa-save"></i> <?php echo isset($student) ? 'Update Student' : 'Register Student'; ?>
+                  <i class="fa fa-save"></i> 
+                  <?php if(isset($is_university_student) && $is_university_student): ?>
+                    Update My Profile
+                  <?php else: ?>
+                    <?php echo isset($student) ? 'Update Student' : 'Register Student'; ?>
+                  <?php endif; ?>
                 </button>
-                <a href="<?php echo admin_url('student_sponsor_portal/university_students'); ?>" class="btn btn-default btn-lg">
-                  <i class="fa fa-times"></i> Cancel
-                </a>
+                
+                <?php if(!isset($is_university_student) || !$is_university_student): ?>
+                  <a href="<?php echo admin_url('student_sponsor_portal/university_students'); ?>" class="btn btn-default btn-lg">
+                    <i class="fa fa-times"></i> Cancel
+                  </a>
+                <?php endif; ?>
               </div>
             </div>
 
@@ -597,6 +740,9 @@
       </div>
     </div>
   </div>
+
+  <!-- Modals (Admin Only) -->
+  <?php if(!isset($is_university_student) || !$is_university_student): ?>
 
   <!-- Add Country Modal -->
   <div class="modal fade" id="addCountryModal" tabindex="-1" role="dialog">
@@ -609,11 +755,11 @@
         <div class="modal-body">
           <div class="form-group">
             <label for="modal_country_name">Country Name *</label>
-            <input type="text" id="modal_country_name" class="form-control" required placeholder="e.g., Sri Lanka">
+            <input type="text" id="modal_country_name" class="form-control" required placeholder="e.g., United States">
           </div>
           <div class="form-group">
             <label for="modal_country_phone">Phone Code *</label>
-            <input type="text" id="modal_country_phone" class="form-control" required placeholder="+94">
+            <input type="text" id="modal_country_phone" class="form-control" required placeholder="+1">
           </div>
           <small class="text-muted">Note: This will be created when you save the form.</small>
         </div>
@@ -694,6 +840,8 @@
     </div>
   </div>
 
+  <?php endif; ?>
+
   <!-- Age Warning Modal -->
   <div class="modal fade" id="ageWarningModal" tabindex="-1" role="dialog">
     <div class="modal-dialog modal-sm" role="document">
@@ -715,23 +863,269 @@
 </div>
 
 <style>
-.nav-tabs>li>a{font-weight:500}
-.nav-tabs>li.active>a,.nav-tabs>li.active>a:hover,.nav-tabs>li.active>a:focus{background:#f8f9fa;border-bottom-color:transparent}
-.tab-content{background:#f8f9fa;padding:20px;border:1px solid #ddd;border-top:none;border-radius:0 0 4px 4px}
-.tab-content h5{color:#337ab7;margin-top:20px;margin-bottom:10px}
-.tab-content h5:first-child{margin-top:0}
-.tab-content hr{margin:10px 0 20px}
-.has-error{border-color:#d9534f}
-.university-select-wrapper,.program-select-wrapper,.bank-select-wrapper,.country-select-wrapper{position:relative;display:flex;align-items:stretch}
-.university-select-wrapper .bootstrap-select,.program-select-wrapper .bootstrap-select,.bank-select-wrapper .bootstrap-select,.country-select-wrapper .bootstrap-select{flex:1;margin-right:5px;width:auto!important}
-.add-new-btn{border-left:0;border-radius:0 4px 4px 0!important;padding:8px 12px;margin-left:0;z-index:5;flex-shrink:0;height:34px}
-.add-new-btn:hover{background-color:#337ab7;color:#fff;border-color:#2e6da4}
-.university-select-wrapper .btn-group.bootstrap-select,.program-select-wrapper .btn-group.bootstrap-select,.bank-select-wrapper .btn-group.bootstrap-select,.country-select-wrapper .btn-group.bootstrap-select{flex:1;width:auto!important;display:flex!important}
-.university-select-wrapper .btn-group.bootstrap-select .btn,.program-select-wrapper .btn-group.bootstrap-select .btn,.bank-select-wrapper .btn-group.bootstrap-select .btn,.country-select-wrapper .btn-group.bootstrap-select .btn{width:100%;border-top-right-radius:0!important;border-bottom-right-radius:0!important;text-align:left}
+/* Enhanced University Form Styling - Compatible with both Portal and Admin views */
 
-.field-error {
+/* Main wrapper */
+.university-student-form-wrapper {
+  background: #fff;
+  border-radius: 4px;
+}
+
+/* Tab Navigation */
+.university-student-form-wrapper .student-form-tabs {
+  border-bottom: 2px solid #e8e8e8;
+  background: linear-gradient(to bottom, #f8f9fa 0%, #f1f3f4 100%);
+  margin: 0 0 0 0;
+  padding: 0 15px;
+  border-radius: 4px 4px 0 0;
+  overflow-x: auto;
+  white-space: nowrap;
+}
+
+.university-student-form-wrapper .student-form-tabs > li {
+  margin-bottom: -2px;
+  position: relative;
+  display: inline-block;
+  float: none;
+}
+
+.university-student-form-wrapper .student-form-tabs > li > a {
+  font-weight: 500;
+  color: #555;
+  border: 1px solid transparent;
+  border-radius: 4px 4px 0 0;
+  padding: 12px 16px;
+  margin-right: 2px;
+  transition: all 0.2s ease-in-out;
+  background: transparent;
+  text-decoration: none;
+  position: relative;
+}
+
+.university-student-form-wrapper .student-form-tabs > li > a:hover {
+  background: rgba(255, 255, 255, 0.8);
+  border-color: #ddd #ddd transparent;
+  color: #337ab7;
+  text-decoration: none;
+}
+
+.university-student-form-wrapper .student-form-tabs > li.active > a,
+.university-student-form-wrapper .student-form-tabs > li.active > a:hover,
+.university-student-form-wrapper .student-form-tabs > li.active > a:focus {
+  color: #337ab7;
+  background: #fff;
+  border: 1px solid #ddd;
+  border-bottom-color: #fff;
+  cursor: default;
+  font-weight: 600;
+  box-shadow: 0 -2px 4px rgba(0,0,0,0.1);
+  text-decoration: none;
+}
+
+.university-student-form-wrapper .student-form-tabs > li.active > a::after {
+  content: '';
+  position: absolute;
+  bottom: -2px;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: #337ab7;
+}
+
+/* Tab Content */
+.university-student-form-wrapper .student-form-content {
+  background: #fff;
+  padding: 25px;
+  border: 1px solid #ddd;
+  border-top: none;
+  border-radius: 0 0 4px 4px;
+  min-height: 400px;
+}
+
+/* Section Headers in tabs */
+.university-student-form-wrapper .student-form-content h5 {
+  color: #337ab7;
+  margin-top: 25px;
+  margin-bottom: 12px;
+  font-weight: 600;
+  font-size: 16px;
+  border-left: 4px solid #337ab7;
+  padding-left: 12px;
+}
+
+.university-student-form-wrapper .student-form-content h5:first-child {
+  margin-top: 0;
+}
+
+.university-student-form-wrapper .student-form-content hr {
+  margin: 15px 0 20px;
+  border-color: #e8e8e8;
+}
+
+/* Form Controls */
+.university-student-form-wrapper .form-group {
+  margin-bottom: 20px;
+}
+
+.university-student-form-wrapper .form-control {
+  border: 1px solid #d0d0d0;
+  border-radius: 4px;
+  transition: border-color 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+}
+
+.university-student-form-wrapper .form-control:focus {
+  border-color: #337ab7;
+  box-shadow: 0 0 5px rgba(51, 122, 183, 0.3);
+}
+
+.university-student-form-wrapper .control-label {
+  font-weight: 500;
+  color: #333;
+  margin-bottom: 6px;
+}
+
+/* Error States */
+.university-student-form-wrapper .has-error,
+.university-student-form-wrapper .field-error {
   border-color: #d9534f !important;
   box-shadow: inset 0 1px 1px rgba(0,0,0,.075), 0 0 6px rgba(217,83,79,.6) !important;
+}
+
+/* Select Wrappers */
+.university-student-form-wrapper .university-select-wrapper,
+.university-student-form-wrapper .program-select-wrapper,
+.university-student-form-wrapper .bank-select-wrapper,
+.university-student-form-wrapper .country-select-wrapper {
+  position: relative;
+  display: flex;
+  align-items: stretch;
+}
+
+.university-student-form-wrapper .university-select-wrapper .bootstrap-select,
+.university-student-form-wrapper .program-select-wrapper .bootstrap-select,
+.university-student-form-wrapper .bank-select-wrapper .bootstrap-select,
+.university-student-form-wrapper .country-select-wrapper .bootstrap-select {
+  flex: 1;
+  margin-right: 5px;
+  width: auto !important;
+}
+
+.university-student-form-wrapper .add-new-btn {
+  border-left: 0;
+  border-radius: 0 4px 4px 0 !important;
+  padding: 8px 12px;
+  margin-left: 0;
+  z-index: 5;
+  flex-shrink: 0;
+  height: 34px;
+  background: #f8f9fa;
+  border-color: #ccc;
+}
+
+.university-student-form-wrapper .add-new-btn:hover {
+  background-color: #337ab7;
+  color: #fff;
+  border-color: #2e6da4;
+}
+
+.university-student-form-wrapper .university-select-wrapper .btn-group.bootstrap-select,
+.university-student-form-wrapper .program-select-wrapper .btn-group.bootstrap-select,
+.university-student-form-wrapper .bank-select-wrapper .btn-group.bootstrap-select,
+.university-student-form-wrapper .country-select-wrapper .btn-group.bootstrap-select {
+  flex: 1;
+  width: auto !important;
+  display: flex !important;
+}
+
+.university-student-form-wrapper .university-select-wrapper .btn-group.bootstrap-select .btn,
+.university-student-form-wrapper .program-select-wrapper .btn-group.bootstrap-select .btn,
+.university-student-form-wrapper .bank-select-wrapper .btn-group.bootstrap-select .btn,
+.university-student-form-wrapper .country-select-wrapper .btn-group.bootstrap-select .btn {
+  width: 100%;
+  border-top-right-radius: 0 !important;
+  border-bottom-right-radius: 0 !important;
+  text-align: left;
+}
+
+/* Form control static styling */
+.university-student-form-wrapper .form-control-static {
+  padding-top: 7px;
+  padding-bottom: 7px;
+  margin-bottom: 0;
+  min-height: 34px;
+  font-weight: 500;
+  color: #555;
+}
+
+/* Alert styling */
+.university-student-form-wrapper .alert {
+  border-radius: 4px;
+  border: 1px solid transparent;
+}
+
+/* Button styling */
+.university-student-form-wrapper .btn {
+  border-radius: 4px;
+  font-weight: 500;
+}
+
+.university-student-form-wrapper .btn-primary {
+  background-color: #337ab7;
+  border-color: #2e6da4;
+}
+
+.university-student-form-wrapper .btn-primary:hover {
+  background-color: #286090;
+  border-color: #204d74;
+}
+
+/* Table styling in report cards */
+.university-student-form-wrapper .table {
+  margin-bottom: 0;
+}
+
+.university-student-form-wrapper .table > thead > tr > th {
+  border-bottom: 2px solid #ddd;
+  background-color: #f8f9fa;
+  font-weight: 600;
+}
+
+.university-student-form-wrapper .table-striped > tbody > tr:nth-of-type(odd) {
+  background-color: #f9f9f9;
+}
+
+/* Responsive tabs for mobile */
+@media (max-width: 768px) {
+  .university-student-form-wrapper .student-form-tabs {
+    padding: 0 10px;
+  }
+  
+  .university-student-form-wrapper .student-form-tabs > li > a {
+    padding: 10px 12px;
+    font-size: 12px;
+  }
+  
+  .university-student-form-wrapper .student-form-content {
+    padding: 15px;
+  }
+}
+
+/* Ensure consistent styling across different contexts */
+.university-student-form-wrapper * {
+  box-sizing: border-box;
+}
+
+/* Override any conflicting Perfex styles */
+.university-student-form-wrapper .nav-tabs {
+  border-bottom: 2px solid #e8e8e8 !important;
+}
+
+.university-student-form-wrapper .nav-tabs > li.active > a {
+  border-bottom-color: #fff !important;
+}
+
+.university-student-form-wrapper .tab-content {
+  border-top: none !important;
 }
 </style>
 
@@ -740,6 +1134,9 @@
 if (typeof alert_float !== 'function') { window.alert_float = function(type, message){ alert(message); }; }
 
 (function($){
+  // Check if user is a university student - using passed data from controller
+  var isUniversityStudent = <?php echo json_encode(isset($is_university_student) && $is_university_student); ?>;
+  var canEditRestricted = <?php echo json_encode(isset($can_edit_restricted_fields) && $can_edit_restricted_fields); ?>;
 
   function recalcProfileCompletion(){
     var $wrap = $('#profile-completion-wrap');
@@ -782,121 +1179,130 @@ if (typeof alert_float !== 'function') { window.alert_float = function(type, mes
     if ($.fn.selectpicker) { $el.selectpicker('refresh'); }
   }
 
-  // Add Country
-  window.addCountry = function(){
-    var name  = $.trim($('#modal_country_name').val());
-    var phone = $.trim($('#modal_country_phone').val());
-    if(!name || !phone){ alert('Country name and phone code are required'); return false; }
+  // Admin-only functions
+  if (!isUniversityStudent) {
+    // Add Country
+    window.addCountry = function(){
+      var name  = $.trim($('#modal_country_name').val());
+      var phone = $.trim($('#modal_country_phone').val());
+      if(!name || !phone){ alert('Country name and phone code are required'); return false; }
 
-    $('#new_country_name').val(name);
-    $('#new_country_phone_code').val(phone);
+      $('#new_country_name').val(name);
+      $('#new_country_phone_code').val(phone);
 
-    var $sel = $('#country_id');
-    var tmpId = '__NEW_COUNTRY__';
-    $sel.find('option[value="'+tmpId+'"]').remove();
-    $sel.append($('<option/>',{value:tmpId, text: name+(phone?' ('+phone+')':''), selected:true, 'data-phone-code': phone}));
-    refreshSelectpicker($sel);
-    $('#phone-code-display').text(phone);
+      var $sel = $('#country_id');
+      var tmpId = '__NEW_COUNTRY__';
+      $sel.find('option[value="'+tmpId+'"]').remove();
+      $sel.append($('<option/>',{value:tmpId, text: name+(phone?' ('+phone+')':''), selected:true, 'data-phone-code': phone}));
+      refreshSelectpicker($sel);
+      $('#phone-code-display').text(phone);
 
-    $('#addCountryModal').modal('hide');
-    $('#modal_country_name').val(''); $('#modal_country_phone').val('');
-    alert_float('success','Country will be added on Save');
-    recalcProfileCompletion();
-    return false;
-  };
+      $('#addCountryModal').modal('hide');
+      $('#modal_country_name').val(''); $('#modal_country_phone').val('');
+      alert_float('success','Country will be added on Save');
+      recalcProfileCompletion();
+      return false;
+    };
 
-  // Add University (instant via AJAX)
-  window.addUniversity = function(){
-    var $btn = $('#btnAddUniversity').prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> Adding...');
-    var name = $.trim($('#modal_university_name').val());
-    if(!name){ alert('Enter university name'); $btn.prop('disabled', false).text('Add University'); return false; }
+    // Add University (instant via AJAX)
+    window.addUniversity = function(){
+      var $btn = $('#btnAddUniversity').prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> Adding...');
+      var name = $.trim($('#modal_university_name').val());
+      if(!name){ alert('Enter university name'); $btn.prop('disabled', false).text('Add University'); return false; }
 
-    $.ajax({
-      url: '<?php echo admin_url("student_sponsor_portal/add_university_name"); ?>',
-      type: 'POST', dataType: 'json',
-      data: { name: name }
-    }).done(function(r){
-      if(r && r.success){
-        var $sel = $('#university_name_id');
-        var id   = r.id || r.university_id || '';
-        var txt  = r.name || name;
-        if(id){
-          $sel.append($('<option/>',{value:id, text:txt, selected:true, 'data-name': txt}));
-          refreshSelectpicker($sel);
+      $.ajax({
+        url: '<?php echo admin_url("student_sponsor_portal/add_university_name"); ?>',
+        type: 'POST', dataType: 'json',
+        data: { name: name }
+      }).done(function(r){
+        if(r && r.success){
+          var $sel = $('#university_name_id');
+          var id   = r.id || r.university_id || '';
+          var txt  = r.name || name;
+          if(id){
+            $sel.append($('<option/>',{value:id, text:txt, selected:true, 'data-name': txt}));
+            refreshSelectpicker($sel);
+          }
+          $('#addUniversityModal').modal('hide'); $('#modal_university_name').val('');
+          alert_float('success', r.message || 'University added');
+          recalcProfileCompletion();
+        } else {
+          alert(r && r.message ? r.message : 'Failed to add university');
         }
-        $('#addUniversityModal').modal('hide'); $('#modal_university_name').val('');
-        alert_float('success', r.message || 'University added');
-        recalcProfileCompletion();
-      } else {
-        alert(r && r.message ? r.message : 'Failed to add university');
-      }
-    }).fail(function(){ alert('Error adding university.'); })
-      .always(function(){ $btn.prop('disabled', false).text('Add University'); });
+      }).fail(function(){ alert('Error adding university.'); })
+        .always(function(){ $btn.prop('disabled', false).text('Add University'); });
 
-    return false;
-  };
+      return false;
+    };
 
-  // Add Program (instant via AJAX)
-  window.addProgram = function(){
-    var $btn = $('#btnAddProgram').prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> Adding...');
-    var name = $.trim($('#modal_program_name').val());
-    if(!name){ alert('Enter program name'); $btn.prop('disabled', false).text('Add Program'); return false; }
+    // Add Program (instant via AJAX)
+    window.addProgram = function(){
+      var $btn = $('#btnAddProgram').prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> Adding...');
+      var name = $.trim($('#modal_program_name').val());
+      if(!name){ alert('Enter program name'); $btn.prop('disabled', false).text('Add Program'); return false; }
 
-    $.ajax({
-      url: '<?php echo admin_url("student_sponsor_portal/add_university_program"); ?>',
-      type: 'POST', dataType: 'json',
-      data: { name: name }
-    }).done(function(r){
-      if(r && r.success){
-        var $sel = $('#university_program_id');
-        var id   = r.id || r.program_id || '';
-        var txt  = r.name || name;
-        if(id){
-          $sel.append($('<option/>',{value:id, text:txt, selected:true, 'data-name': txt}));
-          refreshSelectpicker($sel);
+      $.ajax({
+        url: '<?php echo admin_url("student_sponsor_portal/add_university_program"); ?>',
+        type: 'POST', dataType: 'json',
+        data: { name: name }
+      }).done(function(r){
+        if(r && r.success){
+          var $sel = $('#university_program_id');
+          var id   = r.id || r.program_id || '';
+          var txt  = r.name || name;
+          if(id){
+            $sel.append($('<option/>',{value:id, text:txt, selected:true, 'data-name': txt}));
+            refreshSelectpicker($sel);
+          }
+          $('#addProgramModal').modal('hide'); $('#modal_program_name').val('');
+          alert_float('success', r.message || 'Program added');
+          recalcProfileCompletion();
+        } else {
+          alert(r && r.message ? r.message : 'Failed to add program');
         }
-        $('#addProgramModal').modal('hide'); $('#modal_program_name').val('');
-        alert_float('success', r.message || 'Program added');
-        recalcProfileCompletion();
-      } else {
-        alert(r && r.message ? r.message : 'Failed to add program');
-      }
-    }).fail(function(){ alert('Error adding program.'); })
-      .always(function(){ $btn.prop('disabled', false).text('Add Program'); });
+      }).fail(function(){ alert('Error adding program.'); })
+        .always(function(){ $btn.prop('disabled', false).text('Add Program'); });
 
-    return false;
-  };
+      return false;
+    };
 
-  // Add Bank (instant via AJAX)
-  window.addBank = function(){
-    var $btn = $('#btnAddBank').prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> Adding...');
-    var name = $.trim($('#modal_bank_name').val());
-    if(!name){ alert('Enter bank name'); $btn.prop('disabled', false).text('Add Bank'); return false; }
+    // Add Bank (instant via AJAX)
+    window.addBank = function(){
+      var $btn = $('#btnAddBank').prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> Adding...');
+      var name = $.trim($('#modal_bank_name').val());
+      if(!name){ alert('Enter bank name'); $btn.prop('disabled', false).text('Add Bank'); return false; }
 
-    $.ajax({
-      url: '<?php echo admin_url("student_sponsor_portal/add_bank"); ?>',
-      type: 'POST', dataType: 'json',
-      data: { name: name }
-    }).done(function(r){
-      if(r && r.success){
-        var $sel = $('#bank_id');
-        var id   = r.id || r.bank_id || '';
-        var txt  = r.name || r.bank_name || name;
-        if(id){
-          $sel.append($('<option/>',{value:id, text:txt, selected:true}));
-          refreshSelectpicker($sel);
+      $.ajax({
+        url: '<?php echo admin_url("student_sponsor_portal/add_bank"); ?>',
+        type: 'POST', dataType: 'json',
+        data: { name: name }
+      }).done(function(r){
+        if(r && r.success){
+          var $sel = $('#bank_id');
+          var id   = r.id || r.bank_id || '';
+          var txt  = r.name || r.bank_name || name;
+          if(id){
+            $sel.append($('<option/>',{value:id, text:txt, selected:true}));
+            refreshSelectpicker($sel);
+          }
+          $('#addBankModal').modal('hide'); $('#modal_bank_name').val('');
+          alert_float('success', r.message || 'Bank added');
+          recalcProfileCompletion();
+        } else {
+          alert(r && r.message ? r.message : 'Failed to add bank');
         }
-        $('#addBankModal').modal('hide'); $('#modal_bank_name').val('');
-        alert_float('success', r.message || 'Bank added');
-        recalcProfileCompletion();
-      } else {
-        alert(r && r.message ? r.message : 'Failed to add bank');
-      }
-    }).fail(function(){ alert('Error adding bank.'); })
-      .always(function(){ $btn.prop('disabled', false).text('Add Bank'); });
+      }).fail(function(){ alert('Error adding bank.'); })
+        .always(function(){ $btn.prop('disabled', false).text('Add Bank'); });
 
-    return false;
-  };
+      return false;
+    };
+  } else {
+    // For university students, disable admin-only functions
+    window.addCountry = function(){ return false; };
+    window.addUniversity = function(){ return false; };
+    window.addProgram = function(){ return false; };
+    window.addBank = function(){ return false; };
+  }
 
   // Report cards - Load existing cards
   function loadReportCards(){
@@ -917,6 +1323,14 @@ if (typeof alert_float !== 'function') { window.alert_float = function(type, mes
             var months = ['','Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
             monthYear = (months[parseInt(c.semester_end_month)] || c.semester_end_month) + ' ' + c.semester_end_year;
           }
+          
+          var actionsHtml = '<a href="'+dl+'" class="btn btn-xs btn-default" title="Download"><i class="fa fa-download"></i></a>';
+          
+          // Only show delete button for admins
+          if (!isUniversityStudent) {
+            actionsHtml += ' <button type="button" class="btn btn-xs btn-danger btn-del-card" title="Delete"><i class="fa fa-trash"></i></button>';
+          }
+          
           var tr = $('<tr/>',{'data-id':c.id}).append(
             $('<td/>',{text:i++}),
             $('<td/>').append($('<a/>',{href:dl, target:'_blank', rel:'noopener', text:(c.filename||c.display_name||('report_card_'+c.id)) })),
@@ -924,10 +1338,7 @@ if (typeof alert_float !== 'function') { window.alert_float = function(type, mes
             $('<td/>',{text:monthYear}),
             $('<td/>',{text:uploadDate}),
             $('<td/>',{text:size}),
-            $('<td/>').append(
-              $('<a/>',{href:dl, class:'btn btn-xs btn-default', title:'Download', html:'<i class="fa fa-download"></i>'}), ' ',
-              $('<button/>',{type:'button', class:'btn btn-xs btn-danger btn-del-card', title:'Delete', html:'<i class="fa fa-trash"></i>'})
-            )
+            $('<td/>').html(actionsHtml)
           );
           $tb.append(tr);
         });
@@ -997,34 +1408,36 @@ if (typeof alert_float !== 'function') { window.alert_float = function(type, mes
     return false;
   };
 
-  // Delete card handler
-  window.deleteReportCard = function(id){
-    if(!id) return false;
-    if(!confirm('Are you sure you want to delete this report card?')) return false;
+  // Delete card handler (admin only)
+  if (!isUniversityStudent) {
+    window.deleteReportCard = function(id){
+      if(!id) return false;
+      if(!confirm('Are you sure you want to delete this report card?')) return false;
 
-    $.post('<?php echo admin_url("student_sponsor_portal/delete_university_report_card"); ?>/'+id, {}, function(r){
-      try{ r = (typeof r==='string')?JSON.parse(r):r; }catch(e){ r={success:false}; }
-      if(r && r.success){
-        alert_float('success','Report card deleted successfully');
-        loadReportCards();
-      }
-      else {
-        alert('Delete failed: ' + (r.message || 'Unknown error'));
-      }
-    }).fail(function(){
-      alert('Error deleting report card');
+      $.post('<?php echo admin_url("student_sponsor_portal/delete_university_report_card"); ?>/'+id, {}, function(r){
+        try{ r = (typeof r==='string')?JSON.parse(r):r; }catch(e){ r={success:false}; }
+        if(r && r.success){
+          alert_float('success','Report card deleted successfully');
+          loadReportCards();
+        }
+        else {
+          alert('Delete failed: ' + (r.message || 'Unknown error'));
+        }
+      }).fail(function(){
+        alert('Error deleting report card');
+      });
+
+      return false;
+    };
+
+    // Delete card click
+    $(document).on('click', '.btn-del-card', function(){
+      var $tr = $(this).closest('tr');
+      var id = $tr.data('id');
+      if(!id) return;
+      return deleteReportCard(id);
     });
-
-    return false;
-  };
-
-  // Delete card click
-  $(document).on('click', '.btn-del-card', function(){
-    var $tr = $(this).closest('tr');
-    var id = $tr.data('id');
-    if(!id) return;
-    return deleteReportCard(id);
-  });
+  }
 
   $(function(){
     // init selectpicker
@@ -1041,7 +1454,7 @@ if (typeof alert_float !== 'function') { window.alert_float = function(type, mes
     $('#profile_photo').on('change', function(){
       var f = this.files && this.files[0]; if(!f) return;
       var reader = new FileReader();
-      reader.onload = function(e){ $('.current-photo img').attr('src', e.target.result); };
+      reader.onload = function(e){ $('.current-photo img').attr('src', e.target.result).show(); };
       reader.readAsDataURL(f);
     });
 
@@ -1081,7 +1494,8 @@ if (typeof alert_float !== 'function') { window.alert_float = function(type, mes
       if(!isValid){ e.preventDefault(); return false; }
 
       submitting = true;
-      $('#btn-save-student').prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> Saving...');
+      var saveText = isUniversityStudent ? 'Updating Profile...' : 'Saving...';
+      $('#btn-save-student').prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> ' + saveText);
     });
 
     // restore tab after reload (server echoes active_tab)
@@ -1089,7 +1503,9 @@ if (typeof alert_float !== 'function') { window.alert_float = function(type, mes
     if (initialTab && $('a[href="'+initialTab+'"]').length) {
       $('a[href="'+initialTab+'"]').tab('show');
     }
-  });
 
+    // Show completion calculation after page load
+    setTimeout(recalcProfileCompletion, 200);
+  });
 })(jQuery);
 </script>

@@ -55,6 +55,29 @@ $route['admin/student_sponsor_portal/add_program_ajax'] = 'student_sponsor_porta
 $route['admin/student_sponsor_portal/add_bank_ajax'] = 'student_sponsor_portal/add_bank_ajax';
 
 /* =================================================================================== */
+/* =====================    UNIVERSITY STUDENT PORTAL ROUTES        ================== */
+/* =================================================================================== */
+
+// University student form - accessible by both admin and university students (with restrictions)
+$route['admin/student_sponsor_portal/university_student_form'] = 'student_sponsor_portal/university_student_form';
+$route['admin/student_sponsor_portal/university_student_form/(:num)'] = 'student_sponsor_portal/university_student_form/$1';
+
+// University student AJAX endpoints - accessible by university students for their own records
+$route['admin/student_sponsor_portal/get_university_student'] = 'student_sponsor_portal/get_university_student';
+$route['admin/student_sponsor_portal/display_profile_photo/(:num)'] = 'student_sponsor_portal/display_profile_photo/$1';
+
+// Report card management - accessible by university students for their own records
+$route['admin/student_sponsor_portal/upload_university_report_card'] = 'student_sponsor_portal/upload_university_report_card';
+$route['admin/student_sponsor_portal/get_university_report_cards/(:num)'] = 'student_sponsor_portal/get_university_report_cards/$1';
+$route['admin/student_sponsor_portal/download_university_report_card/(:num)'] = 'student_sponsor_portal/download_university_report_card/$1';
+
+// University specific AJAX endpoints for form helpers
+$route['admin/student_sponsor_portal/add_university_ajax'] = 'student_sponsor_portal/add_university_ajax';
+$route['admin/student_sponsor_portal/add_program_ajax'] = 'student_sponsor_portal/add_program_ajax';
+$route['admin/student_sponsor_portal/add_country_ajax'] = 'student_sponsor_portal/add_country_ajax';
+$route['admin/student_sponsor_portal/add_bank_ajax'] = 'student_sponsor_portal/add_bank_ajax';
+
+/* =================================================================================== */
 /* =====================           SPONSORS ROUTES (ADMIN ONLY)     =================== */
 /* =================================================================================== */
 

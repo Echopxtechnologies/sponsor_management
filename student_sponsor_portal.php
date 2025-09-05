@@ -8,14 +8,12 @@ Requires at least: 2.3.2
 */
 defined('BASEPATH') or exit('No direct script access allowed');
 
-
 hooks()->add_action('after_cron_run', function () {
     $CI = &get_instance();
     $CI->load->model('student_sponsor_portal/sponsor_transactions_model');
     $res = $CI->sponsor_transactions_model->run_due_reminder_cron();
     log_message('info', '[SSP] due_reminder_cron: before=' . $res['sent_before'] . ', due_day=' . $res['sent_due_day']);
 });
-
 
 /* ---------------- Activation / Deactivation ---------------- */
 register_activation_hook('student_sponsor_portal', 'student_sponsor_portal_activation_hook');
@@ -46,10 +44,11 @@ hooks()->add_action('app_admin_head', function () {
 });
 
 /* ===================== ENHANCED ADMIN MENU WITH ROLE-BASED ACCESS ===================== */
-/* ---------------- Dashboard Redirect Hook ---------------- */
-hooks()->add_action('admin_init', 'check_school_student_dashboard_redirect');
 
-function check_school_student_dashboard_redirect() {
+/* ---------------- Dashboard Redirect Hook for Both School and University Students ---------------- */
+hooks()->add_action('admin_init', 'check_student_dashboard_redirect');
+
+function check_student_dashboard_redirect() {
     if (!is_staff_logged_in()) {
         return;
     }
@@ -62,6 +61,19 @@ function check_school_student_dashboard_redirect() {
     }
     
     $staff_id = get_staff_user_id();
+    
+    // Check if current user is a university student first
+    $is_university_student = $CI->db->select('id, university_internal_id, name')
+                                    ->where('staff_id', $staff_id)
+                                    ->where('entity_type', 'university')
+                                    ->where('active', 1) // or staff_active depending on your column
+                                    ->get(db_prefix() . 'university_students')
+                                    ->row();
+
+    if ($is_university_student && isset($is_university_student->id) && $is_university_student->id > 0) {
+        redirect(admin_url('student_sponsor_portal/university_student_form/' . (int)$is_university_student->id));
+        exit;
+    }
     
     // Check if current user is a school student
     $is_school_student = $CI->db->select('id, school_internal_id, name')
@@ -76,6 +88,8 @@ function check_school_student_dashboard_redirect() {
         exit;
     }
 }
+
+/* ---------------- Enhanced Admin Menu with University Student Support ---------------- */
 hooks()->add_action('admin_init', 'student_sponsor_portal_admin_menu');
 function student_sponsor_portal_admin_menu()
 {
@@ -94,6 +108,14 @@ function student_sponsor_portal_admin_menu()
                                 ->get(db_prefix() . 'school_students')
                                 ->row();
 
+    // Check if current user is a university student
+    $is_university_student = $CI->db->select('id, university_internal_id, name')
+                                    ->where('staff_id', $staff_id)
+                                    ->where('entity_type', 'university')
+                                    ->where('active', 1) // or staff_active depending on your column name
+                                    ->get(db_prefix() . 'university_students')
+                                    ->row();
+
     if ($is_school_student) {
         // Menu for school students - only show their profile
         $CI->app_menu->add_sidebar_menu_item('student-profile', [
@@ -103,23 +125,43 @@ function student_sponsor_portal_admin_menu()
             'icon'     => 'fa fa-user-circle',
         ]);
 
-        // // Add report cards as a separate menu item
-        // $CI->app_menu->add_sidebar_menu_item('my-reports', [
-        //     'name'     => 'My Report Cards',
-        //     'href'     => admin_url('student_sponsor_portal/school_student_form/' . $is_school_student->id . '#repo'),
-        //     'position' => 2,
-        //     'icon'     => 'fa fa-file-text',
-        // ]);
+        // Optional: Add report cards link for school students
+        $CI->app_menu->add_sidebar_menu_item('my-school-reports', [
+            'name'     => 'My Report Cards',
+            'href'     => admin_url('student_sponsor_portal/school_student_form/' . $is_school_student->id . '?tab=report-cards'),
+            'position' => 2,
+            'icon'     => 'fa fa-file-text',
+        ]);
 
         return; // Don't show admin menu items for school students
     }
 
-    // Regular admin menu (only if user has permissions)
+    if ($is_university_student) {
+        // Menu for university students - only show their profile
+        $CI->app_menu->add_sidebar_menu_item('university-student-profile', [
+            'name'     => 'My Profile',
+            'href'     => admin_url('student_sponsor_portal/'),
+            'position' => 1,
+            'icon'     => 'fa fa-user-graduate',
+        ]);
+
+        // Optional: Add report cards link for university students
+        $CI->app_menu->add_sidebar_menu_item('my-university-reports', [
+            'name'     => 'My Report Cards',
+            'href'     => admin_url('student_sponsor_portal/university_student_form/' . $is_university_student->id . '?tab=report-cards'),
+            'position' => 2,
+            'icon'     => 'fa fa-file-text',
+        ]);
+
+        return; // Don't show admin menu items for university students
+    }
+
+    // Regular admin menu (only if user has permissions and is not a student)
     if (!has_permission('student_sponsor_portal', '', 'view')) {
         return;
     }
 
-    // Parent menu item
+    // Parent menu item for admin users
     $CI->app_menu->add_sidebar_menu_item('student-sponsor-portal', [
         'name'     => 'Student Portal',
         'href'     => admin_url('student_sponsor_portal'),
