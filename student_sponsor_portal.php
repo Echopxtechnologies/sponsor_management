@@ -45,7 +45,7 @@ hooks()->add_action('app_admin_head', function () {
 
 /* ===================== ENHANCED ADMIN MENU WITH ROLE-BASED ACCESS ===================== */
 
-/* ---------------- Dashboard Redirect Hook for Both School and University Students ---------------- */
+/* ---------------- Dashboard Redirect Hook for All Portal Users ---------------- */
 hooks()->add_action('admin_init', 'check_student_dashboard_redirect');
 
 function check_student_dashboard_redirect() {
@@ -62,7 +62,20 @@ function check_student_dashboard_redirect() {
     
     $staff_id = get_staff_user_id();
     
-    // Check if current user is a university student first
+    // Check if current user is a sponsor first (highest priority)
+    $is_sponsor = $CI->db->select('id, name')
+                         ->where('staff_id', $staff_id)
+                         ->where('entity_type', 'sponsor')
+                         ->where('active', 1)
+                         ->get(db_prefix() . 'sponsor_records')
+                         ->row();
+
+    if ($is_sponsor && isset($is_sponsor->id) && $is_sponsor->id > 0) {
+        redirect(admin_url('student_sponsor_portal/sponsor_form/' . (int)$is_sponsor->id));
+        exit;
+    }
+    
+    // Check if current user is a university student
     $is_university_student = $CI->db->select('id, university_internal_id, name')
                                     ->where('staff_id', $staff_id)
                                     ->where('entity_type', 'university')
@@ -89,7 +102,7 @@ function check_student_dashboard_redirect() {
     }
 }
 
-/* ---------------- Enhanced Admin Menu with University Student Support ---------------- */
+/* ---------------- Enhanced Admin Menu with All Portal User Support ---------------- */
 hooks()->add_action('admin_init', 'student_sponsor_portal_admin_menu');
 function student_sponsor_portal_admin_menu()
 {
@@ -100,6 +113,33 @@ function student_sponsor_portal_admin_menu()
     $CI = &get_instance();
     $staff_id = get_staff_user_id();
     
+    // Check if current user is a sponsor first
+    $is_sponsor = $CI->db->select('id, name')
+                         ->where('staff_id', $staff_id)
+                         ->where('entity_type', 'sponsor')
+                         ->where('active', 1)
+                         ->get(db_prefix() . 'sponsor_records')
+                         ->row();
+
+    if ($is_sponsor) {
+        // Menu for sponsors - show their profile and students
+        $CI->app_menu->add_sidebar_menu_item('sponsor-profile', [
+            'name'     => 'My Profile',
+            'href'     => admin_url('student_sponsor_portal/'),
+            'position' => 1,
+            'icon'     => 'fa fa-user-circle',
+        ]);
+
+        $CI->app_menu->add_sidebar_menu_item('my-sponsored-students', [
+            'name'     => 'My Students',
+            'href'     => admin_url('student_sponsor_portal/sponsor_form/' . $is_sponsor->id . '?tab=students'),
+            'position' => 2,
+            'icon'     => 'fa fa-graduation-cap',
+        ]);
+
+        return; // Don't show admin menu items for sponsors
+    }
+    
     // Check if current user is a school student
     $is_school_student = $CI->db->select('id, school_internal_id, name')
                                 ->where('staff_id', $staff_id)
@@ -107,14 +147,6 @@ function student_sponsor_portal_admin_menu()
                                 ->where('staff_active', 1)
                                 ->get(db_prefix() . 'school_students')
                                 ->row();
-
-    // Check if current user is a university student
-    $is_university_student = $CI->db->select('id, university_internal_id, name')
-                                    ->where('staff_id', $staff_id)
-                                    ->where('entity_type', 'university')
-                                    ->where('active', 1) // or staff_active depending on your column name
-                                    ->get(db_prefix() . 'university_students')
-                                    ->row();
 
     if ($is_school_student) {
         // Menu for school students - only show their profile
@@ -136,6 +168,14 @@ function student_sponsor_portal_admin_menu()
         return; // Don't show admin menu items for school students
     }
 
+    // Check if current user is a university student
+    $is_university_student = $CI->db->select('id, university_internal_id, name')
+                                    ->where('staff_id', $staff_id)
+                                    ->where('entity_type', 'university')
+                                    ->where('active', 1) // or staff_active depending on your column name
+                                    ->get(db_prefix() . 'university_students')
+                                    ->row();
+
     if ($is_university_student) {
         // Menu for university students - only show their profile
         $CI->app_menu->add_sidebar_menu_item('university-student-profile', [
@@ -156,7 +196,7 @@ function student_sponsor_portal_admin_menu()
         return; // Don't show admin menu items for university students
     }
 
-    // Regular admin menu (only if user has permissions and is not a student)
+    // Regular admin menu (only if user has permissions and is not a portal user)
     if (!has_permission('student_sponsor_portal', '', 'view')) {
         return;
     }

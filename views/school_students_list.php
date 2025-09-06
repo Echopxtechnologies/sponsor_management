@@ -10,7 +10,7 @@
             <!-- Header -->
             <div class="row">
               <div class="col-md-8">
-                <h4 class="customer-profile-group-heading">
+                <h4 class="customer-profile-group-heading" style="margin-top:50px;">
                   <i class="fa fa-graduation-cap"></i> <?php echo isset($title) ? $title : 'School Students'; ?>
                 </h4>
               </div>
@@ -28,7 +28,7 @@
 
             <!-- Filters -->
             <div class="row">
-              <div class="col-md-3">
+              <div class="col-md-2">
                 <div class="form-group">
                   <label for="filter_grade">Grade</label>
                   <select id="filter_grade" class="form-control selectpicker" data-none-selected-text="All Grades">
@@ -39,13 +39,25 @@
                   </select>
                 </div>
               </div>
+              <div class="col-md-2">
+                <div class="form-group">
+                  <label for="filter_status">Status</label>
+                  <select id="filter_status" class="form-control selectpicker" data-none-selected-text="All Status">
+                    <option value="">All Status</option>
+                    <option value="verified">Verified</option>
+                    <option value="active">Active</option>
+                    <option value="inactive">Inactive</option>
+                    <option value="unverified">Unverified</option>
+                  </select>
+                </div>
+              </div>
               <div class="col-md-3">
                 <div class="form-group">
                   <label for="filter_school">School</label>
                   <input type="text" id="filter_school" class="form-control" placeholder="Filter by school">
                 </div>
               </div>
-              <div class="col-md-6">
+              <div class="col-md-5">
                 <div class="form-group">
                   <label for="search_students">Search</label>
                   <input type="text" id="search_students" class="form-control" placeholder="Search students (name, email, phone)...">
@@ -58,11 +70,12 @@
               <table class="table table-hover students-table" id="school-students-table">
                 <thead>
                   <tr>
-                    <th width="8%">ID</th>
-                    <th width="30%">Student Name</th>
-                    <th width="12%">Grade</th>
-                    <th width="25%">School</th>
-                    <th width="15%">Email</th>
+                    <th width="6%">ID</th>
+                    <th width="28%">Student Name</th>
+                    <th width="10%">Grade</th>
+                    <th width="20%">School</th>
+                    <th width="12%">Status</th>
+                    <th width="14%">Email</th>
                     <th width="10%">Phone</th>
                   </tr>
                 </thead>
@@ -76,6 +89,29 @@
                       $school = (string)($s['school_name'] ?? '');
                       $email  = (string)($s['email'] ?? '');
                       $phone  = (string)($s['contact_no'] ?? '');
+                      $staff_id = $s['staff_id'] ?? null;
+                      $staff_active = (int)($s['staff_active'] ?? 0);
+
+                      // Determine status based on staff_id and staff_active
+                      $status = 'unverified';
+                      $status_class = 'default';
+                      $status_icon = 'fa-question-circle';
+                      
+                      if ($staff_id !== null) {
+                        $status = 'verified';
+                        $status_class = 'info';
+                        $status_icon = 'fa-check-circle';
+                        
+                        if ($staff_active == 1) {
+                          $status = 'active';
+                          $status_class = 'success';
+                          $status_icon = 'fa-check-circle';
+                        } else {
+                          $status = 'inactive';
+                          $status_class = 'warning';
+                          $status_icon = 'fa-pause-circle';
+                        }
+                      }
 
                       // Make initials fallback
                       $initials = '';
@@ -83,34 +119,35 @@
                         if ($p !== '' && strlen($initials) < 2) $initials .= strtoupper(substr($p, 0, 1));
                       }
 
-                      // IMPORTANT: use the controller method that exists
                       $photoUrl = admin_url('student_sponsor_portal/display_school_photo/' . $sid);
                     ?>
                     <tr class="student-row"
                         id="student-row-<?php echo $sid; ?>"
                         data-grade="<?php echo html_escape($grade); ?>"
-                        data-school="<?php echo html_escape(mb_strtolower($school)); ?>">
+                        data-school="<?php echo html_escape(mb_strtolower($school)); ?>"
+                        data-status="<?php echo html_escape($status); ?>">
                       <td><strong><?php echo $sid; ?></strong></td>
 
                       <!-- Student Name with circular photo -->
                       <td>
                         <div class="media">
                           <div class="media-left">
-                            <div class="avatar">
-                                <!-- Initials fallback -->
-                                <span class="avatar__initials">
+                            <div class="avatar" id="avatar-<?php echo $sid; ?>">
+                                <span class="avatar__initials" id="initials-<?php echo $sid; ?>">
                                     <?php echo $initials !== '' ? html_escape($initials) : '•'; ?>
                                 </span>
-                                <!-- Image tag -->
                                 <img src="<?php echo $photoUrl; ?>" 
-                                    alt="Profile" 
-                                    onerror="this.style.display='none'">
+                                     alt="<?php echo html_escape($name); ?>" 
+                                     class="avatar__image"
+                                     id="avatar-img-<?php echo $sid; ?>"
+                                     onload="hideInitials(<?php echo $sid; ?>)"
+                                     onerror="showInitials(<?php echo $sid; ?>)"
+                                     style="display: none;">
                             </div>
                           </div>
                           <div class="media-body">
                             <strong><?php echo html_escape($name); ?></strong>
                             <div class="row-options" style="display:none;">
-                             
                               <a href="<?php echo admin_url('student_sponsor_portal/school_student_form/' . $sid); ?>">Edit</a> |
                               <a href="#" onclick="deleteStudent(<?php echo $sid; ?>); return false;" class="text-danger">Delete</a>
                             </div>
@@ -125,7 +162,16 @@
                           <span class="text-muted">Not set</span>
                         <?php endif; ?>
                       </td>
+                      
                       <td><?php echo $school ? html_escape($school) : '<span class="text-muted">Not specified</span>'; ?></td>
+                      
+                      <!-- Status Column -->
+                      <td>
+                        <span class="label label-<?php echo $status_class; ?>" title="<?php echo ucfirst($status); ?>">
+                          <i class="fa <?php echo $status_icon; ?>"></i> <?php echo ucfirst($status); ?>
+                        </span>
+                      </td>
+                      
                       <td>
                         <?php if($email): ?>
                           <a href="mailto:<?php echo html_escape($email); ?>"><?php echo html_escape($email); ?></a>
@@ -138,7 +184,7 @@
                   <?php endforeach; ?>
                 <?php else: ?>
                   <tr>
-                    <td colspan="6" class="text-center">
+                    <td colspan="7" class="text-center">
                       <div style="padding:40px;">
                         <i class="fa fa-graduation-cap fa-3x text-muted"></i>
                         <h4 class="text-muted">No students found</h4>
@@ -184,46 +230,128 @@
 </div>
 
 <style>
-.students-table th { background:#f8f9fa; font-weight:600; font-size:12px; border-bottom:2px solid #dee2e6; }
-.students-table td { vertical-align:middle; font-size:13px; }
-.label { font-size:10px; padding:3px 6px; }
-.row-options { font-size:11px; color:#777; display:none !important; margin-top:2px; }
-.row-options a { color:#777; text-decoration:none; }
-.row-options a:hover { color:#333; text-decoration:none; }
-.row-options a.text-danger { color:#d9534f !important; }
-.row-options a.text-danger:hover { color:#c9302c !important; }
-.student-row:hover { background:#f9f9f9; }
-.student-row:hover .row-options { display:block !important; }
-.modal-lg { width:900px; }
-#studentViewContent h5 { color:#337ab7; border-bottom:1px solid #ddd; padding-bottom:10px; margin-bottom:15px; }
-#studentViewContent p { margin-bottom:8px; }
-#studentViewContent .row { margin-bottom:15px; }
-.avatar{
-  width:40px;height:40px;
-  border-radius:50%;
-  overflow:hidden;
-  border:2px solid #ddd;
-  background:#f0f0f0;
-  display:flex;align-items:center;justify-content:center;
-  position:relative;
+/* Main table styling */
+.students-table th { 
+  background: #f8f9fa; 
+  font-weight: 600; 
+  font-size: 12px; 
+  border-bottom: 2px solid #dee2e6; 
 }
-.avatar img{
-  width:100%;height:100%;
-  object-fit:cover;display:block;
+.students-table td { 
+  vertical-align: middle; 
+  font-size: 13px; 
 }
-.avatar__initials{
-  position:absolute;
-  font-size:12px;color:#666;line-height:1;text-align:center;
+.label { 
+  font-size: 10px; 
+  padding: 3px 6px; 
 }
-.media-left{ padding-right:10px; }
 
-.btn-xs { padding:2px 5px; font-size:11px; }
-.dropdown-menu { min-width:140px; }
-.text-muted { font-size:12px; }
+/* Status-specific styling */
+.label-success { background-color: #f8faf8ff; }
+.label-warning { background-color: #f4efe9ff; }
+.label-info { background-color: #eff1f2ff; }
+.label-default { background-color: #f8f4f4ff; }
+
+/* Row options styling */
+.row-options { 
+  font-size: 11px; 
+  color: #777; 
+  display: none !important; 
+  margin-top: 2px; 
+}
+.row-options a { 
+  color: #777; 
+  text-decoration: none; 
+}
+.row-options a:hover { 
+  color: #333; 
+  text-decoration: none; 
+}
+.row-options a.text-danger { 
+  color: #d9534f !important; 
+}
+.row-options a.text-danger:hover { 
+  color: #c9302c !important; 
+}
+
+/* Row hover effects */
+.student-row:hover { 
+  background: #f9f9f9; 
+}
+.student-row:hover .row-options { 
+  display: block !important; 
+}
+
+/* Avatar styling */
+.avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  overflow: hidden;
+  border: 2px solid #ddd;
+  background: #f0f0f0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+}
+
+.avatar__image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 2;
+}
+
+.avatar__initials {
+  position: absolute;
+  font-size: 12px;
+  color: #666;
+  line-height: 1;
+  text-align: center;
+  z-index: 1;
+  font-weight: 600;
+}
+
+.avatar--has-image .avatar__initials {
+  display: none;
+}
+
+.media-left { 
+  padding-right: 10px; 
+}
 </style>
 
 <script>
-// Define functions globally first (matching university structure exactly)
+// Avatar management functions
+function hideInitials(studentId) {
+  var avatar = document.getElementById('avatar-' + studentId);
+  var initials = document.getElementById('initials-' + studentId);
+  var image = document.getElementById('avatar-img-' + studentId);
+  
+  if (avatar && initials && image) {
+    avatar.classList.add('avatar--has-image');
+    initials.style.display = 'none';
+    image.style.display = 'block';
+  }
+}
+
+function showInitials(studentId) {
+  var avatar = document.getElementById('avatar-' + studentId);
+  var initials = document.getElementById('initials-' + studentId);
+  var image = document.getElementById('avatar-img-' + studentId);
+  
+  if (avatar && initials && image) {
+    avatar.classList.remove('avatar--has-image');
+    initials.style.display = 'block';
+    image.style.display = 'none';
+  }
+}
+
+// Student management functions
 function viewStudent(id) {
   $('#studentViewModal').modal('show');
 
@@ -291,7 +419,19 @@ function debounce(fn, delay) {
 }
 
 $(document).ready(function() {
-  // DataTable init
+  // Initialize avatar states
+  $('.avatar__image').each(function() {
+    var img = this;
+    var studentId = img.id.replace('avatar-img-', '');
+    
+    if (img.complete && img.naturalHeight !== 0) {
+      hideInitials(studentId);
+    } else {
+      showInitials(studentId);
+    }
+  });
+
+  // DataTable initialization
   var table = $('#school-students-table').DataTable({
     responsive: true,
     pageLength: 10,
@@ -313,11 +453,12 @@ $(document).ready(function() {
     $(this).find('.row-options').hide(); 
   });
 
-  // Search and filter functionality
+  // Search functionality
   $('#search_students').on('keyup', debounce(function(){
     table.search(this.value).draw();
   }, 250));
 
+  // Grade filter
   $('#filter_grade').on('change', function(){
     var g = $(this).val();
     if(g){ 
@@ -327,11 +468,30 @@ $(document).ready(function() {
     }
   });
 
+  // School filter
   $('#filter_school').on('keyup', debounce(function(){
     table.column(3).search(this.value).draw();
   }, 250));
 
-  // Initialize selectpicker if available
+  // Status filter using custom filter
+  $.fn.dataTable.ext.search.push(function(settings, data, dataIndex) {
+    if (settings.nTable !== table.table().node()) return true;
+
+    var selectedStatus = $('#filter_status').val();
+    if (!selectedStatus) return true;
+
+    var node = table.row(dataIndex).node();
+    if (!node) return true;
+
+    var rowStatus = node.getAttribute('data-status');
+    return rowStatus === selectedStatus;
+  });
+
+  $('#filter_status').on('change', function(){
+    table.draw();
+  });
+
+  // Initialize selectpicker
   if($.fn.selectpicker){ 
     $('.selectpicker').selectpicker(); 
   }

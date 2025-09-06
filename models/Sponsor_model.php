@@ -85,6 +85,9 @@ class Sponsor_model extends App_Model
         return $sponsor_id;
     }
 
+
+
+
     /* =============================== READ =============================== */
 
     /**
@@ -159,6 +162,60 @@ class Sponsor_model extends App_Model
     public function count_all(): int
     {
         return (int) $this->db->count_all_results($this->table);
+    }
+
+    /* ============================== MISSING METHODS (ADDED) ============================== */
+
+    /**
+     * Get all universities for dropdown
+     * @return array
+     */
+    public function get_universities(): array
+    {
+        if (!$this->db->table_exists(db_prefix() . 'university_name')) {
+            return [];
+        }
+        
+        return $this->db->select('id, name')
+                       ->order_by('name', 'ASC')
+                       ->get(db_prefix() . 'university_name')
+                       ->result_array();
+    }
+
+    /**
+     * Get all programs for dropdown
+     * @return array
+     */
+    public function get_programs(): array
+    {
+        if (!$this->db->table_exists(db_prefix() . 'university_program')) {
+            return [];
+        }
+        
+        return $this->db->select('id, name')
+                       ->order_by('name', 'ASC')
+                       ->get(db_prefix() . 'university_program')
+                       ->result_array();
+    }
+
+    /**
+     * Get all sponsors for dropdown (useful for admin views)
+     * @return array
+     */
+    public function get_sponsors(): array
+    {
+        return $this->db->select('id, name')
+                       ->order_by('name', 'ASC')
+                       ->get($this->table)
+                       ->result_array();
+    }
+
+    /**
+     * Alias for backward compatibility with controller
+     */
+    public function update_student($data, $id)
+    {
+        return $this->update($data, $id);
     }
 
     /* ============================== STUDENT SELECTION ============================== */

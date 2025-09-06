@@ -1290,52 +1290,149 @@ private function detect_mime_type($file_path, $uploaded_type = null)
         die();
     }
 
-    public function grant_school_access($student_id = null)
-    {
-        if (!has_permission('student_sponsor_portal', '', 'edit')) access_denied('student_sponsor_portal');
-
-        $student_id = $this->resolve_id('student_id', 4);
-        if ($student_id <= 0) { 
-            set_alert('danger', 'Missing student ID.'); 
-            redirect(admin_url('student_sponsor_portal/school_students')); 
+   public function grant_school_access($student_id = null)
+{
+    try {
+        // Check permissions first
+        if (!has_permission('student_sponsor_portal', '', 'edit')) {
+            access_denied('student_sponsor_portal');
         }
 
+        // Debug: Log the incoming request
+        log_message('debug', 'grant_school_access called with student_id: ' . ($student_id ?? 'null'));
+        log_message('debug', 'POST data: ' . print_r($this->input->post(), true));
+
+        // Handle POST request (form submission)
+        if ($this->input->method() === 'post') {
+            $student_id = $this->input->post('student_id');
+            
+            if (!$student_id || !is_numeric($student_id)) {
+                set_alert('danger', 'Invalid student ID provided.');
+                redirect(admin_url('student_sponsor_portal/school_students'));
+                return;
+            }
+            
+            $student_id = (int)$student_id;
+            
+            // Get student data
+            $s = $this->school_model->get_by_id($student_id);
+            if (!$s) { 
+                set_alert('danger', 'Student not found.'); 
+                redirect(admin_url('student_sponsor_portal/school_students')); 
+                return;
+            }
+
+            // Validate form data
+            $staff_email = trim($this->input->post('staff_email') ?: '');
+            $staff_firstname = trim($this->input->post('staff_firstname') ?: '');
+            $staff_password = trim($this->input->post('staff_password') ?: '');
+            $staff_active = $this->input->post('staff_active') ? 1 : 0;
+
+            if (empty($staff_email)) {
+                set_alert('danger', 'Email is required for portal access.');
+                redirect(admin_url('student_sponsor_portal/school_student_form/' . $student_id));
+                return;
+            }
+
+            if (empty($staff_firstname)) {
+                $staff_firstname = $s['name'] ?: 'Student';
+            }
+
+            // Prepare staff data
+            $staff_data = [
+                'staff_email'     => $staff_email,
+                'staff_firstname' => $staff_firstname,
+                'staff_lastname'  => '',
+                'staff_password'  => $staff_password,
+                'active'          => $staff_active,
+            ];
+
+            // Get existing staff ID if any
+            $existing_staff_id = isset($s['staff_id']) && $s['staff_id'] !== '' && $s['staff_id'] !== null 
+                                ? (int)$s['staff_id'] 
+                                : null;
+
+            // Create or update staff account
+            $staff_id = $this->create_simple_staff($staff_data, $existing_staff_id);
+            
+            if (!$staff_id) {
+                set_alert('danger', 'Failed to create staff account. Please check the email address.');
+                redirect(admin_url('student_sponsor_portal/school_student_form/' . $student_id));
+                return;
+            }
+
+            // Grant portal permissions
+            $this->grant_portal_permissions($staff_id);
+
+            // Update student record with proper error handling
+            try {
+                $tbl = db_prefix() . 'school_students';
+                $update_data = ['staff_id' => (int)$staff_id];
+                
+                // Only update active field if it exists
+                if ($this->db->field_exists('staff_active', $tbl)) {
+                    $update_data['staff_active'] = (int)$staff_active;
+                } elseif ($this->db->field_exists('active', $tbl)) {
+                    $update_data['active'] = (int)$staff_active;
+                }
+                
+                $this->db->where('id', (int)$student_id)->update($tbl, $update_data);
+                
+                // Check if update was successful
+                if ($this->db->affected_rows() >= 0) {
+                    $msg = 'Portal access granted successfully.';
+                    if (!empty($staff_password)) {
+                        $msg .= ' Password has been set as provided.';
+                    }
+                    set_alert('success', $msg);
+                } else {
+                    set_alert('warning', 'Staff account created but student record update may have failed.');
+                }
+                
+            } catch (Exception $e) {
+                log_message('error', 'Error updating student record: ' . $e->getMessage());
+                set_alert('warning', 'Staff account created but there was an issue updating the student record.');
+            }
+
+            redirect(admin_url('student_sponsor_portal/school_student_form/' . $student_id));
+            return;
+        }
+
+        // Handle GET request (show form) - this part might be missing
+        if (!$student_id || !is_numeric($student_id)) {
+            set_alert('danger', 'Student ID is required.');
+            redirect(admin_url('student_sponsor_portal/school_students'));
+            return;
+        }
+
+        $student_id = (int)$student_id;
         $s = $this->school_model->get_by_id($student_id);
+        
         if (!$s) { 
             set_alert('danger', 'Student not found.'); 
             redirect(admin_url('student_sponsor_portal/school_students')); 
+            return;
         }
 
+        // Prepare data for the view
         $data = [
-            'staff_email'     => $this->in('staff_email', $s['email'] ?? ''),
-            'staff_firstname' => $this->in('staff_firstname', $s['name'] ?? 'Student'),
-            'staff_lastname'  => $this->in('staff_lastname', ''),
-            'staff_password'  => $this->in('staff_password', ''),
-            'active'          => $this->in_bool('staff_active'),
+            'title' => 'Grant Portal Access',
+            'student' => $s,
+            'student_id' => $student_id
         ];
 
-        if ($data['staff_email'] === '') {
-            set_alert('danger', 'Login email is required.');
-            redirect(admin_url('student_sponsor_portal/school_student_form/' . $student_id));
-        }
+        // Load the form view (you may need to create this view)
+        $this->load->view('student_sponsor_portal/grant_access_form', $data);
 
-        $this->ensure_three_min_roles();
-        $staff_id = $this->upsert_staff($data, $s['staff_id'] ?? null, 'School Student');
-        if (!$staff_id) {
-            set_alert('danger', 'Failed to create/update staff account.');
-            redirect(admin_url('student_sponsor_portal/school_student_form/' . $student_id));
-        }
-
-        $tbl = db_prefix() . 'school_students';
-        $update = ['staff_id' => (int)$staff_id];
-        if ($this->db->field_exists('active', $tbl))           $update['active'] = (int)$data['active'];
-        elseif ($this->db->field_exists('staff_active', $tbl)) $update['staff_active'] = (int)$data['active'];
-
-        $this->db->where('id', (int)$student_id)->update($tbl, $update);
-
-        set_alert('success', 'Portal access granted' . ($data['staff_password'] !== '' ? '. Password set as provided.' : '. Existing password kept or auto-generated.'));
-        redirect(admin_url('student_sponsor_portal/school_student_form/' . $student_id));
+    } catch (Exception $e) {
+        log_message('error', 'Exception in grant_school_access: ' . $e->getMessage());
+        log_message('error', 'Stack trace: ' . $e->getTraceAsString());
+        
+        set_alert('danger', 'An error occurred: ' . $e->getMessage());
+        redirect(admin_url('student_sponsor_portal/school_students'));
     }
+}
+
 
     public function revoke_school_access($student_id = null)
     {
@@ -2897,44 +2994,65 @@ private function detect_mime_type($file_path, $uploaded_type = null)
     }
 
     public function grant_university_access($student_id = null)
-    {
-        if (!has_permission('student_sponsor_portal', '', 'edit')) access_denied('student_sponsor_portal');
+{
+    if (!has_permission('student_sponsor_portal', '', 'edit')) access_denied('student_sponsor_portal');
 
-        $student_id = $this->resolve_id('student_id', 4);
-        if ($student_id <= 0) { set_alert('danger','Missing student ID.'); redirect(admin_url('student_sponsor_portal/university_students')); }
-
-        $s = $this->university_model->get_by_id($student_id);
-        if (!$s) { set_alert('danger','Student not found.'); redirect(admin_url('student_sponsor_portal/university_students')); }
-
-        $data = [
-            'staff_email'     => $this->in('staff_email', $s['email'] ?? ''),
-            'staff_firstname' => $this->in('staff_firstname', $s['name'] ?? 'Student'),
-            'staff_lastname'  => $this->in('staff_lastname', ''),
-            'staff_password'  => $this->in('staff_password', ''),
-            'active'          => $this->in_bool('staff_active'),
-        ];
-        if ($data['staff_email'] === '') {
-            set_alert('danger','Login email is required.');
-            redirect(admin_url('student_sponsor_portal/university_student_form/'.$student_id));
-        }
-
-        $this->ensure_three_min_roles();
-        $staff_id = $this->upsert_staff($data, $s['staff_id'] ?? null, 'University Student');
-        if (!$staff_id) {
-            set_alert('danger','Failed to create/update staff account.');
-            redirect(admin_url('student_sponsor_portal/university_student_form/'.$student_id));
-        }
-
-        $tbl = db_prefix().'university_students';
-        $update = ['staff_id' => (int)$staff_id];
-        if ($this->db->field_exists('active', $tbl))       $update['active'] = (int)$data['active'];
-        elseif ($this->db->field_exists('staff_active', $tbl)) $update['staff_active'] = (int)$data['active'];
-
-        $this->db->where('id', (int)$student_id)->update($tbl, $update);
-
-        set_alert('success', 'Portal access granted'.($data['staff_password']!==''?'. Password set as provided.':'. Existing password kept or auto-generated.'));
-        redirect(admin_url('student_sponsor_portal/university_student_form/'.$student_id));
+    $student_id = $this->resolve_id('student_id', 4);
+    if ($student_id <= 0) { 
+        set_alert('danger', 'Missing student ID.'); 
+        redirect(admin_url('student_sponsor_portal/university_students')); 
     }
+
+    $s = $this->university_model->get_by_id($student_id);
+    if (!$s) { 
+        set_alert('danger', 'Student not found.'); 
+        redirect(admin_url('student_sponsor_portal/university_students')); 
+    }
+
+    $data = [
+        'staff_email'     => $this->in('staff_email', $s['email'] ?? ''),
+        'staff_firstname' => $this->in('staff_firstname', $s['name'] ?? 'Student'),
+        'staff_lastname'  => $this->in('staff_lastname', ''),
+        'staff_password'  => $this->in('staff_password', ''),
+        'active'          => $this->in_bool('staff_active'),
+    ];
+
+    if ($data['staff_email'] === '') {
+        set_alert('danger', 'Login email is required.');
+        redirect(admin_url('student_sponsor_portal/university_student_form/' . $student_id));
+    }
+
+    // FIX: Cast to int or null properly
+    $existing_staff_id = isset($s['staff_id']) && $s['staff_id'] !== '' && $s['staff_id'] !== null 
+                        ? (int)$s['staff_id'] 
+                        : null;
+
+    $staff_id = $this->create_simple_staff($data, $existing_staff_id);
+    if (!$staff_id) {
+        set_alert('danger', 'Failed to create/update staff account.');
+        redirect(admin_url('student_sponsor_portal/university_student_form/' . $student_id));
+    }
+
+    // Grant portal permissions
+    $this->grant_portal_permissions($staff_id);
+
+    // Update student record - FIXED: Check which column exists and use appropriate field
+    $tbl = db_prefix() . 'university_students';
+    $update_data = ['staff_id' => (int)$staff_id];
+    
+    // Check which active column exists in your table
+    if ($this->db->field_exists('active', $tbl)) {
+        $update_data['active'] = (int)$data['active'];
+    } elseif ($this->db->field_exists('staff_active', $tbl)) {
+        $update_data['staff_active'] = (int)$data['active'];
+    }
+    // If neither exists, just update staff_id
+    
+    $this->db->where('id', (int)$student_id)->update($tbl, $update_data);
+
+    set_alert('success', 'Portal access granted' . ($data['staff_password'] !== '' ? '. Password set as provided.' : '. Existing password kept or auto-generated.'));
+    redirect(admin_url('student_sponsor_portal/university_student_form/' . $student_id));
+}
 
     public function revoke_university_access($student_id = null)
     {
@@ -3438,44 +3556,128 @@ if ($current_student) {
         $this->respond_json((bool)$ok, $ok ? 'Sponsor deleted successfully' : 'Error deleting sponsor');
     }
 
-    public function grant_sponsor_access($sponsor_id = null)
-    {
-        if (!has_permission('student_sponsor_portal', '', 'edit')) access_denied('student_sponsor_portal');
+    /**
+ * Simple method to grant portal access by inserting staff permissions directly
+ */
+private function grant_portal_permissions($staff_id)
+{
+    $permissions = [
+        ['staff_id' => $staff_id, 'feature' => 'student_sponsor_portal', 'capability' => 'view'],
+        ['staff_id' => $staff_id, 'feature' => 'student_sponsor_portal', 'capability' => 'create'],
+        ['staff_id' => $staff_id, 'feature' => 'student_sponsor_portal', 'capability' => 'edit'],
+    ];
 
-        $sponsor_id = $this->resolve_id('sponsor_id', 4);
-        if ($sponsor_id <= 0) { set_alert('danger','Missing sponsor ID.'); redirect(admin_url('student_sponsor_portal/sponsors')); }
-
-        $s = $this->sponsor_model->get_by_id($sponsor_id);
-        if (!$s) { set_alert('danger','Sponsor not found.'); redirect(admin_url('student_sponsor_portal/sponsors')); }
-
-        $data = [
-            'staff_email'     => $this->in('staff_email', $s['email'] ?? ''),
-            'staff_firstname' => $this->in('staff_firstname', $s['name'] ?? 'Sponsor'),
-            'staff_lastname'  => $this->in('staff_lastname', ''),
-            'staff_password'  => $this->in('staff_password', ''),
-            'active'          => $this->in_bool('staff_active'),
-        ];
-        if ($data['staff_email'] === '') {
-            set_alert('danger','Login email is required.');
-            redirect(admin_url('student_sponsor_portal/sponsor_form/'.$sponsor_id));
+    foreach ($permissions as $perm) {
+        // Check if permission already exists
+        $exists = $this->db->where($perm)->get(db_prefix().'staff_permissions')->row();
+        if (!$exists) {
+            $this->db->insert(db_prefix().'staff_permissions', $perm);
         }
-
-        $this->ensure_three_min_roles();
-        $staff_id = $this->upsert_staff($data, null, 'Sponsor');
-        if (!$staff_id) {
-            set_alert('danger','Failed to create/update staff account.');
-            redirect(admin_url('student_sponsor_portal/sponsor_form/'.$sponsor_id));
-        }
-
-        $sp_tbl = db_prefix().'sponsor_records';
-        $update = ['staff_id' => (int)$staff_id];
-        if ($this->db->field_exists('active', $sp_tbl))       $update['active'] = (int)$data['active'];
-        elseif ($this->db->field_exists('staff_active', $sp_tbl)) $update['staff_active'] = (int)$data['active'];
-        $this->db->where('id', (int)$sponsor_id)->update($sp_tbl, $update);
-
-        set_alert('success', 'Portal access granted'.($data['staff_password']!==''?'. Password set as provided.':'. Existing password kept or auto-generated.'));
-        redirect(admin_url('student_sponsor_portal/sponsor_form/'.$sponsor_id));
     }
+}
+
+/**
+ * Simplified sponsor access grant
+ */
+private function create_simple_staff(array $data, ?int $existing_staff_id): ?int
+{
+    $staff_tbl = db_prefix().'staff';
+
+    $email     = trim((string)$data['staff_email']);
+    $firstname = trim((string)$data['staff_firstname']);
+    $lastname  = trim((string)$data['staff_lastname']);
+    $password  = trim((string)$data['staff_password']);
+    $active    = !empty($data['active']) ? 1 : 0;
+
+    if ($email === '' || $firstname === '') return null;
+
+    $payload = [
+        'email'     => $email,
+        'firstname' => $firstname,
+        'lastname'  => $lastname,
+        'admin'     => 0,
+        'active'    => (int)$active,
+    ];
+
+    if ($password !== '') {
+        $payload['password'] = app_hash_password($password);
+    }
+
+    // Update existing staff
+    if ($existing_staff_id) {
+        $this->db->where('staffid', (int)$existing_staff_id)->update($staff_tbl, $payload);
+        return (int)$existing_staff_id;
+    }
+
+    // Check if staff with this email already exists
+    $existing = $this->db->get_where($staff_tbl, ['email' => $email])->row();
+    if ($existing) {
+        $this->db->where('staffid', (int)$existing->staffid)->update($staff_tbl, $payload);
+        return (int)$existing->staffid;
+    }
+
+    // Create new staff with auto-generated password if none provided
+    if (empty($payload['password'])) {
+        $auto = bin2hex(random_bytes(4));
+        $payload['password'] = app_hash_password($auto);
+    }
+
+    $this->db->insert($staff_tbl, $payload);
+    return (int)$this->db->insert_id();
+}
+
+public function grant_sponsor_access($sponsor_id = null)
+{
+    if (!has_permission('student_sponsor_portal', '', 'edit')) access_denied('student_sponsor_portal');
+
+    $sponsor_id = $this->resolve_id('sponsor_id', 4);
+    if ($sponsor_id <= 0) { 
+        set_alert('danger', 'Missing sponsor ID.'); 
+        redirect(admin_url('student_sponsor_portal/sponsors')); 
+    }
+
+    $s = $this->sponsor_model->get_by_id($sponsor_id);
+    if (!$s) { 
+        set_alert('danger', 'Sponsor not found.'); 
+        redirect(admin_url('student_sponsor_portal/sponsors')); 
+    }
+
+    $data = [
+        'staff_email'     => $this->in('staff_email', $s['email'] ?? ''),
+        'staff_firstname' => $this->in('staff_firstname', $s['name'] ?? 'Sponsor'),
+        'staff_lastname'  => $this->in('staff_lastname', ''),
+        'staff_password'  => $this->in('staff_password', ''),
+        'active'          => $this->in_bool('staff_active'),
+    ];
+
+    if ($data['staff_email'] === '') {
+        set_alert('danger', 'Login email is required.');
+        redirect(admin_url('student_sponsor_portal/sponsor_form/' . $sponsor_id));
+    }
+
+    // FIX: Cast to int or null properly
+    $existing_staff_id = isset($s['staff_id']) && $s['staff_id'] !== '' && $s['staff_id'] !== null 
+                        ? (int)$s['staff_id'] 
+                        : null;
+
+    $staff_id = $this->create_simple_staff($data, $existing_staff_id);
+    if (!$staff_id) {
+        set_alert('danger', 'Failed to create/update staff account.');
+        redirect(admin_url('student_sponsor_portal/sponsor_form/' . $sponsor_id));
+    }
+
+    // Grant portal permissions
+    $this->grant_portal_permissions($staff_id);
+
+    // Update sponsor record
+    $this->db->where('id', (int)$sponsor_id)->update(db_prefix().'sponsor_records', [
+        'staff_id' => (int)$staff_id,
+        'active' => (int)$data['active']
+    ]);
+
+    set_alert('success', 'Portal access granted' . ($data['staff_password'] !== '' ? '. Password set as provided.' : '. Existing password kept or auto-generated.'));
+    redirect(admin_url('student_sponsor_portal/sponsor_form/' . $sponsor_id));
+}
 
     public function revoke_sponsor_access($sponsor_id = null)
     {
