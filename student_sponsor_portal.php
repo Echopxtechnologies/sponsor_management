@@ -102,7 +102,7 @@ function check_student_dashboard_redirect() {
     }
 }
 
-/* ---------------- Enhanced Admin Menu with All Portal User Support ---------------- */
+/* ---------------- Simplified Sponsor Menu ---------------- */
 hooks()->add_action('admin_init', 'student_sponsor_portal_admin_menu');
 function student_sponsor_portal_admin_menu()
 {
@@ -116,23 +116,22 @@ function student_sponsor_portal_admin_menu()
     // Check if current user is a sponsor first
     $is_sponsor = $CI->db->select('id, name')
                          ->where('staff_id', $staff_id)
-                         ->where('entity_type', 'sponsor')
                          ->where('active', 1)
                          ->get(db_prefix() . 'sponsor_records')
                          ->row();
 
     if ($is_sponsor) {
-        // Menu for sponsors - show their profile and students
+        // Menu for sponsors - only show profile and sponsored students
         $CI->app_menu->add_sidebar_menu_item('sponsor-profile', [
             'name'     => 'My Profile',
-            'href'     => admin_url('student_sponsor_portal/'),
+            'href'     => admin_url('student_sponsor_portal/sponsor_profile'),
             'position' => 1,
             'icon'     => 'fa fa-user-circle',
         ]);
 
         $CI->app_menu->add_sidebar_menu_item('my-sponsored-students', [
             'name'     => 'My Students',
-            'href'     => admin_url('student_sponsor_portal/sponsor_form/' . $is_sponsor->id . '?tab=students'),
+            'href'     => admin_url('student_sponsor_portal/my_sponsored_students'),
             'position' => 2,
             'icon'     => 'fa fa-graduation-cap',
         ]);
@@ -149,51 +148,31 @@ function student_sponsor_portal_admin_menu()
                                 ->row();
 
     if ($is_school_student) {
-        // Menu for school students - only show their profile
         $CI->app_menu->add_sidebar_menu_item('student-profile', [
             'name'     => 'My Profile',
-            'href'     => admin_url('student_sponsor_portal/'),
+            'href'     => admin_url('student_sponsor_portal/school_student_form/' . $is_school_student->id),
             'position' => 1,
             'icon'     => 'fa fa-user-circle',
         ]);
-
-        // Optional: Add report cards link for school students
-        $CI->app_menu->add_sidebar_menu_item('my-school-reports', [
-            'name'     => 'My Report Cards',
-            'href'     => admin_url('student_sponsor_portal/school_student_form/' . $is_school_student->id . '?tab=report-cards'),
-            'position' => 2,
-            'icon'     => 'fa fa-file-text',
-        ]);
-
-        return; // Don't show admin menu items for school students
+        return;
     }
 
     // Check if current user is a university student
     $is_university_student = $CI->db->select('id, university_internal_id, name')
                                     ->where('staff_id', $staff_id)
                                     ->where('entity_type', 'university')
-                                    ->where('active', 1) // or staff_active depending on your column name
+                                    ->where('active', 1)
                                     ->get(db_prefix() . 'university_students')
                                     ->row();
 
     if ($is_university_student) {
-        // Menu for university students - only show their profile
         $CI->app_menu->add_sidebar_menu_item('university-student-profile', [
             'name'     => 'My Profile',
-            'href'     => admin_url('student_sponsor_portal/'),
+            'href'     => admin_url('student_sponsor_portal/university_student_form/' . $is_university_student->id),
             'position' => 1,
             'icon'     => 'fa fa-user-graduate',
         ]);
-
-        // Optional: Add report cards link for university students
-        $CI->app_menu->add_sidebar_menu_item('my-university-reports', [
-            'name'     => 'My Report Cards',
-            'href'     => admin_url('student_sponsor_portal/university_student_form/' . $is_university_student->id . '?tab=report-cards'),
-            'position' => 2,
-            'icon'     => 'fa fa-file-text',
-        ]);
-
-        return; // Don't show admin menu items for university students
+        return;
     }
 
     // Regular admin menu (only if user has permissions and is not a portal user)

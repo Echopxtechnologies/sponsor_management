@@ -31,24 +31,323 @@ class School_model extends App_Model
         $this->ensure_required_tables();
     }
 
+    /* ----------------- ENHANCED FILTERING & STATISTICS ----------------- */
+
+    /**
+     * Get comprehensive statistics for dashboard
+     * 
+     * @return array Statistics array with counts
+     */
+    public function get_statistics()
+    {
+        $stats = [
+            'total' => 0,
+            'active' => 0,
+            'inactive' => 0,
+            'verified' => 0,
+            'unverified' => 0,
+            'by_grade' => [],
+            'by_status' => [],
+            'recent_additions' => 0
+        ];
+
+        // Base query for all students with status information
+        $this->db->select('
+            ss.id,
+            ss.school_grade,
+            ss.staff_id,
+            s.active as staff_active,
+            ss.created_at
+        ');
+        $this->db->from($this->tbl_students . ' ss');
+        $this->db->join(db_prefix() . 'staff s', 's.staffid = ss.staff_id', 'left');
+        
+        $students = $this->db->get()->result_array();
+
+        $stats['total'] = count($students);
+
+        // Count recent additions (last 30 days)
+        $thirty_days_ago = date('Y-m-d H:i:s', strtotime('-30 days'));
+
+        foreach ($students as $student) {
+            // Determine status
+            $status = $this->determine_student_status($student);
+            $stats['by_status'][$status] = ($stats['by_status'][$status] ?? 0) + 1;
+            
+            // Count by main categories
+            if ($status === 'active') $stats['active']++;
+            elseif ($status === 'inactive') $stats['inactive']++;
+            elseif ($status === 'verified') $stats['verified']++;
+            else $stats['unverified']++;
+
+            // Count by grade
+            $grade = $student['school_grade'] ?? 'Unknown';
+            $stats['by_grade'][$grade] = ($stats['by_grade'][$grade] ?? 0) + 1;
+
+            // Count recent additions
+            if (!empty($student['created_at']) && $student['created_at'] >= $thirty_days_ago) {
+                $stats['recent_additions']++;
+            }
+        }
+
+        return $stats;
+    }
+
+    /**
+     * Advanced filtering for students list with DataTables server-side processing
+     * 
+     * @param array $filters Filter parameters
+     * @param array $datatables_params DataTables parameters (start, length, search, order)
+     * @return array Filtered results with pagination info
+     */
+    public function get_students_filtered($filters = [], $datatables_params = [])
+    {
+        // Build base query with all necessary joins
+        $this->db->select('
+            ss.*,
+            sn.name AS school_name,
+            b.name AS bank_name,
+            c.short_name AS country_name,
+            s.active as staff_active,
+            s.staffid as staff_id
+        ', false);
+
+        $this->db->from($this->tbl_students . ' ss');
+        $this->db->join($this->tbl_sname . ' sn', 'sn.id = ss.school_name_id', 'left');
+        $this->db->join($this->tbl_bank . ' b', 'b.id = ss.bank_id', 'left');
+        $this->db->join(db_prefix() . 'countries c', 'c.country_id = ss.country_id', 'left');
+        $this->db->join(db_prefix() . 'staff s', 's.staffid = ss.staff_id', 'left');
+
+        // Apply filters
+        $this->apply_filters($filters);
+
+        // Handle DataTables search
+        if (!empty($datatables_params['search']['value'])) {
+            $search = $datatables_params['search']['value'];
+            $this->db->group_start();
+            $this->db->like('ss.name', $search);
+            $this->db->or_like('ss.email', $search);
+            $this->db->or_like('ss.contact_no', $search);
+            $this->db->or_like('ss.school_internal_id', $search);
+            $this->db->or_like('sn.name', $search);
+            $this->db->group_end();
+        }
+
+        // Get total count before pagination
+        $total_query = clone $this->db;
+        $total_records = $total_query->count_all_results('', false);
+
+        // Handle ordering
+        if (!empty($datatables_params['order'])) {
+            foreach ($datatables_params['order'] as $order) {
+                $column_index = (int)$order['column'];
+                $direction = $order['dir'] === 'desc' ? 'DESC' : 'ASC';
+                
+                // Map column indices to actual columns
+                $columns = ['ss.id', 'ss.name', 'ss.school_grade', 'sn.name', 'status', 'ss.contact_no'];
+                if (isset($columns[$column_index])) {
+                    if ($columns[$column_index] !== 'status') {
+                        $this->db->order_by($columns[$column_index], $direction);
+                    }
+                }
+            }
+        } else {
+            $this->db->order_by('ss.id', 'DESC');
+        }
+
+        // Handle pagination
+        if (isset($datatables_params['length']) && $datatables_params['length'] != -1) {
+            $this->db->limit($datatables_params['length'], $datatables_params['start'] ?? 0);
+        }
+
+        $students = $this->db->get()->result_array();
+
+        // Add computed status to each student
+        foreach ($students as &$student) {
+            $student['computed_status'] = $this->determine_student_status($student);
+        }
+
+        return [
+            'data' => $students,
+            'recordsTotal' => $this->count_all(),
+            'recordsFiltered' => $total_records
+        ];
+    }
+
+    /**
+     * Apply filters to the current query
+     * 
+     * @param array $filters Filter parameters
+     */
+    private function apply_filters($filters)
+    {
+        // Grade filter
+        if (!empty($filters['grade'])) {
+            $this->db->where('ss.school_grade', $filters['grade']);
+        }
+
+        // Status filter (requires complex logic)
+        if (!empty($filters['status'])) {
+            $this->apply_status_filter($filters['status']);
+        }
+
+        // School filter
+        if (!empty($filters['school'])) {
+            $this->db->like('sn.name', $filters['school']);
+        }
+
+        // City filter
+        if (!empty($filters['city'])) {
+            $this->db->like('ss.city', $filters['city']);
+        }
+
+        // Age range filter
+        if (!empty($filters['age_min'])) {
+            $this->db->where('ss.school_age >=', (int)$filters['age_min']);
+        }
+        if (!empty($filters['age_max'])) {
+            $this->db->where('ss.school_age <=', (int)$filters['age_max']);
+        }
+
+        // Date range filters
+        if (!empty($filters['created_from'])) {
+            $this->db->where('DATE(ss.created_at) >=', $filters['created_from']);
+        }
+        if (!empty($filters['created_to'])) {
+            $this->db->where('DATE(ss.created_at) <=', $filters['created_to']);
+        }
+
+        // Sponsorship status
+        if (!empty($filters['sponsorship_status'])) {
+            if ($filters['sponsorship_status'] === 'sponsored') {
+                $this->db->where('ss.sponsor_id IS NOT NULL');
+            } elseif ($filters['sponsorship_status'] === 'unsponsored') {
+                $this->db->where('ss.sponsor_id IS NULL');
+            }
+        }
+    }
+
+    /**
+     * Apply status-based filtering
+     * 
+     * @param string $status Status to filter by (active, inactive, verified, unverified)
+     */
+    private function apply_status_filter($status)
+    {
+        switch ($status) {
+            case 'active':
+                $this->db->where('ss.staff_id IS NOT NULL');
+                $this->db->where('s.active', 1);
+                break;
+            case 'inactive':
+                $this->db->where('ss.staff_id IS NOT NULL');
+                $this->db->where('s.active', 0);
+                break;
+            case 'verified':
+                $this->db->where('ss.staff_id IS NOT NULL');
+                break;
+            case 'unverified':
+                $this->db->where('ss.staff_id IS NULL');
+                break;
+        }
+    }
+
+    /**
+     * Determine student status based on staff relationship
+     * 
+     * @param array $student Student data with staff info
+     * @return string Status (active, inactive, verified, unverified)
+     */
+    private function determine_student_status($student)
+    {
+        if (empty($student['staff_id'])) {
+            return 'unverified';
+        }
+
+        if (!empty($student['staff_active']) && $student['staff_active'] == 1) {
+            return 'active';
+        } elseif (isset($student['staff_active']) && $student['staff_active'] == 0) {
+            return 'inactive';
+        }
+
+        return 'verified';
+    }
+
+    /**
+     * Get dropdown data for filters
+     * 
+     * @return array Dropdown options
+     */
+    public function get_filter_options()
+    {
+        return [
+            'grades' => $this->get_available_grades(),
+            'schools' => $this->get_schools(),
+            'cities' => $this->get_available_cities(),
+            'countries' => $this->get_countries(),
+            'banks' => $this->get_banks()
+        ];
+    }
+
+    /**
+     * Get available grades from existing students
+     * 
+     * @return array List of grades
+     */
+    public function get_available_grades()
+    {
+        $this->db->select('school_grade as grade');
+        $this->db->from($this->tbl_students);
+        $this->db->where('school_grade IS NOT NULL');
+        $this->db->where('school_grade !=', '');
+        $this->db->group_by('school_grade');
+        $this->db->order_by('
+            CASE 
+                WHEN school_grade REGEXP "^[0-9]+$" THEN CAST(school_grade AS UNSIGNED)
+                WHEN school_grade = "O/L" THEN 11
+                WHEN school_grade = "A/L1" THEN 12  
+                WHEN school_grade = "A/L2" THEN 13
+                ELSE 999
+            END
+        ');
+
+        return $this->db->get()->result_array();
+    }
+
+    /**
+     * Get available cities from existing students
+     * 
+     * @return array List of cities
+     */
+    public function get_available_cities()
+    {
+        $this->db->select('city');
+        $this->db->from($this->tbl_students);
+        $this->db->where('city IS NOT NULL');
+        $this->db->where('city !=', '');
+        $this->db->group_by('city');
+        $this->db->order_by('city', 'ASC');
+
+        return $this->db->get()->result_array();
+    }
+
     /* ----------------- VALIDATION ----------------- */
 
     public function validate_age_grade($grade, $age, $grade_mismatch_reason = null)
     {
         if (empty($grade) || $age === null || $age === '') {
-            return ['valid' => true]; // Allow if no grade or age specified
+            return ['valid' => true];
         }
 
         $grade_str = (string)$grade;
         $age = (int)$age;
 
         // No validation for grades above 10 (O/L and A/L students)
-        if ($grade_str === 'O/L' || $grade_str === 'A/L1' || $grade_str === 'A/L2') {
+        if (in_array($grade_str, ['O/L', 'A/L1', 'A/L2'], true)) {
             return ['valid' => true];
         }
 
         $grade_int = (int)$grade;
-        // Check if grade exists in our mapping
         if (!isset($this->grade_age_mapping[$grade_int])) {
             return ['valid' => false, 'message' => 'Invalid grade specified'];
         }
@@ -57,12 +356,10 @@ class School_model extends App_Model
         $min_age = $expected['min'];
         $max_age = $expected['max'];
         
-        // If age is within expected range, it's valid (no mismatch reason needed)
         if ($age >= $min_age && $age <= $max_age) {
             return ['valid' => true];
         }
 
-        // If age is younger than minimum allowed, reject completely
         if ($age < $min_age) {
             return [
                 'valid' => false, 
@@ -71,7 +368,6 @@ class School_model extends App_Model
             ];
         }
 
-        // If age is exactly one year older than max, allow with mismatch reason
         if ($age === ($max_age + 1)) {
             if (empty($grade_mismatch_reason)) {
                 return [
@@ -80,11 +376,9 @@ class School_model extends App_Model
                     'requires_reason' => true
                 ];
             }
-            // If mismatch reason is provided, allow it
             return ['valid' => true, 'has_mismatch' => true];
         }
 
-        // If age is more than one year older than max, reject completely
         if ($age > ($max_age + 1)) {
             return [
                 'valid' => false, 
@@ -198,153 +492,137 @@ class School_model extends App_Model
         }
     }
 
-    /* ----------------- PHOTO ----------------- */
+    /* ----------------- PHOTO HANDLING ----------------- */
 
+    private function handle_profile_photo_upload()
+    {
+        if (!isset($_FILES['profile_photo'])) return null;
+        if ($_FILES['profile_photo']['error'] === UPLOAD_ERR_NO_FILE) return null;
+        if ($_FILES['profile_photo']['error'] !== UPLOAD_ERR_OK) {
+            throw new Exception('Upload failed (code '.$_FILES['profile_photo']['error'].')');
+        }
 
-private function handle_profile_photo_upload()
-{
-    if (!isset($_FILES['profile_photo'])) return null;
-    if ($_FILES['profile_photo']['error'] === UPLOAD_ERR_NO_FILE) return null;
-    if ($_FILES['profile_photo']['error'] !== UPLOAD_ERR_OK) {
-        throw new Exception('Upload failed (code '.$_FILES['profile_photo']['error'].')');
+        $tmp  = $_FILES['profile_photo']['tmp_name'];
+        $size = (int)$_FILES['profile_photo']['size'];
+        $name = $_FILES['profile_photo']['name'];
+
+        if ($size <= 0 || $size > 5*1024*1024) {
+            throw new Exception('File size too large. Max 5MB.');
+        }
+
+        $mime = $this->detect_mime_type($tmp, $_FILES['profile_photo']['type']);
+
+        $allowed = ['image/jpeg','image/jpg','image/png','image/gif','image/webp'];
+        if (!in_array($mime, $allowed, true)) {
+            throw new Exception('Invalid file type. Only JPG/PNG/GIF/WebP allowed. Detected: ' . $mime);
+        }
+
+        $file_extension = strtolower(pathinfo($name, PATHINFO_EXTENSION));
+        $allowed_extensions = ['jpg', 'jpeg', 'png', 'gif', 'webp'];
+        if (!in_array($file_extension, $allowed_extensions)) {
+            throw new Exception('Invalid file extension: ' . $file_extension);
+        }
+
+        $bytes = @file_get_contents($tmp);
+        if ($bytes === false) throw new Exception('Could not read uploaded file.');
+
+        if (function_exists('getimagesizefromstring')) {
+            $image_info = getimagesizefromstring($bytes);
+            if ($image_info === false) {
+                throw new Exception('Invalid image data - not a valid image file');
+            }
+            
+            if ($image_info[0] > 3000 || $image_info[1] > 3000) {
+                throw new Exception('Image dimensions too large: ' . $image_info[0] . 'x' . $image_info[1] . '. Maximum: 3000x3000 pixels');
+            }
+        }
+
+        return $bytes;
     }
 
-    $tmp  = $_FILES['profile_photo']['tmp_name'];
-    $size = (int)$_FILES['profile_photo']['size'];
-    $name = $_FILES['profile_photo']['name'];
-
-    if ($size <= 0 || $size > 5*1024*1024) {
-        throw new Exception('File size too large. Max 5MB.');
-    }
-
-    // Enhanced MIME detection with multiple fallbacks
-    $mime = $this->detect_mime_type($tmp, $_FILES['profile_photo']['type']);
-
-    $allowed = ['image/jpeg','image/jpg','image/png','image/gif','image/webp'];
-    if (!in_array($mime, $allowed, true)) {
-        throw new Exception('Invalid file type. Only JPG/PNG/GIF/WebP allowed. Detected: ' . $mime);
-    }
-
-    // Additional validation using file extension
-    $file_extension = strtolower(pathinfo($name, PATHINFO_EXTENSION));
-    $allowed_extensions = ['jpg', 'jpeg', 'png', 'gif', 'webp'];
-    if (!in_array($file_extension, $allowed_extensions)) {
-        throw new Exception('Invalid file extension: ' . $file_extension);
-    }
-
-    $bytes = @file_get_contents($tmp);
-    if ($bytes === false) throw new Exception('Could not read uploaded file.');
-
-    // Additional image validation using GD library if available
-    if (function_exists('getimagesizefromstring')) {
-        $image_info = getimagesizefromstring($bytes);
-        if ($image_info === false) {
-            throw new Exception('Invalid image data - not a valid image file');
+    private function detect_mime_type($file_path, $uploaded_type = null)
+    {
+        $mime_type = 'application/octet-stream';
+        
+        if (function_exists('finfo_open')) {
+            try {
+                $finfo = finfo_open(FILEINFO_MIME_TYPE);
+                if ($finfo !== false) {
+                    $detected_mime = finfo_file($finfo, $file_path);
+                    finfo_close($finfo);
+                    if ($detected_mime !== false) {
+                        return strtolower($detected_mime);
+                    }
+                }
+            } catch (Exception $e) {
+                log_message('warning', 'finfo_open failed in School_model: ' . $e->getMessage());
+            }
         }
         
-        // Validate image dimensions (prevent extremely large images)
-        if ($image_info[0] > 3000 || $image_info[1] > 3000) {
-            throw new Exception('Image dimensions too large: ' . $image_info[0] . 'x' . $image_info[1] . '. Maximum: 3000x3000 pixels');
+        if (function_exists('getimagesize')) {
+            try {
+                $image_info = getimagesize($file_path);
+                if ($image_info !== false && isset($image_info['mime'])) {
+                    return strtolower($image_info['mime']);
+                }
+            } catch (Exception $e) {
+                log_message('warning', 'getimagesize failed in School_model: ' . $e->getMessage());
+            }
         }
-    }
-
-    return $bytes;
-}
-
-/**
- * Detect MIME type with multiple fallback methods
- * Handles cases where finfo_open() is not available
- */
-private function detect_mime_type($file_path, $uploaded_type = null)
-{
-    $mime_type = 'application/octet-stream'; // Default fallback
-    
-    // Method 1: Try finfo (preferred method)
-    if (function_exists('finfo_open')) {
-        try {
-            $finfo = finfo_open(FILEINFO_MIME_TYPE);
-            if ($finfo !== false) {
-                $detected_mime = finfo_file($finfo, $file_path);
-                finfo_close($finfo);
+        
+        if (function_exists('mime_content_type')) {
+            try {
+                $detected_mime = mime_content_type($file_path);
                 if ($detected_mime !== false) {
                     return strtolower($detected_mime);
                 }
-            }
-        } catch (Exception $e) {
-            log_message('warning', 'finfo_open failed in School_model: ' . $e->getMessage());
-        }
-    }
-    
-    // Method 2: Try getimagesize (for images only)
-    if (function_exists('getimagesize')) {
-        try {
-            $image_info = getimagesize($file_path);
-            if ($image_info !== false && isset($image_info['mime'])) {
-                return strtolower($image_info['mime']);
-            }
-        } catch (Exception $e) {
-            log_message('warning', 'getimagesize failed in School_model: ' . $e->getMessage());
-        }
-    }
-    
-    // Method 3: Try mime_content_type (deprecated but may be available)
-    if (function_exists('mime_content_type')) {
-        try {
-            $detected_mime = mime_content_type($file_path);
-            if ($detected_mime !== false) {
-                return strtolower($detected_mime);
-            }
-        } catch (Exception $e) {
-            log_message('warning', 'mime_content_type failed in School_model: ' . $e->getMessage());
-        }
-    }
-    
-    // Method 4: Use uploaded type as fallback (with validation)
-    if (!empty($uploaded_type)) {
-        $uploaded_type = strtolower(trim($uploaded_type));
-        $valid_types = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
-        if (in_array($uploaded_type, $valid_types)) {
-            return $uploaded_type;
-        }
-    }
-    
-    // Method 5: Guess from file extension (last resort)
-    $file_extension = strtolower(pathinfo($file_path, PATHINFO_EXTENSION));
-    $extension_map = [
-        'jpg'  => 'image/jpeg',
-        'jpeg' => 'image/jpeg',
-        'png'  => 'image/png',
-        'gif'  => 'image/gif',
-        'webp' => 'image/webp',
-    ];
-    
-    if (isset($extension_map[$file_extension])) {
-        return $extension_map[$file_extension];
-    }
-    
-    // Method 6: Basic file signature detection
-    if (is_readable($file_path)) {
-        $file_content = file_get_contents($file_path, false, null, 0, 12);
-        if ($file_content !== false) {
-            // Check common image signatures
-            if (substr($file_content, 0, 3) === "\xFF\xD8\xFF") {
-                return 'image/jpeg';
-            }
-            if (substr($file_content, 0, 4) === "\x89PNG") {
-                return 'image/png';
-            }
-            if (substr($file_content, 0, 3) === "GIF") {
-                return 'image/gif';
-            }
-            if (substr($file_content, 0, 4) === "RIFF" && substr($file_content, 8, 4) === "WEBP") {
-                return 'image/webp';
+            } catch (Exception $e) {
+                log_message('warning', 'mime_content_type failed in School_model: ' . $e->getMessage());
             }
         }
+        
+        if (!empty($uploaded_type)) {
+            $uploaded_type = strtolower(trim($uploaded_type));
+            $valid_types = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
+            if (in_array($uploaded_type, $valid_types)) {
+                return $uploaded_type;
+            }
+        }
+        
+        $file_extension = strtolower(pathinfo($file_path, PATHINFO_EXTENSION));
+        $extension_map = [
+            'jpg'  => 'image/jpeg',
+            'jpeg' => 'image/jpeg',
+            'png'  => 'image/png',
+            'gif'  => 'image/gif',
+            'webp' => 'image/webp',
+        ];
+        
+        if (isset($extension_map[$file_extension])) {
+            return $extension_map[$file_extension];
+        }
+        
+        if (is_readable($file_path)) {
+            $file_content = file_get_contents($file_path, false, null, 0, 12);
+            if ($file_content !== false) {
+                if (substr($file_content, 0, 3) === "\xFF\xD8\xFF") {
+                    return 'image/jpeg';
+                }
+                if (substr($file_content, 0, 4) === "\x89PNG") {
+                    return 'image/png';
+                }
+                if (substr($file_content, 0, 3) === "GIF") {
+                    return 'image/gif';
+                }
+                if (substr($file_content, 0, 4) === "RIFF" && substr($file_content, 8, 4) === "WEBP") {
+                    return 'image/webp';
+                }
+            }
+        }
+        
+        log_message('warning', 'Could not determine MIME type in School_model, using fallback: ' . $mime_type);
+        return $mime_type;
     }
-    
-    log_message('warning', 'Could not determine MIME type in School_model, using fallback: ' . $mime_type);
-    return $mime_type;
-}
 
     public function get_profile_photo($student_id)
     {
@@ -352,12 +630,11 @@ private function detect_mime_type($file_path, $uploaded_type = null)
         return $row ? $row->profile_photo : null;
     }
 
-    /* ----------------- CRUD ----------------- */
+    /* ----------------- CRUD OPERATIONS ----------------- */
 
     public function add($data)
     {
         try {
-            // Validate age-grade combination first
             $grade = $data['grade'] ?? $data['school_grade'] ?? null;
             $age = $data['calculated_age'] ?? $data['school_age'] ?? null;
             $grade_mismatch_reason = $data['grade_mismatch_reason'] ?? null;
@@ -370,7 +647,11 @@ private function detect_mime_type($file_path, $uploaded_type = null)
             }
 
             $photo = null;
-            try { $photo = $this->handle_profile_photo_upload(); } catch (Exception $e) { log_message('error','School photo upload: '.$e->getMessage()); }
+            try { 
+                $photo = $this->handle_profile_photo_upload(); 
+            } catch (Exception $e) { 
+                log_message('error','School photo upload: '.$e->getMessage()); 
+            }
 
             $country_id     = $this->toIntOrNull($data['country_id'] ?? null);
             $school_name_id = $this->get_or_create_school_name_id($data['school_name'] ?? ($data['school_name_id'] ?? ''));
@@ -411,6 +692,7 @@ private function detect_mime_type($file_path, $uploaded_type = null)
                 'background_info'               => $this->toNullIfEmpty($data['background_information'] ?? ''),
                 'internal_comment'              => $this->toNullIfEmpty($data['internal_comment'] ?? ''),
                 'external_comment'              => $this->toNullIfEmpty($data['external_comment'] ?? ''),
+                'created_at'                    => date('Y-m-d H:i:s')
             ];
 
             $insert = $this->filter_existing_columns($this->tbl_students, $insert);
@@ -434,10 +716,7 @@ private function detect_mime_type($file_path, $uploaded_type = null)
                 return false;
             }
 
-            log_message('debug', 'School_model::update - Starting update for ID: ' . $id);
-            log_message('debug', 'School_model::update - Input data: ' . json_encode($data));
-
-            // Validate age-grade combination first
+            // Validate age-grade combination
             $grade = $data['school_grade'] ?? null;
             $age = $data['school_age'] ?? null;
             $grade_mismatch_reason = $data['grade_mismatch_reason'] ?? null;
@@ -445,24 +724,20 @@ private function detect_mime_type($file_path, $uploaded_type = null)
             if (!empty($grade) && !empty($age)) {
                 $validation = $this->validate_age_grade($grade, $age, $grade_mismatch_reason);
                 if (!$validation['valid']) {
-                    log_message('error', 'School_model::update - Age-grade validation failed: ' . $validation['message']);
                     return ['success' => false, 'message' => $validation['message']];
                 }
             }
 
-            // Handle profile photo upload
             $update_data = [];
             try {
                 $photo = $this->handle_profile_photo_upload();
                 if ($photo !== null) {
                     $update_data['profile_photo'] = $photo;
-                    log_message('debug', 'School_model::update - Profile photo will be updated');
                 }
             } catch (Exception $e) {
                 log_message('error', 'School_model::update - Photo upload error: ' . $e->getMessage());
             }
 
-            // Map all the possible fields from the cleaned data
             $field_mappings = [
                 'name' => 'name',
                 'email' => 'email',
@@ -498,14 +773,10 @@ private function detect_mime_type($file_path, $uploaded_type = null)
                 'external_comment' => 'external_comment'
             ];
 
-            // Process each field from the input data
             foreach ($field_mappings as $db_field => $target_field) {
                 if (array_key_exists($db_field, $data)) {
                     $value = $data[$db_field];
                     
-                    log_message('debug', 'School_model::update - Processing field: ' . $db_field . ' = ' . var_export($value, true));
-                    
-                    // Handle foreign key fields with validation
                     if (in_array($db_field, ['country_id', 'bank_id', 'school_name_id'], true)) {
                         if ($value === '' || $value === null) {
                             $update_data[$target_field] = null;
@@ -514,68 +785,43 @@ private function detect_mime_type($file_path, $uploaded_type = null)
                             if ($this->validateForeignKey($db_field, $fk_id)) {
                                 $update_data[$target_field] = $fk_id;
                             } else {
-                                log_message('warning', 'Invalid foreign key: ' . $db_field . ' = ' . $fk_id . ' does not exist');
                                 $update_data[$target_field] = null;
                             }
                         }
-                    }
-                    // Handle numeric fields
-                    elseif (in_array($db_field, ['school_father_income', 'school_mother_income', 'school_guardian_income', 'school_age'], true)) {
+                    } elseif (in_array($db_field, ['school_father_income', 'school_mother_income', 'school_guardian_income', 'school_age'], true)) {
                         $update_data[$target_field] = ($value === '' || $value === null) ? null : (is_numeric($value) ? (float)$value : null);
-                    }
-                    // Handle string fields
-                    else {
+                    } else {
                         $update_data[$target_field] = ($value === '' || $value === null) ? null : $value;
                     }
-                    
-                    log_message('debug', 'School_model::update - Mapped ' . $db_field . ' -> ' . $target_field . ' = ' . var_export($update_data[$target_field], true));
                 }
             }
 
-            // Calculate age if DOB is provided and age not already set
             if (!empty($update_data['school_student_dob']) && !isset($update_data['school_age'])) {
                 try {
                     $dob = new DateTime($update_data['school_student_dob']);
                     $now = new DateTime();
                     $calculated_age = $dob->diff($now)->y;
                     $update_data['school_age'] = $calculated_age;
-                    log_message('debug', 'School_model::update - Calculated age from DOB: ' . $calculated_age);
                 } catch (Exception $e) {
                     log_message('error', 'School_model::update - Error calculating age: ' . $e->getMessage());
                 }
             }
 
-            // Filter to only existing database columns
             $update_data = $this->filter_existing_columns($this->tbl_students, $update_data);
-            
-            log_message('debug', 'School_model::update - Final update data after column filtering: ' . json_encode($update_data));
 
             if (empty($update_data)) {
-                log_message('warning', 'School_model::update - No valid data to update for ID: ' . $id);
-                return true; // Return true since there's nothing to update
+                return true;
             }
 
-            // Perform the database update
             $this->db->where('id', $id);
-            
-            // Enable query logging for debugging
-            $this->db->start_cache();
-            $query = $this->db->get_compiled_update($this->tbl_students, $update_data);
-            $this->db->stop_cache();
-            log_message('debug', 'School_model::update - Generated SQL: ' . $query);
-            
             $result = $this->db->update($this->tbl_students, $update_data);
 
             if (!$result) {
                 $error = $this->db->error();
-                log_message('error', 'School_model::update - Database update failed for ID ' . $id . ': ' . json_encode($error));
+                log_message('error', 'School_model::update - Database update failed: ' . json_encode($error));
                 return false;
             }
 
-            $affected_rows = $this->db->affected_rows();
-            log_message('debug', 'School_model::update - Update successful for ID ' . $id . ' - affected rows: ' . $affected_rows);
-            
-            // Even if affected_rows is 0, the update was successful (no changes != failure)
             return true;
 
         } catch (Exception $e) {
@@ -583,8 +829,6 @@ private function detect_mime_type($file_path, $uploaded_type = null)
             return false;
         }
     }
-
-    public function update_student($data, $id) { return $this->update($data, $id); }
 
     public function delete($id)
     {
@@ -607,9 +851,7 @@ private function detect_mime_type($file_path, $uploaded_type = null)
         }
     }
 
-    public function delete_student($id) { return $this->delete($id); }
-
-    /* ----------------- READ/LISTS ----------------- */
+    /* ----------------- READ OPERATIONS ----------------- */
 
     public function get_all()
     {
@@ -662,31 +904,25 @@ private function detect_mime_type($file_path, $uploaded_type = null)
         return $this->db->count_all_results($this->tbl_students);
     }
 
-    public function get_students_filtered($filters = [])
-    {
-        $this->db->select('ss.*, sn.name as school_name');
-        $this->db->from($this->tbl_students.' ss');
-        $this->db->join($this->tbl_sname.' sn', 'sn.id = ss.school_name_id', 'left');
-
-        if (!empty($filters['grade']))       $this->db->where('ss.school_grade', $filters['grade']);
-        if (!empty($filters['city']))        $this->db->like('ss.city', $filters['city']);
-        if (!empty($filters['school_name'])) $this->db->like('sn.name', $filters['school_name']);
-
-        if (!empty($filters['search'])) {
-            $this->db->group_start();
-            $this->db->like('ss.name', $filters['search']);
-            $this->db->or_like('ss.email', $filters['search']);
-            $this->db->or_like('ss.contact_no', $filters['search']);
-            $this->db->group_end();
-        }
-
-        $this->db->order_by('ss.id', 'DESC');
-        return $this->db->get()->result_array();
-    }
-
     public function get_schools()
     {
         return $this->db->order_by('name','ASC')->get($this->tbl_sname)->result_array();
+    }
+
+    public function get_countries()
+    {
+        $c = $this->country_schema();
+        if (!$c['table']) return [];
+
+        $this->db->select($c['id'] . ' AS id, ' . $c['name'] . ' AS name', false);
+        $this->db->from($c['table']);
+        $this->db->order_by($c['name'], 'ASC');
+        return $this->db->get()->result_array();
+    }
+
+    public function get_banks()
+    {
+        return $this->db->order_by('name', 'ASC')->get($this->tbl_bank)->result_array();
     }
 
     /* ----------------- REPORT CARDS ----------------- */
@@ -741,7 +977,7 @@ private function detect_mime_type($file_path, $uploaded_type = null)
         return ['success' => true, 'report_cards' => $rows];
     }
 
-    /* ----------------- HELPERS ----------------- */
+    /* ----------------- HELPER METHODS ----------------- */
 
     private function validateForeignKey($field, $id)
     {
@@ -833,4 +1069,8 @@ private function detect_mime_type($file_path, $uploaded_type = null)
             return (int)$d1->diff($d2)->y;
         } catch (Exception $e) { return null; }
     }
+
+    // Maintain compatibility with existing methods
+    public function update_student($data, $id) { return $this->update($data, $id); }
+    public function delete_student($id) { return $this->delete($id); }
 }

@@ -15,6 +15,314 @@ class University_model extends App_Model
         $this->ensure_required_tables();
     }
 
+    /* ----------------- ENHANCED FILTERING & STATISTICS ----------------- */
+
+    /**
+     * Get comprehensive statistics for dashboard
+     * 
+     * @return array Statistics array with counts
+     */
+    public function get_statistics()
+    {
+        $stats = [
+            'total' => 0,
+            'active' => 0,
+            'inactive' => 0,
+            'verified' => 0,
+            'unverified' => 0,
+            'by_year' => [],
+            'by_status' => [],
+            'by_program' => [],
+            'recent_additions' => 0
+        ];
+
+        // Base query for all students with status information
+        $this->db->select('
+            us.id,
+            us.university_year_of_study,
+            us.staff_id,
+            s.active as staff_active,
+            us.created_at,
+            up.name as program_name
+        ');
+        $this->db->from(db_prefix() . 'university_students us');
+        $this->db->join(db_prefix() . 'staff s', 's.staffid = us.staff_id', 'left');
+        $this->db->join(db_prefix() . 'university_program up', 'up.id = us.university_program_id', 'left');
+        
+        $students = $this->db->get()->result_array();
+
+        $stats['total'] = count($students);
+
+        // Count recent additions (last 30 days)
+        $thirty_days_ago = date('Y-m-d H:i:s', strtotime('-30 days'));
+
+        foreach ($students as $student) {
+            // Determine status
+            $status = $this->determine_student_status($student);
+            $stats['by_status'][$status] = ($stats['by_status'][$status] ?? 0) + 1;
+            
+            // Count by main categories
+            if ($status === 'active') $stats['active']++;
+            elseif ($status === 'inactive') $stats['inactive']++;
+            elseif ($status === 'verified') $stats['verified']++;
+            else $stats['unverified']++;
+
+            // Count by year
+            $year = $student['university_year_of_study'] ?? 'Unknown';
+            $stats['by_year'][$year] = ($stats['by_year'][$year] ?? 0) + 1;
+
+            // Count by program
+            $program = $student['program_name'] ?? 'Unknown';
+            $stats['by_program'][$program] = ($stats['by_program'][$program] ?? 0) + 1;
+
+            // Count recent additions
+            if (!empty($student['created_at']) && $student['created_at'] >= $thirty_days_ago) {
+                $stats['recent_additions']++;
+            }
+        }
+
+        return $stats;
+    }
+
+    /**
+     * Advanced filtering for students list with DataTables server-side processing
+     * 
+     * @param array $filters Filter parameters
+     * @param array $datatables_params DataTables parameters (start, length, search, order)
+     * @return array Filtered results with pagination info
+     */
+    public function get_students_filtered($filters = [], $datatables_params = [])
+    {
+        // Build base query with all necessary joins
+        $this->db->select('
+            us.*,
+            un.name AS university_name,
+            up.name AS program_name,
+            b.name AS bank_name,
+            c.short_name AS country_name,
+            s.active as staff_active,
+            s.staffid as staff_id
+        ', false);
+
+        $this->db->from(db_prefix() . 'university_students us');
+        $this->db->join(db_prefix() . 'university_name un', 'un.id = us.university_name_id', 'left');
+        $this->db->join(db_prefix() . 'university_program up', 'up.id = us.university_program_id', 'left');
+        $this->db->join(db_prefix() . 'bank b', 'b.id = us.bank_id', 'left');
+        $this->db->join(db_prefix() . 'countries c', 'c.country_id = us.country_id', 'left');
+        $this->db->join(db_prefix() . 'staff s', 's.staffid = us.staff_id', 'left');
+
+        // Apply filters
+        $this->apply_filters($filters);
+
+        // Handle DataTables search
+        if (!empty($datatables_params['search']['value'])) {
+            $search = $datatables_params['search']['value'];
+            $this->db->group_start();
+            $this->db->like('us.name', $search);
+            $this->db->or_like('us.email', $search);
+            $this->db->or_like('us.contact_no', $search);
+            $this->db->or_like('us.university_internal_id', $search);
+            $this->db->or_like('un.name', $search);
+            $this->db->or_like('up.name', $search);
+            $this->db->group_end();
+        }
+
+        // Get total count before pagination
+        $total_query = clone $this->db;
+        $total_records = $total_query->count_all_results('', false);
+
+        // Handle ordering
+        if (!empty($datatables_params['order'])) {
+            foreach ($datatables_params['order'] as $order) {
+                $column_index = (int)$order['column'];
+                $direction = $order['dir'] === 'desc' ? 'DESC' : 'ASC';
+                
+                // Map column indices to actual columns
+                $columns = ['us.id', 'us.name', 'un.name', 'up.name', 'us.university_year_of_study', 'status', 'us.contact_no'];
+                if (isset($columns[$column_index])) {
+                    if ($columns[$column_index] !== 'status') {
+                        $this->db->order_by($columns[$column_index], $direction);
+                    }
+                }
+            }
+        } else {
+            $this->db->order_by('us.id', 'DESC');
+        }
+
+        // Handle pagination
+        if (isset($datatables_params['length']) && $datatables_params['length'] != -1) {
+            $this->db->limit($datatables_params['length'], $datatables_params['start'] ?? 0);
+        }
+
+        $students = $this->db->get()->result_array();
+
+        // Add computed status to each student
+        foreach ($students as &$student) {
+            $student['computed_status'] = $this->determine_student_status($student);
+        }
+
+        return [
+            'data' => $students,
+            'recordsTotal' => $this->count_all(),
+            'recordsFiltered' => $total_records
+        ];
+    }
+
+    /**
+     * Apply filters to the current query
+     * 
+     * @param array $filters Filter parameters
+     */
+    private function apply_filters($filters)
+    {
+        // Year of study filter
+        if (!empty($filters['year'])) {
+            $this->db->where('us.university_year_of_study', $filters['year']);
+        }
+
+        // Status filter
+        if (!empty($filters['status'])) {
+            $this->apply_status_filter($filters['status']);
+        }
+
+        // University filter
+        if (!empty($filters['university'])) {
+            $this->db->like('un.name', $filters['university']);
+        }
+
+        // Program filter
+        if (!empty($filters['program'])) {
+            $this->db->like('up.name', $filters['program']);
+        }
+
+        // City filter
+        if (!empty($filters['city'])) {
+            $this->db->like('us.city', $filters['city']);
+        }
+
+        // Age range filter
+        if (!empty($filters['age_min'])) {
+            $this->db->where('us.university_age >=', (int)$filters['age_min']);
+        }
+        if (!empty($filters['age_max'])) {
+            $this->db->where('us.university_age <=', (int)$filters['age_max']);
+        }
+
+        // Date range filters
+        if (!empty($filters['created_from'])) {
+            $this->db->where('DATE(us.created_at) >=', $filters['created_from']);
+        }
+        if (!empty($filters['created_to'])) {
+            $this->db->where('DATE(us.created_at) <=', $filters['created_to']);
+        }
+
+        // Sponsorship status
+        if (!empty($filters['sponsorship_status'])) {
+            if ($filters['sponsorship_status'] === 'sponsored') {
+                $this->db->where('us.sponsor_id IS NOT NULL');
+            } elseif ($filters['sponsorship_status'] === 'unsponsored') {
+                $this->db->where('us.sponsor_id IS NULL');
+            }
+        }
+    }
+
+    /**
+     * Apply status-based filtering
+     * 
+     * @param string $status Status to filter by (active, inactive, verified, unverified)
+     */
+    private function apply_status_filter($status)
+    {
+        switch ($status) {
+            case 'active':
+                $this->db->where('us.staff_id IS NOT NULL');
+                $this->db->where('s.active', 1);
+                break;
+            case 'inactive':
+                $this->db->where('us.staff_id IS NOT NULL');
+                $this->db->where('s.active', 0);
+                break;
+            case 'verified':
+                $this->db->where('us.staff_id IS NOT NULL');
+                break;
+            case 'unverified':
+                $this->db->where('us.staff_id IS NULL');
+                break;
+        }
+    }
+
+    /**
+     * Determine student status based on staff relationship
+     * 
+     * @param array $student Student data with staff info
+     * @return string Status (active, inactive, verified, unverified)
+     */
+    private function determine_student_status($student)
+    {
+        if (empty($student['staff_id'])) {
+            return 'unverified';
+        }
+
+        if (!empty($student['staff_active']) && $student['staff_active'] == 1) {
+            return 'active';
+        } elseif (isset($student['staff_active']) && $student['staff_active'] == 0) {
+            return 'inactive';
+        }
+
+        return 'verified';
+    }
+
+    /**
+     * Get dropdown data for filters
+     * 
+     * @return array Dropdown options
+     */
+    public function get_filter_options()
+    {
+        return [
+            'years' => $this->get_available_years(),
+            'universities' => $this->get_universities(),
+            'programs' => $this->get_programs(),
+            'cities' => $this->get_available_cities(),
+            'countries' => $this->get_countries(),
+            'banks' => $this->get_banks()
+        ];
+    }
+
+    /**
+     * Get available years from existing students
+     * 
+     * @return array List of years
+     */
+    public function get_available_years()
+    {
+        $this->db->select('university_year_of_study as year');
+        $this->db->from(db_prefix() . 'university_students');
+        $this->db->where('university_year_of_study IS NOT NULL');
+        $this->db->where('university_year_of_study !=', '');
+        $this->db->group_by('university_year_of_study');
+        $this->db->order_by('university_year_of_study', 'ASC');
+
+        return $this->db->get()->result_array();
+    }
+
+    /**
+     * Get available cities from existing students
+     * 
+     * @return array List of cities
+     */
+    public function get_available_cities()
+    {
+        $this->db->select('city');
+        $this->db->from(db_prefix() . 'university_students');
+        $this->db->where('city IS NOT NULL');
+        $this->db->where('city !=', '');
+        $this->db->group_by('city');
+        $this->db->order_by('city', 'ASC');
+
+        return $this->db->get()->result_array();
+    }
+
     /* ----------------- VALIDATION ----------------- */
 
     public function validate_student_data($data)
@@ -115,7 +423,6 @@ class University_model extends App_Model
             return;
         }
 
-        // Soft-align existing schema (non-destructive).
         if (!$this->db->field_exists('file_blob', $table)) {
             $this->db->query("ALTER TABLE `{$table}` ADD COLUMN `file_blob` MEDIUMBLOB NULL AFTER `upload_date`");
         } else {
@@ -154,7 +461,7 @@ class University_model extends App_Model
         }
     }
 
-    /* ----------------- PHOTO ----------------- */
+    /* ----------------- PHOTO HANDLING ----------------- */
     
     private function handle_profile_photo_upload()
     {
@@ -199,7 +506,6 @@ class University_model extends App_Model
     
     private function process_new_items($data)
     {
-        // New Country -> insert into tblcountries (short_name, calling_code)
         if (!empty($data['new_country_name']) && !empty($data['new_country_phone_code'])) {
             $country_id = $this->create_new_country($data['new_country_name'], $data['new_country_phone_code']);
             if ($country_id) {
@@ -224,7 +530,6 @@ class University_model extends App_Model
     private function create_new_country($name, $phone_code)
     {
         try {
-            // Perfex core table
             $tbl = db_prefix().'countries';
             $payload = [
                 'short_name'   => $name,
@@ -271,11 +576,11 @@ class University_model extends App_Model
         }
     }
 
-    /* ----------------- CREATE ----------------- */
+    /* ----------------- CRUD OPERATIONS ----------------- */
+
     public function add($data)
     {
         try {
-            // Validate data first
             $validation = $this->validate_student_data($data);
             if (!$validation['valid']) {
                 return ['success' => false, 'message' => implode(', ', $validation['errors'])];
@@ -294,7 +599,6 @@ class University_model extends App_Model
             $university_program_id = $this->get_or_create_university_program_id($data['program'] ?? ($data['university_program_id'] ?? ''));
             $bank_id               = $this->get_or_create_bank_id($data['bank_name'] ?? ($data['bank_id'] ?? ''));
 
-            // Country: prefer provided ID, else leave null
             $country_id = !empty($data['country_id']) ? (int)$data['country_id'] : null;
 
             $insert = [
@@ -332,9 +636,9 @@ class University_model extends App_Model
                 'background_info'                   => $this->toNullIfEmpty($data['background_information'] ?? ''),
                 'internal_comment'                  => $this->toNullIfEmpty($data['internal_comment'] ?? ''),
                 'external_comment'                  => $this->toNullIfEmpty($data['external_comment'] ?? ''),
+                'created_at'                        => date('Y-m-d H:i:s')
             ];
 
-            // Filter to only existing database columns
             $insert = $this->filter_existing_columns(db_prefix() . 'university_students', $insert);
 
             $this->db->insert(db_prefix() . 'university_students', $insert);
@@ -352,7 +656,135 @@ class University_model extends App_Model
         }
     }
 
-    /* ----------------- READ ----------------- */
+    public function update($data, $id)
+    {
+        try {
+            $id = (int)$id;
+            if ($id <= 0) return false;
+
+            $validation = $this->validate_student_data($data);
+            if (!$validation['valid']) {
+                return ['success' => false, 'message' => implode(', ', $validation['errors'])];
+            }
+
+            $data = $this->process_new_items($data);
+
+            $update_data = [];
+            try {
+                $photo = $this->handle_profile_photo_upload();
+                if ($photo !== null) {
+                    $update_data['profile_photo'] = $photo;
+                }
+            } catch (Exception $e) {
+                log_message('error','University photo upload (update): '.$e->getMessage());
+            }
+
+            $field_mappings = [
+                'name' => 'name',
+                'email' => 'email',
+                'contact_no' => 'contact_no',
+                'address' => 'address',
+                'city' => 'city',
+                'zip' => 'zip',
+                'country_id' => 'country_id',
+                'university_id' => 'university_id',
+                'university_internal_id' => 'university_internal_id',
+                'university_name_id' => 'university_name_id',
+                'university_program_id' => 'university_program_id',
+                'university_year_of_study' => 'university_year_of_study',
+                'university_student_dob' => 'university_student_dob',
+                'university_age' => 'university_age',
+                'bank_id' => 'bank_id',
+                'university_bank_account_no' => 'university_bank_account_no',
+                'university_bank_branch_number' => 'university_bank_branch_number',
+                'university_bank_branch_info' => 'university_bank_branch_info',
+                'university_sponsorship_start_date' => 'university_sponsorship_start_date',
+                'university_sponsorship_end_date' => 'university_sponsorship_end_date',
+                'university_introducedby' => 'university_introducedby',
+                'university_introducedph' => 'university_introducedph',
+                'sponsor_id' => 'sponsor_id',
+                'university_father_name' => 'university_father_name',
+                'university_mother_name' => 'university_mother_name',
+                'university_guardian_name' => 'university_guardian_name',
+                'university_father_income' => 'university_father_income',
+                'university_mother_income' => 'university_mother_income',
+                'university_guardian_income' => 'university_guardian_income',
+                'background_info' => 'background_info',
+                'internal_comment' => 'internal_comment',
+                'external_comment' => 'external_comment'
+            ];
+
+            foreach ($field_mappings as $db_field => $target_field) {
+                if (array_key_exists($db_field, $data)) {
+                    $value = $data[$db_field];
+                    
+                    if (in_array($db_field, ['country_id', 'bank_id', 'university_name_id', 'university_program_id', 'sponsor_id'], true)) {
+                        if ($value === '' || $value === null) {
+                            $update_data[$target_field] = null;
+                        } else {
+                            $fk_id = (int)$value;
+                            if ($this->validateForeignKey($db_field, $fk_id)) {
+                                $update_data[$target_field] = $fk_id;
+                            } else {
+                                $update_data[$target_field] = null;
+                            }
+                        }
+                    } elseif (in_array($db_field, ['university_father_income', 'university_mother_income', 'university_guardian_income', 'university_age'], true)) {
+                        $update_data[$target_field] = ($value === '' || $value === null) ? null : (is_numeric($value) ? (float)$value : null);
+                    } else {
+                        $update_data[$target_field] = ($value === '' || $value === null) ? null : $value;
+                    }
+                }
+            }
+
+            $update_data = $this->filter_existing_columns(db_prefix() . 'university_students', $update_data);
+
+            if (empty($update_data)) {
+                return true;
+            }
+
+            $this->db->where('id', $id);
+            $result = $this->db->update(db_prefix() . 'university_students', $update_data);
+
+            if (!$result) {
+                $error = $this->db->error();
+                log_message('error', 'University_model::update failed: '.json_encode($error));
+                return false;
+            }
+
+            return true;
+
+        } catch (Exception $e) {
+            log_message('error','Error updating university student: '.$e->getMessage());
+            return ['success' => false, 'message' => 'Error updating student: ' . $e->getMessage()];
+        }
+    }
+
+    public function delete($id)
+    {
+        try {
+            $tbl_rcard = db_prefix() . 'university_report_card';
+            
+            $cards = $this->db->where('student_university_id', (int)$id)->get($tbl_rcard)->result();
+            foreach ($cards as $c) {
+                if (!empty($c->report_card_file)) {
+                    $abs = rtrim(FCPATH, '/\\') . '/' . ltrim($c->report_card_file, '/');
+                    if (is_file($abs)) @unlink($abs);
+                }
+            }
+            $this->db->where('student_university_id', (int)$id)->delete($tbl_rcard);
+
+            $this->db->where('id', (int)$id)->delete(db_prefix() . 'university_students');
+
+            return $this->db->affected_rows() > 0;
+        } catch (Exception $e) {
+            log_message('error', 'Error deleting university student: ' . $e->getMessage());
+            return false;
+        }
+    }
+
+    /* ----------------- READ OPERATIONS ----------------- */
+
     public function get_all()
     {
         $c = $this->country_schema();
@@ -408,175 +840,12 @@ class University_model extends App_Model
         return $this->db->count_all_results(db_prefix() . 'university_students');
     }
 
-    /* ----------------- UPDATE ----------------- */
-    public function update($data, $id)
-    {
-        try {
-            $id = (int)$id;
-            if ($id <= 0) return false;
-
-            // Validate data
-            $validation = $this->validate_student_data($data);
-            if (!$validation['valid']) {
-                return ['success' => false, 'message' => implode(', ', $validation['errors'])];
-            }
-
-            $data = $this->process_new_items($data);
-
-            // Handle profile photo if uploaded
-            $update_data = [];
-            try {
-                $photo = $this->handle_profile_photo_upload();
-                if ($photo !== null) {
-                    $update_data['profile_photo'] = $photo;
-                }
-            } catch (Exception $e) {
-                log_message('error','University photo upload (update): '.$e->getMessage());
-            }
-
-            // Map the fields similar to school model
-            $field_mappings = [
-                // Basic info
-                'name' => 'name',
-                'email' => 'email',
-                'contact_no' => 'contact_no',
-                'address' => 'address',
-                'city' => 'city',
-                'zip' => 'zip',
-                'country_id' => 'country_id',
-                
-                // University info
-                'university_id' => 'university_id',
-                'university_internal_id' => 'university_internal_id',
-                'university_name_id' => 'university_name_id',
-                'university_program_id' => 'university_program_id',
-                'university_year_of_study' => 'university_year_of_study',
-                'university_student_dob' => 'university_student_dob',
-                'university_age' => 'university_age',
-                
-                // Bank info
-                'bank_id' => 'bank_id',
-                'university_bank_account_no' => 'university_bank_account_no',
-                'university_bank_branch_number' => 'university_bank_branch_number',
-                'university_bank_branch_info' => 'university_bank_branch_info',
-                
-                // Sponsorship
-                'university_sponsorship_start_date' => 'university_sponsorship_start_date',
-                'university_sponsorship_end_date' => 'university_sponsorship_end_date',
-                'university_introducedby' => 'university_introducedby',
-                'university_introducedph' => 'university_introducedph',
-                'sponsor_id' => 'sponsor_id',
-                
-                // Family
-                'university_father_name' => 'university_father_name',
-                'university_mother_name' => 'university_mother_name',
-                'university_guardian_name' => 'university_guardian_name',
-                'university_father_income' => 'university_father_income',
-                'university_mother_income' => 'university_mother_income',
-                'university_guardian_income' => 'university_guardian_income',
-                
-                // Comments
-                'background_info' => 'background_info',
-                'internal_comment' => 'internal_comment',
-                'external_comment' => 'external_comment'
-            ];
-
-            // Apply the cleaned data with proper NULL handling for foreign keys
-            foreach ($field_mappings as $db_field => $target_field) {
-                if (array_key_exists($db_field, $data)) {
-                    $value = $data[$db_field];
-                    
-                    // Handle foreign key fields - convert empty strings to NULL and validate existence
-                    if (in_array($db_field, ['country_id', 'bank_id', 'university_name_id', 'university_program_id', 'sponsor_id'], true)) {
-                        if ($value === '' || $value === null) {
-                            $update_data[$target_field] = null;
-                        } else {
-                            $fk_id = (int)$value;
-                            // Validate foreign key exists
-                            if ($this->validateForeignKey($db_field, $fk_id)) {
-                                $update_data[$target_field] = $fk_id;
-                            } else {
-                                log_message('warning', 'Invalid foreign key: '.$db_field.' = '.$fk_id.' does not exist');
-                                $update_data[$target_field] = null; // Set to NULL if invalid
-                            }
-                        }
-                    }
-                    // Handle numeric fields
-                    elseif (in_array($db_field, ['university_father_income', 'university_mother_income', 'university_guardian_income', 'university_age'], true)) {
-                        $update_data[$target_field] = ($value === '' || $value === null) ? null : (is_numeric($value) ? (float)$value : null);
-                    }
-                    // Handle all other fields
-                    else {
-                        $update_data[$target_field] = ($value === '' || $value === null) ? null : $value;
-                    }
-                }
-            }
-
-            // Filter to only existing database columns
-            $update_data = $this->filter_existing_columns(db_prefix() . 'university_students', $update_data);
-
-            // Log what we're updating
-            log_message('debug', 'University_model::update for ID '.$id.' with data: ' . json_encode($update_data));
-
-            if (empty($update_data)) {
-                log_message('debug', 'University_model::update - no data to update for ID: ' . $id);
-                return true; // Nothing to update
-            }
-
-            // Perform the update
-            $this->db->where('id', $id);
-            $result = $this->db->update(db_prefix() . 'university_students', $update_data);
-
-            if (!$result) {
-                $error = $this->db->error();
-                log_message('error', 'University_model::update failed for ID '.$id.': '.json_encode($error));
-                return false;
-            }
-
-            log_message('debug', 'University_model::update successful for ID '.$id.' - affected rows: '.$this->db->affected_rows());
-            return true;
-
-        } catch (Exception $e) {
-            log_message('error','Error updating university student: '.$e->getMessage());
-            return ['success' => false, 'message' => 'Error updating student: ' . $e->getMessage()];
-        }
-    }
-
-    public function update_student($data, $id) { return $this->update($data, $id); }
-
-    /* ----------------- DELETE ----------------- */
-    public function delete($id)
-    {
-        try {
-            $tbl_rcard = db_prefix() . 'university_report_card';
-            
-            // Delete related report cards first
-            $cards = $this->db->where('student_university_id', (int)$id)->get($tbl_rcard)->result();
-            foreach ($cards as $c) {
-                if (!empty($c->report_card_file)) {
-                    $abs = rtrim(FCPATH, '/\\') . '/' . ltrim($c->report_card_file, '/');
-                    if (is_file($abs)) @unlink($abs);
-                }
-            }
-            $this->db->where('student_university_id', (int)$id)->delete($tbl_rcard);
-
-            // Delete student record
-            $this->db->where('id', (int)$id)->delete(db_prefix() . 'university_students');
-
-            return $this->db->affected_rows() > 0;
-        } catch (Exception $e) {
-            log_message('error', 'Error deleting university student: ' . $e->getMessage());
-            return false;
-        }
-    }
-
-    /* ----------------- REPORT CARD METHODS (FIXED TO MATCH SCHOOL VERSION) ----------------- */
+    /* ----------------- REPORT CARD METHODS ----------------- */
     
     public function get_report_cards($student_id)
     {
         $tbl = db_prefix().'university_report_card';
         
-        // Select all fields except BLOB data for listing
         $this->db->select('
             id,
             student_university_id,
@@ -600,12 +869,10 @@ class University_model extends App_Model
         $rows = $this->db->get($tbl)->result_array();
 
         foreach ($rows as &$c) {
-            // Format upload date consistently
             $c['upload_date'] = !empty($c['upload_date'])
                 ? date('M d, Y', strtotime($c['upload_date']))
                 : '';
 
-            // Determine display name (same logic as school)
             $name = trim((string)($c['filename'] ?? ''));
             if ($name === '' && !empty($c['report_card_file'])) {
                 $name = basename($c['report_card_file']);
@@ -620,125 +887,15 @@ class University_model extends App_Model
             }
             $c['display_name'] = $name;
 
-            // Add download URL - FIXED to use consistent controller method
             $c['file_url'] = admin_url('student_sponsor_portal/download_university_report_card/'.$c['id']);
-            $c['download_url'] = $c['file_url']; // Add both for compatibility
+            $c['download_url'] = $c['file_url'];
         }
         unset($c);
 
         return ['success' => true, 'report_cards' => $rows];
     }
 
-    public function upload_report_card($data)
-    {
-        try {
-            if (!isset($_FILES['report_card_file']) || $_FILES['report_card_file']['error'] !== UPLOAD_ERR_OK) {
-                return ['success' => false, 'message' => 'No file uploaded or upload error occurred'];
-            }
-
-            $file = $_FILES['report_card_file'];
-
-            // Validate type & size
-            $allowed_types = [
-                'application/pdf',
-                'image/jpeg', 'image/jpg',
-                'image/png'
-            ];
-            // Prefer server-detected mime
-            $finfo     = finfo_open(FILEINFO_MIME_TYPE);
-            $mime_type = finfo_file($finfo, $file['tmp_name']);
-            finfo_close($finfo);
-
-            if (!in_array($mime_type, $allowed_types, true)) {
-                return ['success' => false, 'message' => 'Invalid file type. Only PDF/JPG/PNG allowed.'];
-            }
-            if ($file['size'] > 10 * 1024 * 1024) { // 10MB (MEDIUMBLOB can handle up to 16MB)
-                return ['success' => false, 'message' => 'File too large (max 10MB).'];
-            }
-
-            // Read file into blob
-            $blob    = file_get_contents($file['tmp_name']);
-            $sha256  = hash('sha256', $blob);
-            $nowDate = date('Y-m-d');
-            $nowDT   = date('Y-m-d H:i:s');
-
-            $insert_data = [
-                'student_university_id' => (int)$data['student_university_id'],
-                'filename'              => $data['filename'] ?? 'report_card',
-                'upload_date'           => $nowDate,
-                'report_card_term'      => $data['report_card_term'] ?? null,
-                'current_term'          => $data['current_term'] ?? ($data['report_card_term'] ?? null),
-                'semester_end_month'    => !empty($data['semester_end_month']) ? (int)$data['semester_end_month'] : null,
-                'semester_end_year'     => !empty($data['semester_end_year']) ? (int)$data['semester_end_year'] : null,
-                'file_blob'             => $blob,
-                'mime_type'             => $mime_type,
-                'file_size'             => (int)$file['size'],
-                'sha256'                => $sha256,
-                'created_on'            => $nowDT,
-            ];
-
-            $this->db->insert(db_prefix().'university_report_card', $insert_data);
-
-            if ($this->db->affected_rows() > 0) {
-                return ['success' => true, 'message' => 'Report card uploaded successfully'];
-            }
-            return ['success' => false, 'message' => 'Database error while saving report card'];
-
-        } catch (Exception $e) {
-            log_message('error', 'Report card upload error: '.$e->getMessage());
-            return ['success' => false, 'message' => 'Upload failed: '.$e->getMessage()];
-        }
-    }
-
-    public function get_report_card_file($report_card_id)
-    {
-        $this->db->where('id', (int)$report_card_id);
-        $card = $this->db->get(db_prefix().'university_report_card')->row();
-        if ($card && !empty($card->file_blob)) {
-            // Build a friendly filename by term/month/year if available
-            $basename = 'report_card_'.$card->id;
-            if (!empty($card->report_card_term)) {
-                $basename .= '_'.$card->report_card_term;
-            }
-            if (!empty($card->semester_end_month) && !empty($card->semester_end_year)) {
-                $basename .= '_'.$card->semester_end_month.'-'.$card->semester_end_year;
-            }
-
-            // Extension hint (optional)
-            $ext = '';
-            if ($card->mime_type === 'application/pdf') $ext = '.pdf';
-            elseif (in_array($card->mime_type, ['image/jpeg','image/jpg'], true)) $ext = '.jpg';
-            elseif ($card->mime_type === 'image/png') $ext = '.png';
-
-            return [
-                'data'      => $card->file_blob,     // raw binary string
-                'mime_type' => $card->mime_type,
-                'size'      => (int)$card->file_size,
-                'sha256'    => $card->sha256,
-                'filename'  => $basename.$ext,
-            ];
-        }
-        return null;
-    }
-
-    public function delete_report_card($report_card_id)
-    {
-        try {
-            $this->db->where('id', (int)$report_card_id);
-            $exists = $this->db->get(db_prefix().'university_report_card')->row();
-            if (!$exists) {
-                return ['success' => false, 'message' => 'Report card not found'];
-            }
-            $this->db->where('id', (int)$report_card_id);
-            $this->db->delete(db_prefix().'university_report_card');
-            return ['success' => true, 'message' => 'Report card deleted'];
-        } catch (Exception $e) {
-            log_message('error', 'Error deleting report card: '.$e->getMessage());
-            return ['success' => false, 'message' => 'Error deleting report card'];
-        }
-    }
-
-    /* ----------------- HELPERS ----------------- */
+    /* ----------------- HELPER METHODS ----------------- */
 
     private function validateForeignKey($field, $id)
     {
@@ -747,7 +904,7 @@ class University_model extends App_Model
         switch ($field) {
             case 'country_id':
                 $c = $this->country_schema();
-                if (!$c['table']) return true; // No country table, skip validation
+                if (!$c['table']) return true;
                 return $this->db->where($c['id'], $id)->count_all_results($c['table']) > 0;
                 
             case 'bank_id':
@@ -763,14 +920,13 @@ class University_model extends App_Model
                 return $this->db->where('id', $id)->count_all_results(db_prefix() . 'sponsor_records') > 0;
                 
             default:
-                return true; // Unknown field, assume valid
+                return true;
         }
     }
 
     private function country_schema()
     {
         if ($this->db->table_exists(db_prefix() . 'countries')) {
-            // Perfex core table (your structure)
             return [
                 'table'     => db_prefix() . 'countries',
                 'id'        => 'country_id',
@@ -779,7 +935,6 @@ class University_model extends App_Model
                 'is_custom' => false,
             ];
         }
-        // Optional custom fallback (not used if Perfex table exists)
         if ($this->db->table_exists(db_prefix() . 'country')) {
             return [
                 'table'     => db_prefix() . 'country',
@@ -812,7 +967,7 @@ class University_model extends App_Model
         return $keep;
     }
 
-    private function get_or_create_university_name_id($name_or_id)
+    public function get_or_create_university_name_id($name_or_id)
     {
         if (!$name_or_id) return null;
         if (is_numeric($name_or_id)) return (int)$name_or_id;
@@ -825,7 +980,7 @@ class University_model extends App_Model
         return (int)$this->db->insert_id();
     }
 
-    private function get_or_create_university_program_id($name_or_id)
+    public function get_or_create_university_program_id($name_or_id)
     {
         if (!$name_or_id) return null;
         if (is_numeric($name_or_id)) return (int)$name_or_id;
@@ -838,7 +993,7 @@ class University_model extends App_Model
         return (int)$this->db->insert_id();
     }
 
-    private function get_or_create_bank_id($name_or_id)
+    public function get_or_create_bank_id($name_or_id)
     {
         if (!$name_or_id) return null;
         if (is_numeric($name_or_id)) return (int)$name_or_id;
@@ -907,7 +1062,6 @@ class University_model extends App_Model
             $this->db->order_by('name', 'ASC');
             return $this->db->get()->result_array();
         } else {
-            // tblcountries -> alias to match your view expects id, name, phone_code
             $this->db->select($c['id'] . ' AS id, ' . $c['name'] . ' AS name, ' . $c['phone'] . ' AS phone_code', false);
             $this->db->from($c['table']);
             $this->db->order_by($c['name'], 'ASC');
@@ -942,113 +1096,7 @@ class University_model extends App_Model
         return [];
     }
 
-    /* ----------------- AJAX HELPERS (model-level) ----------------- */
-
-    public function add_country_ajax($country_name, $phone_code)
-    {
-        try {
-            $country_name = trim($country_name);
-            $phone_code   = trim($phone_code);
-            if ($country_name === '' || $phone_code === '') {
-                return ['success' => false, 'message' => 'Country name and phone code are required'];
-            }
-
-            $tbl = db_prefix().'countries';
-            $this->db->where('short_name', $country_name);
-            $existing = $this->db->get($tbl)->row();
-            if ($existing) {
-                return [
-                    'success'      => true,
-                    'message'      => 'Country already exists',
-                    'country_id'   => (int)$existing->country_id,
-                    'country_name' => (string)$existing->short_name,
-                    'phone_code'   => (string)$existing->calling_code
-                ];
-            }
-
-            $this->db->insert($tbl, [
-                'short_name'   => $country_name,
-                'calling_code' => $phone_code,
-            ]);
-            $id = (int)$this->db->insert_id();
-
-            return $id ? [
-                'success'      => true,
-                'message'      => 'Country added successfully',
-                'country_id'   => $id,
-                'country_name' => $country_name,
-                'phone_code'   => $phone_code
-            ] : ['success'=>false,'message'=>'Failed to add country'];
-
-        } catch (Exception $e) {
-            log_message('error', 'Error adding country: ' . $e->getMessage());
-            return ['success' => false, 'message' => 'Database error occurred'];
-        }
-    }
-
-    public function add_university_ajax($university_name)
-    {
-        try {
-            $university_name = trim($university_name);
-            if ($university_name === '') return ['success'=>false,'message'=>'University name is required'];
-
-            $tbl = db_prefix().'university_name';
-            $this->db->where('name', $university_name);
-            $existing = $this->db->get($tbl)->row();
-            if ($existing) {
-                return ['success'=>true,'message'=>'University already exists','university_id'=>(int)$existing->id,'university_name'=>$existing->name];
-            }
-            $this->db->insert($tbl, ['name'=>$university_name]);
-            $id = (int)$this->db->insert_id();
-            return $id ? ['success'=>true,'message'=>'University added successfully','university_id'=>$id,'university_name'=>$university_name]
-                       : ['success'=>false,'message'=>'Failed to add university'];
-        } catch (Exception $e) {
-            log_message('error', 'Error adding university: ' . $e->getMessage());
-            return ['success'=>false,'message'=>'Database error occurred'];
-        }
-    }
-
-    public function add_program_ajax($program_name)
-    {
-        try {
-            $program_name = trim($program_name);
-            if ($program_name === '') return ['success'=>false,'message'=>'Program name is required'];
-
-            $tbl = db_prefix().'university_program';
-            $this->db->where('name', $program_name);
-            $existing = $this->db->get($tbl)->row();
-            if ($existing) {
-                return ['success'=>true,'message'=>'Program already exists','program_id'=>(int)$existing->id,'program_name'=>$existing->name];
-            }
-            $this->db->insert($tbl, ['name'=>$program_name]);
-            $id = (int)$this->db->insert_id();
-            return $id ? ['success'=>true,'message'=>'Program added successfully','program_id'=>$id,'program_name'=>$program_name]
-                       : ['success'=>false,'message'=>'Failed to add program'];
-        } catch (Exception $e) {
-            log_message('error', 'Error adding program: ' . $e->getMessage());
-            return ['success'=>false,'message'=>'Database error occurred'];
-        }
-    }
-
-    public function add_bank_ajax($bank_name)
-    {
-        try {
-            $bank_name = trim($bank_name);
-            if ($bank_name === '') return ['success'=>false,'message'=>'Bank name is required'];
-
-            $tbl = db_prefix().'bank';
-            $this->db->where('name', $bank_name);
-            $existing = $this->db->get($tbl)->row();
-            if ($existing) {
-                return ['success'=>true,'message'=>'Bank already exists','bank_id'=>(int)$existing->id,'bank_name'=>$existing->name];
-            }
-            $this->db->insert($tbl, ['name'=>$bank_name]);
-            $id = (int)$this->db->insert_id();
-            return $id ? ['success'=>true,'message'=>'Bank added successfully','bank_id'=>$id,'bank_name'=>$bank_name]
-                       : ['success'=>false,'message'=>'Failed to add bank'];
-        } catch (Exception $e) {
-            log_message('error', 'Error adding bank: ' . $e->getMessage());
-            return ['success'=>false,'message'=>'Database error occurred'];
-        }
-    }
+    // Maintain compatibility with existing methods
+    public function update_student($data, $id) { return $this->update($data, $id); }
+    public function delete_student($id) { return $this->delete($id); }
 }

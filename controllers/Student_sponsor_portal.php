@@ -835,50 +835,2497 @@ private function detect_mime_type($file_path, $uploaded_type = null)
             echo json_encode(['success'=>false,'message'=>'An error occurred while deleting the student']);
         }
     }
-    public function export_school_students()
-    {
-        if (!has_permission('student_sponsor_portal', '', 'view')) {
-            access_denied('student_sponsor_portal');
-        }
 
-        $students = $this->school_model->get_all();
 
-        header('Content-Type: text/csv');
-        header('Content-Disposition: attachment; filename="school_students_'.date('Y-m-d').'.csv"');
+// bulk import     
+// Replace your existing bulk_import_school_students method with this complete solution
 
-        $output = fopen('php://output', 'w');
-        
-        fputcsv($output, [
-            'ID', 'Name', 'Email', 'Phone', 'School', 'Grade', 'DOB', 'Address', 
-            'City', 'Postal Code', 'Father Name', 'Mother Name', 'Guardian Name',
-            'Bank', 'Account Number', 'Sponsorship Start', 'Sponsorship End'
-        ]);
-
-        foreach($students as $s) {
-            fputcsv($output, [
-                $s['id'] ?? '',
-                $s['name'] ?? '',
-                $s['email'] ?? '',
-                $s['contact_no'] ?? '',
-                $s['school_name'] ?? '',
-                $s['school_grade'] ?? '',
-                $s['school_student_dob'] ?? '',
-                $s['address'] ?? '',
-                $s['city'] ?? '',
-                $s['zip'] ?? '',
-                $s['school_father_name'] ?? '',
-                $s['school_mother_name'] ?? '',
-                $s['school_guardian_name'] ?? '',
-                $s['bank_name'] ?? '',
-                $s['school_bank_account_no'] ?? '',
-                $s['school_sponsorship_start_date'] ?? '',
-                $s['school_sponsorship_end_date'] ?? ''
-            ]);
-        }
-
-        fclose($output);
+public function bulk_import_school_students()
+{
+    if (!has_permission('student_sponsor_portal', '', 'create')) {
+        access_denied('student_sponsor_portal');
     }
 
+    // Handle POST submission
+    if ($this->input->method() === 'post') {
+        log_message('debug', 'Import: POST request received for bulk import');
+        
+        if (empty($_FILES['import_file']['name'])) {
+            log_message('error', 'Import: No file uploaded');
+            set_alert('danger', 'Please select a file to import');
+            redirect(admin_url('student_sponsor_portal/bulk_import_school_students'));
+            return;
+        }
+
+        $file_data = $_FILES['import_file'];
+        log_message('debug', 'Import: File uploaded - ' . $file_data['name'] . ' (' . $file_data['size'] . ' bytes)');
+
+        // Validate file type - Accept both Excel and CSV
+        $file_ext = strtolower(pathinfo($file_data['name'], PATHINFO_EXTENSION));
+        $allowed_extensions = ['xlsx', 'xls', 'csv'];
+        
+        if (!in_array($file_ext, $allowed_extensions)) {
+            log_message('error', 'Import: Invalid file type - ' . $file_ext);
+            set_alert('danger', 'Only Excel (.xlsx, .xls) and CSV files are supported.');
+            redirect(admin_url('student_sponsor_portal/bulk_import_school_students'));
+            return;
+        }
+
+        // Check file size (max 20MB for Excel files)
+        if ($file_data['size'] > 20 * 1024 * 1024) {
+            log_message('error', 'Import: File too large - ' . $file_data['size'] . ' bytes');
+            set_alert('danger', 'File size exceeds 20MB limit');
+            redirect(admin_url('student_sponsor_portal/bulk_import_school_students'));
+            return;
+        }
+
+        // Process the uploaded file
+        $temp_file = $file_data['tmp_name'];
+        
+        try {
+            log_message('debug', 'Import: Starting to process file');
+            $result = $this->process_import_file($temp_file, $file_ext);
+            
+            if ($result['success']) {
+                $message = "Import completed! ";
+                $message .= "Added: {$result['added']}, ";
+                $message .= "Updated: {$result['updated']}, ";
+                $message .= "Errors: {$result['errors']}";
+                
+                log_message('info', 'Import: ' . $message);
+                
+                if (!empty($result['error_details'])) {
+                    $this->session->set_flashdata('import_errors', $result['error_details']);
+                }
+                
+                set_alert('success', $message);
+            } else {
+                log_message('error', 'Import failed: ' . $result['message']);
+                set_alert('danger', 'Import failed: ' . $result['message']);
+            }
+            
+        } catch (Exception $e) {
+            log_message('error', 'Import Exception: ' . $e->getMessage());
+            set_alert('danger', 'Import failed: ' . $e->getMessage());
+        }
+        
+        redirect(admin_url('student_sponsor_portal/bulk_import_school_students'));
+        return;
+    }
+    
+    // Show the form
+    $data['title'] = 'Bulk Import School Students';
+    $data['import_errors'] = $this->session->flashdata('import_errors');
+    $this->load->view('student_sponsor_portal/bulk_import_school_students', $data);
+}
+private function process_import_file($file_path, $file_ext)
+{
+    log_message('debug', 'Import: Processing file: ' . $file_path . ' (.' . $file_ext . ')');
+    
+    if (!file_exists($file_path) || !is_readable($file_path)) {
+        return ['success' => false, 'message' => 'Cannot read upload file'];
+    }
+    
+    $added = 0;
+    $updated = 0;
+    $errors = 0;
+    $error_details = [];
+    
+    try {
+        // Load PHPSpreadsheet for Excel files
+        if (in_array($file_ext, ['xlsx', 'xls'])) {
+            // Check if PHPSpreadsheet is available
+            $autoload_paths = [
+                FCPATH . 'vendor/autoload.php',
+                APPPATH . 'third_party/vendor/autoload.php',
+                APPPATH . 'libraries/vendor/autoload.php'
+            ];
+            
+            $phpspreadsheet_loaded = false;
+            foreach ($autoload_paths as $path) {
+                if (file_exists($path)) {
+                    require_once($path);
+                    $phpspreadsheet_loaded = true;
+                    log_message('debug', 'Import: PHPSpreadsheet loaded from: ' . $path);
+                    break;
+                }
+            }
+            
+            if (!$phpspreadsheet_loaded || !class_exists('\PhpOffice\PhpSpreadsheet\IOFactory')) {
+                return ['success' => false, 'message' => 'PHPSpreadsheet not available. Please install via Composer or use CSV format.'];
+            }
+            
+            try {
+                $spreadsheet = \PhpOffice\PhpSpreadsheet\IOFactory::load($file_path);
+                $worksheet = $spreadsheet->getActiveSheet();
+                $rows = $worksheet->toArray(null, true, true, true);
+                log_message('debug', 'Import: Excel file loaded successfully with ' . count($rows) . ' rows');
+            } catch (Exception $e) {
+                return ['success' => false, 'message' => 'Error reading Excel file: ' . $e->getMessage()];
+            }
+        } else {
+            // Process CSV file
+            $rows = [];
+            if (($handle = fopen($file_path, "r")) !== FALSE) {
+                while (($data = fgetcsv($handle, 1000, ",")) !== FALSE) {
+                    $rows[] = $data;
+                }
+                fclose($handle);
+                log_message('debug', 'Import: CSV file loaded successfully with ' . count($rows) . ' rows');
+            } else {
+                return ['success' => false, 'message' => 'Cannot open CSV file'];
+            }
+        }
+        
+        if (empty($rows)) {
+            return ['success' => false, 'message' => 'No data found in file'];
+        }
+        
+        // Get header row and create column mapping
+        $headers = array_shift($rows);
+        if (empty($headers)) {
+            return ['success' => false, 'message' => 'No headers found in file'];
+        }
+        
+        log_message('debug', 'Import: Headers found: ' . json_encode($headers));
+        
+        // Create column mapping
+        $column_map = $this->create_column_mapping($headers);
+        
+        if (empty($column_map)) {
+            return ['success' => false, 'message' => 'No valid columns found. Please check your headers match the template.'];
+        }
+        
+        log_message('debug', 'Import: Column mapping: ' . json_encode($column_map));
+        
+        $row_number = 1; // Start from 1 (header is row 0)
+        
+        // Process each data row
+        foreach ($rows as $row) {
+            $row_number++;
+            
+            try {
+                // Skip empty rows
+                if (empty(array_filter($row))) {
+                    continue;
+                }
+                
+                log_message('debug', 'Import: Processing row ' . $row_number);
+                
+                // Map the row data
+                $student_data = $this->map_row_data($row, $column_map);
+                
+                // Basic validation
+                if (empty($student_data['name'])) {
+                    $errors++;
+                    $error_details[] = "Row {$row_number}: Name is required";
+                    continue;
+                }
+                
+                // Age-grade validation
+                if (!empty($student_data['grade']) && !empty($student_data['dob'])) {
+                    $age = $this->calculate_age_from_dob($student_data['dob']);
+                    if ($age !== null) {
+                        $validation = $this->school_model->validate_age_grade(
+                            $student_data['grade'], 
+                            $age, 
+                            $student_data['grade_mismatch_reason'] ?? null
+                        );
+                        
+                        if (!$validation['valid']) {
+                            $errors++;
+                            $error_details[] = "Row {$row_number}: " . $validation['message'];
+                            continue;
+                        }
+                    }
+                }
+                
+                // Check for existing student
+                $existing = null;
+                if (!empty($student_data['email'])) {
+                    $existing = $this->db->where('email', $student_data['email'])
+                                       ->get(db_prefix() . 'school_students')
+                                       ->row_array();
+                } elseif (!empty($student_data['school_internal_id'])) {
+                    $existing = $this->db->where('school_internal_id', $student_data['school_internal_id'])
+                                       ->get(db_prefix() . 'school_students')
+                                       ->row_array();
+                }
+                
+                // Clean data using the same method as the form
+                $cleaned_data = $this->clean_school_post_data($student_data, false);
+                
+                if ($existing) {
+                    // Update existing student
+                    log_message('debug', 'Import: Updating existing student: ' . $existing['id']);
+                    
+                    $result = $this->school_model->update($cleaned_data, $existing['id']);
+                    
+                    if ($result) {
+                        $updated++;
+                    } else {
+                        $errors++;
+                        $error_details[] = "Row {$row_number}: Failed to update student";
+                    }
+                } else {
+                    // Add new student
+                    log_message('debug', 'Import: Adding new student');
+                    
+                    $result = $this->school_model->add($cleaned_data);
+                    
+                    if ($result && !is_array($result)) {
+                        $added++;
+                        log_message('debug', 'Import: Added student with ID: ' . $result);
+                    } else {
+                        $errors++;
+                        $message = is_array($result) ? ($result['message'] ?? 'Unknown error') : 'Failed to add student';
+                        $error_details[] = "Row {$row_number}: {$message}";
+                    }
+                }
+                
+            } catch (Exception $e) {
+                $errors++;
+                $error_details[] = "Row {$row_number}: " . $e->getMessage();
+                log_message('error', 'Import: Row error: ' . $e->getMessage());
+            }
+        }
+        
+        log_message('info', "Import completed. Added: {$added}, Updated: {$updated}, Errors: {$errors}");
+        
+        return [
+            'success' => true,
+            'added' => $added,
+            'updated' => $updated,
+            'errors' => $errors,
+            'error_details' => $error_details
+        ];
+        
+    } catch (Exception $e) {
+        log_message('error', 'Import processing error: ' . $e->getMessage());
+        return ['success' => false, 'message' => 'Processing error: ' . $e->getMessage()];
+    }
+}
+
+/**
+ * Create column mapping from headers
+ */
+private function create_column_mapping($headers)
+{
+    $mapping = [];
+    
+    // Comprehensive field mappings
+    $field_mappings = [
+        'name' => ['name', 'student_name', 'full_name', 'student name', 'full name'],
+        'email' => ['email', 'email_address', 'email address'],
+        'phone' => ['phone', 'contact_no', 'phone_number', 'contact_number', 'mobile', 'phone number'],
+        'dob' => ['dob', 'date_of_birth', 'birth_date', 'date of birth', 'birth date'],
+        'address' => ['address', 'home_address', 'home address'],
+        'city' => ['city', 'district', 'location'],
+        'postal_code' => ['postal_code', 'zip', 'zip_code', 'postal code', 'zip code'],
+        'country_name' => ['country', 'country_name', 'country name'],
+        'school_id' => ['school_id', 'student_id', 'school student id', 'student id'],
+        'school_internal_id' => ['internal_id', 'school_internal_id', 'internal id', 'school internal id'],
+        'grade' => ['grade', 'class', 'school_grade', 'student_grade', 'school grade'],
+        'school_type' => ['school_type', 'school type'],
+        'school_name' => ['school', 'school_name', 'school name'],
+        'bank_name' => ['bank', 'bank_name', 'bank name'],
+        'bank_account_number' => ['account_number', 'bank_account', 'account number', 'bank account', 'bank_account_number'],
+        'bank_branch_number' => ['branch_number', 'branch_code', 'branch number', 'branch code'],
+        'bank_branch_info' => ['branch_info', 'branch_information', 'branch info', 'branch information'],
+        'father_name' => ['father_name', 'father name', 'father'],
+        'father_income' => ['father_income', 'father income'],
+        'mother_name' => ['mother_name', 'mother name', 'mother'],
+        'mother_income' => ['mother_income', 'mother income'],
+        'guardian_name' => ['guardian_name', 'guardian name', 'guardian'],
+        'guardian_income' => ['guardian_income', 'guardian income'],
+        'background_information' => ['background', 'background_info', 'background_information', 'background information'],
+        'sponsorship_start' => ['sponsorship_start', 'sponsorship_start_date', 'sponsorship start', 'sponsorship start date'],
+        'sponsorship_end' => ['sponsorship_end', 'sponsorship_end_date', 'sponsorship end', 'sponsorship end date'],
+        'introduced_by' => ['introduced_by', 'introduced by', 'introducer'],
+        'introduced_phone' => ['introduced_phone', 'introducer_phone', 'introduced phone', 'introducer phone'],
+        'internal_comment' => ['internal_comment', 'internal comment', 'admin_notes', 'admin notes'],
+        'external_comment' => ['external_comment', 'external comment', 'public_notes', 'public notes'],
+        'grade_mismatch_reason' => ['grade_mismatch_reason', 'grade mismatch reason', 'mismatch_reason', 'mismatch reason']
+    ];
+    
+    foreach ($headers as $index => $header) {
+        $header = strtolower(trim($header));
+        
+        foreach ($field_mappings as $field => $possible_names) {
+            if (in_array($header, $possible_names)) {
+                $mapping[$field] = $index;
+                log_message('debug', "Import: Mapped column '{$headers[$index]}' to field '{$field}'");
+                break;
+            }
+        }
+    }
+    
+    return $mapping;
+}
+
+/**
+ * Map row data using column mapping
+ */
+private function map_row_data($row, $mapping)
+{
+    $data = [];
+    
+    foreach ($mapping as $field => $column_index) {
+        $value = isset($row[$column_index]) ? trim($row[$column_index]) : '';
+        
+        // Handle special field transformations
+        switch ($field) {
+            case 'dob':
+                if ($value && $value !== '') {
+                    try {
+                        // Handle Excel date serial numbers
+                        if (is_numeric($value) && class_exists('\PhpOffice\PhpSpreadsheet\Shared\Date')) {
+                            $date = \PhpOffice\PhpSpreadsheet\Shared\Date::excelToDateTimeObject($value);
+                            $data[$field] = $date->format('Y-m-d');
+                        } else {
+                            $date = new DateTime($value);
+                            $data[$field] = $date->format('Y-m-d');
+                        }
+                    } catch (Exception $e) {
+                        $data[$field] = '';
+                        log_message('debug', "Import: Invalid date format for field {$field}: {$value}");
+                    }
+                }
+                break;
+                
+            case 'father_income':
+            case 'mother_income':
+            case 'guardian_income':
+                $data[$field] = is_numeric($value) ? (float)$value : null;
+                break;
+                
+            case 'sponsorship_start':
+            case 'sponsorship_end':
+                if ($value && $value !== '') {
+                    try {
+                        if (is_numeric($value) && class_exists('\PhpOffice\PhpSpreadsheet\Shared\Date')) {
+                            $date = \PhpOffice\PhpSpreadsheet\Shared\Date::excelToDateTimeObject($value);
+                            $data[$field] = $date->format('Y-m-d');
+                        } else {
+                            $date = new DateTime($value);
+                            $data[$field] = $date->format('Y-m-d');
+                        }
+                    } catch (Exception $e) {
+                        $data[$field] = '';
+                        log_message('debug', "Import: Invalid date format for field {$field}: {$value}");
+                    }
+                }
+                break;
+                
+            default:
+                $data[$field] = $value !== '' ? $value : null;
+                break;
+        }
+    }
+    
+    // Handle foreign key lookups
+    if (!empty($data['country_name'])) {
+        $country_id = $this->get_or_create_country_id($data['country_name']);
+        if ($country_id) {
+            $data['country_id'] = $country_id;
+        }
+        unset($data['country_name']);
+    }
+    
+    if (!empty($data['school_name'])) {
+        $school_id = $this->school_model->get_or_create_school_name_id($data['school_name']);
+        if ($school_id) {
+            $data['school_name_id'] = $school_id;
+        }
+        unset($data['school_name']);
+    }
+    
+    if (!empty($data['bank_name'])) {
+        $bank_id = $this->get_or_create_bank_id($data['bank_name']);
+        if ($bank_id) {
+            $data['bank_id'] = $bank_id;
+        }
+        unset($data['bank_name']);
+    }
+    
+    return $data;
+}
+
+/**
+ * Calculate age from date of birth
+ */
+private function calculate_age_from_dob($dob)
+{
+    if (!$dob) return null;
+    
+    try {
+        $date = new DateTime($dob);
+        $now = new DateTime();
+        return $date->diff($now)->y;
+    } catch (Exception $e) {
+        return null;
+    }
+}
+
+/**
+ * Download Excel template
+ */
+public function download_school_students_template()
+{
+    if (!has_permission('student_sponsor_portal', '', 'view')) {
+        access_denied('student_sponsor_portal');
+    }
+    
+    // Check if PHPSpreadsheet is available
+    $autoload_paths = [
+        FCPATH . 'vendor/autoload.php',
+        APPPATH . 'third_party/vendor/autoload.php',
+        APPPATH . 'libraries/vendor/autoload.php'
+    ];
+    
+    $phpspreadsheet_loaded = false;
+    foreach ($autoload_paths as $path) {
+        if (file_exists($path)) {
+            require_once($path);
+            $phpspreadsheet_loaded = true;
+            break;
+        }
+    }
+    
+    if (!$phpspreadsheet_loaded || !class_exists('\PhpOffice\PhpSpreadsheet\Spreadsheet')) {
+        // Fallback to CSV template
+        $this->download_csv_template();
+        return;
+    }
+    
+    $spreadsheet = new \PhpOffice\PhpSpreadsheet\Spreadsheet();
+    $sheet = $spreadsheet->getActiveSheet();
+    
+    // Set headers
+    $headers = [
+        'Name', 'Email', 'Phone', 'Date of Birth', 'Address', 'City', 'Postal Code', 'Country',
+        'School ID', 'Internal ID', 'Grade', 'School Type', 'School Name',
+        'Bank Name', 'Account Number', 'Branch Number', 'Branch Info',
+        'Father Name', 'Father Income', 'Mother Name', 'Mother Income', 
+        'Guardian Name', 'Guardian Income', 'Background Information',
+        'Sponsorship Start', 'Sponsorship End', 'Introduced By', 'Introducer Phone',
+        'Internal Comment', 'External Comment', 'Grade Mismatch Reason'
+    ];
+    
+    $sheet->fromArray($headers, null, 'A1');
+    
+    // Add sample data
+    $sampleData = [
+        'John Doe', 'john.doe@example.com', '+94771234567', '2010-01-15', '123 Main Street',
+        'Colombo', '00100', 'Sri Lanka', 'STU001', 'SCH001', '8', 'Type 1AB', 'Royal College',
+        'Bank of Ceylon', '1234567890', '001', 'Colombo Branch',
+        'Father Name', 50000, 'Mother Name', 30000, 'Guardian Name', 40000,
+        'Student background information', '2024-01-01', '2025-12-31', 'Teacher Name', '+94771234568',
+        'Internal notes', 'External notes', ''
+    ];
+    
+    $sheet->fromArray($sampleData, null, 'A2');
+    
+    // Style the header
+    $headerStyle = [
+        'font' => ['bold' => true],
+        'fill' => ['fillType' => \PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID, 'color' => ['rgb' => 'E8E8E8']],
+        'borders' => ['allBorders' => ['borderStyle' => \PhpOffice\PhpSpreadsheet\Style\Border::BORDER_THIN]]
+    ];
+    
+    $sheet->getStyle('A1:' . $sheet->getHighestColumn() . '1')->applyFromArray($headerStyle);
+    
+    // Auto-size columns
+    foreach (range('A', $sheet->getHighestColumn()) as $col) {
+        $sheet->getColumnDimension($col)->setAutoSize(true);
+    }
+    
+    // Add instructions sheet
+    $instructionsSheet = $spreadsheet->createSheet();
+    $instructionsSheet->setTitle('Instructions');
+    
+    $instructions = [
+        ['School Students Import Template - Instructions'],
+        [''],
+        ['REQUIRED FIELDS:'],
+        ['- Name: Student\'s full name (required)'],
+        [''],
+        ['OPTIONAL FIELDS:'],
+        ['- Email: Student\'s email address'],
+        ['- Phone: Contact number'],
+        ['- Date of Birth: Format YYYY-MM-DD (e.g., 2010-01-15)'],
+        ['- Grade: 1-10, O/L, A/L1, A/L2'],
+        ['- All other fields are optional'],
+        [''],
+        ['NOTES:'],
+        ['- Students with existing email/internal ID will be updated'],
+        ['- Schools, banks, and countries will be created if they don\'t exist'],
+        ['- Age validation applies for grades 1-10'],
+        ['- Remove the sample data before importing'],
+        ['- Maximum file size: 20MB']
+    ];
+    
+    $instructionsSheet->fromArray($instructions, null, 'A1');
+    $instructionsSheet->getColumnDimension('A')->setWidth(50);
+    
+    // Set active sheet back to template
+    $spreadsheet->setActiveSheetIndex(0);
+    
+    $filename = 'school_students_template_' . date('Y-m-d') . '.xlsx';
+    
+    header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    header('Content-Disposition: attachment; filename="' . $filename . '"');
+    header('Cache-Control: max-age=0');
+    
+    $writer = new \PhpOffice\PhpSpreadsheet\Writer\Xlsx($spreadsheet);
+    $writer->save('php://output');
+    exit;
+}
+
+/**
+ * Fallback CSV template download
+ */
+private function download_csv_template()
+{
+    $filename = 'school_students_template_' . date('Y-m-d') . '.csv';
+    
+    header('Content-Type: text/csv; charset=utf-8');
+    header('Content-Disposition: attachment; filename="' . $filename . '"');
+    header('Cache-Control: max-age=0');
+    
+    $output = fopen('php://output', 'w');
+    
+    // Add BOM for UTF-8
+    fprintf($output, chr(0xEF).chr(0xBB).chr(0xBF));
+    
+    // Headers
+    $headers = [
+        'Name', 'Email', 'Phone', 'Date of Birth', 'Address', 'City', 'Postal Code', 'Country',
+        'School ID', 'Internal ID', 'Grade', 'School Type', 'School Name',
+        'Bank Name', 'Account Number', 'Branch Number', 'Branch Info',
+        'Father Name', 'Father Income', 'Mother Name', 'Mother Income', 
+        'Guardian Name', 'Guardian Income', 'Background Information',
+        'Sponsorship Start', 'Sponsorship End', 'Introduced By', 'Introducer Phone',
+        'Internal Comment', 'External Comment', 'Grade Mismatch Reason'
+    ];
+    
+    fputcsv($output, $headers);
+    
+    // Sample data
+    $sample = [
+        'John Doe', 'john.doe@example.com', '+94771234567', '2010-01-15', '123 Main Street',
+        'Colombo', '00100', 'Sri Lanka', 'STU001', 'SCH001', '8', 'Type 1AB', 'Royal College',
+        'Bank of Ceylon', '1234567890', '001', 'Colombo Branch',
+        'Father Name', '50000', 'Mother Name', '30000', 'Guardian Name', '40000',
+        'Student background information', '2024-01-01', '2025-12-31', 'Teacher Name', '+94771234568',
+        'Internal notes', 'External notes', ''
+    ];
+    
+    fputcsv($output, $sample);
+    
+    fclose($output);
+    exit;
+}
+/**
+ * Simplified column mapping that works with your database
+ */
+private function create_simple_column_mapping($headers)
+{
+    $mapping = [];
+    
+    // Simple, reliable field mappings
+    $fields = [
+        'name' => ['name', 'student_name', 'full_name'],
+        'email' => ['email', 'email_address'],
+        'phone' => ['phone', 'contact_no', 'phone_number', 'mobile'],
+        'dob' => ['dob', 'date_of_birth', 'birth_date'],
+        'address' => ['address', 'home_address'],
+        'city' => ['city', 'district'],
+        'postal_code' => ['postal_code', 'zip', 'zip_code'],
+        'country_name' => ['country', 'country_name'],
+        'school_id' => ['school_id', 'student_id'],
+        'school_internal_id' => ['school_internal_id', 'internal_id'],
+        'grade' => ['grade', 'class', 'school_grade'],
+        'school_type' => ['school_type', 'type'],
+        'school_name' => ['school_name', 'school'],
+        'bank_name' => ['bank_name', 'bank'],
+        'bank_account_number' => ['bank_account_number', 'account_number'],
+        'father_name' => ['father_name', 'father'],
+        'mother_name' => ['mother_name', 'mother'],
+        'background_information' => ['background_information', 'background']
+    ];
+    
+    foreach ($headers as $index => $header) {
+        $clean_header = trim(strtolower($header));
+        
+        foreach ($fields as $field => $variations) {
+            if (in_array($clean_header, $variations)) {
+                $mapping[$field] = $index;
+                break;
+            }
+        }
+    }
+    
+    return $mapping;
+}
+
+/**
+ * Simple row mapping
+ */
+private function map_row_simple($row, $mapping)
+{
+    $data = [];
+    
+    foreach ($mapping as $field => $index) {
+        $value = isset($row[$index]) ? trim($row[$index]) : '';
+        
+        if ($value !== '') {
+            switch ($field) {
+                case 'dob':
+                    try {
+                        $date = new DateTime($value);
+                        $data[$field] = $date->format('Y-m-d');
+                    } catch (Exception $e) {
+                        $data[$field] = '';
+                    }
+                    break;
+                    
+                default:
+                    $data[$field] = $value;
+            }
+        }
+    }
+    
+    // Handle foreign keys
+    if (!empty($data['country_name'])) {
+        $country_id = $this->get_or_create_country_id($data['country_name']);
+        if ($country_id) {
+            $data['country_id'] = $country_id;
+        }
+        unset($data['country_name']);
+    }
+    
+    if (!empty($data['school_name'])) {
+        $school_id = $this->school_model->get_or_create_school_name_id($data['school_name']);
+        if ($school_id) {
+            $data['school_name_id'] = $school_id;
+        }
+        unset($data['school_name']);
+    }
+    
+    if (!empty($data['bank_name'])) {
+        $bank_id = $this->get_or_create_bank_id($data['bank_name']);
+        if ($bank_id) {
+            $data['bank_id'] = $bank_id;
+        }
+        unset($data['bank_name']);
+    }
+    
+    return $data;
+}
+
+/**
+ * Get or create country ID
+ */
+private function get_or_create_country_id($country_name)
+{
+    if (empty($country_name)) return null;
+    
+    // Try to find existing country
+    $country = $this->db->where('short_name', $country_name)
+                       ->get(db_prefix() . 'countries')
+                       ->row_array();
+    
+    if ($country) {
+        return (int)$country['country_id'];
+    }
+    
+    // Create new country
+    $data = [
+        'short_name' => $country_name,
+        'calling_code' => '+1'
+    ];
+    
+    $this->db->insert(db_prefix() . 'countries', $data);
+    return (int)$this->db->insert_id();
+}
+
+/**
+ * Get or create bank ID
+ */
+private function get_or_create_bank_id($bank_name)
+{
+    if (empty($bank_name)) return null;
+    
+    $bank = $this->db->where('name', $bank_name)
+                    ->get(db_prefix() . 'bank')
+                    ->row_array();
+    
+    if ($bank) {
+        return (int)$bank['id'];
+    }
+    
+    // Create new bank
+    $this->db->insert(db_prefix() . 'bank', ['name' => $bank_name]);
+    return (int)$this->db->insert_id();
+}
+
+private function process_csv_import_fixed($file_path)
+{
+    log_message('debug', 'CSV Import: Starting processing of file: ' . $file_path);
+    
+    if (!file_exists($file_path)) {
+        return ['success' => false, 'message' => 'Import file not found'];
+    }
+    
+    $added = 0;
+    $updated = 0;
+    $errors = 0;
+    $error_details = [];
+    
+    try {
+        // Read CSV file with proper encoding handling
+        $handle = fopen($file_path, 'r');
+        if (!$handle) {
+            return ['success' => false, 'message' => 'Cannot open CSV file'];
+        }
+        
+        // Get headers from first row
+        $headers = fgetcsv($handle);
+        if (!$headers) {
+            fclose($handle);
+            return ['success' => false, 'message' => 'Invalid CSV file - no headers found'];
+        }
+        
+        // Clean and normalize headers
+        $headers = array_map(function($h) {
+            return trim(strtolower(str_replace([' ', '_', '-'], '_', $h)));
+        }, $headers);
+        
+        log_message('debug', 'CSV Import: Cleaned Headers: ' . json_encode($headers));
+        
+        // Map headers to database fields
+        $column_mapping = $this->create_column_mapping($headers);
+        if (empty($column_mapping)) {
+            fclose($handle);
+            return ['success' => false, 'message' => 'No valid columns found in CSV. Please check the column names match the template.'];
+        }
+        
+        log_message('debug', 'CSV Import: Column mapping: ' . json_encode($column_mapping));
+        
+        $row_number = 1; // Start from 1 (header is row 0)
+        
+        // Process each data row
+        while (($row = fgetcsv($handle)) !== false) {
+            $row_number++;
+            
+            try {
+                // Skip empty rows
+                if (empty(array_filter($row))) {
+                    log_message('debug', "CSV Import: Row {$row_number}: Skipping empty row");
+                    continue;
+                }
+                
+                log_message('debug', "CSV Import: Row {$row_number}: Processing: " . json_encode(array_slice($row, 0, 3)));
+                
+                // Map row data to our format
+                $student_data = $this->map_csv_row_to_student_data($row, $column_mapping, $headers);
+                
+                // Validate required fields
+                $validation = $this->validate_csv_row_data($student_data, $row_number);
+                if (!$validation['valid']) {
+                    $errors++;
+                    $error_details[] = "Row {$row_number}: " . $validation['message'];
+                    log_message('warning', "CSV Import: Row {$row_number}: Validation failed: " . $validation['message']);
+                    continue;
+                }
+                
+                // Check if student exists
+                $existing_student = $this->find_existing_student_for_import($student_data);
+                
+                if ($existing_student) {
+                    // Update existing student
+                    log_message('debug', "CSV Import: Row {$row_number}: Updating existing student ID: " . $existing_student['id']);
+                    
+                    $cleaned_data = $this->clean_school_post_data($student_data, false);
+                    $result = $this->school_model->update($cleaned_data, $existing_student['id']);
+                    
+                    if ($result) {
+                        $updated++;
+                        log_message('debug', "CSV Import: Row {$row_number}: Successfully updated student");
+                    } else {
+                        $errors++;
+                        $error_details[] = "Row {$row_number}: Failed to update existing student";
+                        log_message('error', "CSV Import: Row {$row_number}: Failed to update student");
+                    }
+                } else {
+                    // Add new student
+                    log_message('debug', "CSV Import: Row {$row_number}: Creating new student");
+                    
+                    $cleaned_data = $this->clean_school_post_data($student_data, false);
+                    log_message('debug', "CSV Import: Row {$row_number}: Cleaned data: " . json_encode($cleaned_data));
+                    
+                    $result = $this->school_model->add($cleaned_data);
+                    
+                    if ($result && !is_array($result)) {
+                        $added++;
+                        log_message('debug', "CSV Import: Row {$row_number}: Successfully added student with ID: " . $result);
+                    } else {
+                        $errors++;
+                        $message = is_array($result) ? ($result['message'] ?? 'Unknown error') : 'Failed to add student';
+                        $error_details[] = "Row {$row_number}: {$message}";
+                        log_message('error', "CSV Import: Row {$row_number}: Failed to add student: " . $message);
+                    }
+                }
+                
+            } catch (Exception $e) {
+                $errors++;
+                $error_details[] = "Row {$row_number}: " . $e->getMessage();
+                log_message('error', "CSV Import: Row {$row_number} exception: " . $e->getMessage());
+            }
+        }
+        
+        fclose($handle);
+        
+        log_message('info', "CSV Import completed. Added: {$added}, Updated: {$updated}, Errors: {$errors}");
+        
+        return [
+            'success' => true,
+            'added' => $added,
+            'updated' => $updated,
+            'errors' => $errors,
+            'error_details' => $error_details
+        ];
+        
+    } catch (Exception $e) {
+        if (isset($handle)) fclose($handle);
+        log_message('error', 'CSV Import processing error: ' . $e->getMessage());
+        return ['success' => false, 'message' => 'Failed to process CSV: ' . $e->getMessage()];
+    }
+}
+
+
+private function map_csv_row_to_student_data($row, $mapping, $headers)
+{
+    $data = [];
+    
+    foreach ($mapping as $field => $column_index) {
+        $value = isset($row[$column_index]) ? trim($row[$column_index]) : '';
+        
+        // Handle special field transformations
+        switch ($field) {
+            case 'dob':
+                if ($value && $value !== '') {
+                    try {
+                        // Try to parse various date formats
+                        $date = new DateTime($value);
+                        $data[$field] = $date->format('Y-m-d');
+                    } catch (Exception $e) {
+                        log_message('warning', "CSV Import: Invalid date format for field {$field}: {$value}");
+                        $data[$field] = '';
+                    }
+                }
+                break;
+                
+            case 'father_income':
+            case 'mother_income':
+            case 'guardian_income':
+            case 'age':
+                $data[$field] = is_numeric($value) ? (float)$value : null;
+                break;
+                
+            case 'sponsorship_start':
+            case 'sponsorship_end':
+                if ($value && $value !== '') {
+                    try {
+                        $date = new DateTime($value);
+                        $data[$field] = $date->format('Y-m-d');
+                    } catch (Exception $e) {
+                        log_message('warning', "CSV Import: Invalid date format for field {$field}: {$value}");
+                        $data[$field] = '';
+                    }
+                }
+                break;
+                
+            default:
+                $data[$field] = $value !== '' ? $value : null;
+                break;
+        }
+    }
+    
+    // Handle foreign key lookups
+    if (!empty($data['country'])) {
+        $country_id = $this->get_or_create_country_id($data['country']);
+        if ($country_id) {
+            $data['country_id'] = $country_id;
+        }
+        unset($data['country']);
+    }
+    
+    if (!empty($data['school_name'])) {
+        $school_id = $this->school_model->get_or_create_school_name_id($data['school_name']);
+        if ($school_id) {
+            $data['school_name_id'] = $school_id;
+        }
+        unset($data['school_name']);
+    }
+    
+    if (!empty($data['bank_name'])) {
+        $bank_id = $this->get_or_create_bank_id($data['bank_name']);
+        if ($bank_id) {
+            $data['bank_id'] = $bank_id;
+        }
+        unset($data['bank_name']);
+    }
+    
+    // Calculate age if DOB provided and age not set
+    if (!empty($data['dob']) && empty($data['age'])) {
+        try {
+            $dob = new DateTime($data['dob']);
+            $now = new DateTime();
+            $data['calculated_age'] = $dob->diff($now)->y;
+        } catch (Exception $e) {
+            log_message('warning', 'CSV Import: Error calculating age from DOB: ' . $e->getMessage());
+        }
+    }
+    
+    return $data;
+}
+
+/**
+ * Validate CSV row data
+ */
+private function validate_csv_row_data($data, $row_number)
+{
+    if (empty($data['name'])) {
+        return ['valid' => false, 'message' => 'Name is required'];
+    }
+    
+    if (!empty($data['email']) && !filter_var($data['email'], FILTER_VALIDATE_EMAIL)) {
+        return ['valid' => false, 'message' => 'Invalid email format: ' . $data['email']];
+    }
+    
+    // Validate grade if provided
+    if (!empty($data['grade'])) {
+        $valid_grades = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'O/L', 'A/L1', 'A/L2'];
+        if (!in_array($data['grade'], $valid_grades)) {
+            return ['valid' => false, 'message' => 'Invalid grade: ' . $data['grade']];
+        }
+    }
+    
+    return ['valid' => true];
+}
+
+/**
+ * Find existing student by email or internal ID for import
+ */
+private function find_existing_student_for_import($data)
+{
+    if (!empty($data['email'])) {
+        $student = $this->db->where('email', $data['email'])
+                           ->get(db_prefix() . 'school_students')
+                           ->row_array();
+        if ($student) {
+            log_message('debug', 'CSV Import: Found existing student by email: ' . $data['email']);
+            return $student;
+        }
+    }
+    
+    if (!empty($data['school_internal_id'])) {
+        $student = $this->db->where('school_internal_id', $data['school_internal_id'])
+                           ->get(db_prefix() . 'school_students')
+                           ->row_array();
+        if ($student) {
+            log_message('debug', 'CSV Import: Found existing student by internal ID: ' . $data['school_internal_id']);
+            return $student;
+        }
+    }
+    
+    return null;
+}
+
+/**
+ * Map CSV column headers to our field names
+ */
+private function map_csv_columns($headers)
+{
+    $mapping = [];
+    
+    // Field mappings (case-insensitive)
+    $field_mappings = [
+        'name' => ['name', 'student_name', 'full_name', 'student name', 'full name', 'name*'],
+        'email' => ['email', 'email_address', 'email address'],
+        'phone' => ['phone', 'contact_no', 'phone_number', 'contact_number', 'mobile', 'phone number'],
+        'dob' => ['dob', 'date_of_birth', 'birth_date', 'date of birth'],
+        'address' => ['address', 'home_address', 'home address'],
+        'city' => ['city', 'district', 'location'],
+        'postal_code' => ['postal_code', 'zip', 'zip_code', 'postal code'],
+        'country_name' => ['country', 'country_name', 'country name'],
+        'school_id' => ['school_id', 'student_id', 'school student id'],
+        'school_internal_id' => ['internal_id', 'school_internal_id', 'internal id'],
+        'grade' => ['grade', 'class', 'school_grade', 'student_grade'],
+        'school_type' => ['school_type', 'school type'],
+        'school_name' => ['school', 'school_name', 'school name'],
+        'bank_name' => ['bank', 'bank_name', 'bank name'],
+        'bank_account_number' => ['account_number', 'bank_account', 'account number'],
+        'bank_branch_number' => ['branch_number', 'branch_code', 'branch number'],
+        'bank_branch_info' => ['branch_info', 'branch_information', 'branch info'],
+        'father_name' => ['father_name', 'father name', 'father'],
+        'father_income' => ['father_income', 'father income'],
+        'mother_name' => ['mother_name', 'mother name', 'mother'],
+        'mother_income' => ['mother_income', 'mother income'],
+        'guardian_name' => ['guardian_name', 'guardian name', 'guardian'],
+        'guardian_income' => ['guardian_income', 'guardian income'],
+        'background_information' => ['background', 'background_info', 'background_information'],
+        'sponsorship_start' => ['sponsorship_start', 'sponsorship_start_date', 'sponsorship start'],
+        'sponsorship_end' => ['sponsorship_end', 'sponsorship_end_date', 'sponsorship end'],
+        'introduced_by' => ['introduced_by', 'introduced by', 'introducer'],
+        'introduced_phone' => ['introduced_phone', 'introducer_phone', 'introduced phone'],
+        'internal_comment' => ['internal_comment', 'internal comment', 'admin_notes'],
+        'external_comment' => ['external_comment', 'external comment', 'public_notes']
+    ];
+    
+    foreach ($headers as $index => $header) {
+        $header = strtolower(trim($header));
+        
+        foreach ($field_mappings as $field => $possible_names) {
+            if (in_array($header, $possible_names)) {
+                $mapping[$field] = $index;
+                log_message('debug', "Mapped column '{$headers[$index]}' to field '{$field}'");
+                break;
+            }
+        }
+    }
+    
+    return $mapping;
+}
+
+/**
+ * Map CSV row data using column mapping
+ */
+private function map_csv_row_data($row, $mapping)
+{
+    $data = [];
+    
+    foreach ($mapping as $field => $column_index) {
+        $value = isset($row[$column_index]) ? trim($row[$column_index]) : '';
+        
+        // Handle special field transformations
+        switch ($field) {
+            case 'dob':
+                if ($value && $value !== '') {
+                    try {
+                        // Try to parse various date formats
+                        $date = new DateTime($value);
+                        $data[$field] = $date->format('Y-m-d');
+                    } catch (Exception $e) {
+                        $data[$field] = ''; // Invalid date
+                        log_message('debug', "Invalid date format for field {$field}: {$value}");
+                    }
+                }
+                break;
+                
+            case 'father_income':
+            case 'mother_income':
+            case 'guardian_income':
+                $data[$field] = is_numeric($value) ? (float)$value : null;
+                break;
+                
+            case 'sponsorship_start':
+            case 'sponsorship_end':
+                if ($value && $value !== '') {
+                    try {
+                        $date = new DateTime($value);
+                        $data[$field] = $date->format('Y-m-d');
+                    } catch (Exception $e) {
+                        $data[$field] = '';
+                        log_message('debug', "Invalid date format for field {$field}: {$value}");
+                    }
+                }
+                break;
+                
+            default:
+                $data[$field] = $value;
+                break;
+        }
+    }
+    
+    // Handle lookups for foreign key fields
+    if (!empty($data['country_name'])) {
+        $country_id = $this->get_or_create_country_id($data['country_name']);
+        if ($country_id) {
+            $data['country_id'] = $country_id;
+        }
+        unset($data['country_name']);
+    }
+    
+    if (!empty($data['school_name'])) {
+        $school_id = $this->school_model->get_or_create_school_name_id($data['school_name']);
+        if ($school_id) {
+            $data['school_name_id'] = $school_id;
+        }
+        unset($data['school_name']);
+    }
+    
+    if (!empty($data['bank_name'])) {
+        $bank_id = $this->get_or_create_bank_id($data['bank_name']);
+        if ($bank_id) {
+            $data['bank_id'] = $bank_id;
+        }
+        unset($data['bank_name']);
+    }
+    
+    return $data;
+}
+
+/**
+ * Find existing student by email or internal ID
+ */
+private function find_existing_student_by_email_or_id($data)
+{
+    if (!empty($data['email'])) {
+        $student = $this->db->where('email', $data['email'])
+                           ->get(db_prefix() . 'school_students')
+                           ->row_array();
+        if ($student) {
+            log_message('debug', 'Found existing student by email: ' . $data['email']);
+            return $student;
+        }
+    }
+    
+    if (!empty($data['school_internal_id'])) {
+        $student = $this->db->where('school_internal_id', $data['school_internal_id'])
+                           ->get(db_prefix() . 'school_students')
+                           ->row_array();
+        if ($student) {
+            log_message('debug', 'Found existing student by internal ID: ' . $data['school_internal_id']);
+            return $student;
+        }
+    }
+    
+    return null;
+}
+
+/**
+ * Generate CSV template for download
+ */
+
+public function debug_csv_import()
+{
+    if (!has_permission('student_sponsor_portal', '', 'view')) {
+        echo "Permission denied"; 
+        return;
+    }
+    
+    echo "<h3>CSV Import Debug Tool</h3>";
+    
+    if ($this->input->post('test_file')) {
+        if (empty($_FILES['debug_file']['name'])) {
+            echo "<div style='color: red;'>No file uploaded</div>";
+            return;
+        }
+        
+        $file = $_FILES['debug_file'];
+        $temp_file = TEMP_FOLDER . 'debug_import_' . time() . '.csv';
+        
+        if (!move_uploaded_file($file['tmp_name'], $temp_file)) {
+            echo "<div style='color: red;'>Failed to upload file</div>";
+            return;
+        }
+        
+        echo "<h4>File Analysis:</h4>";
+        echo "File size: " . filesize($temp_file) . " bytes<br>";
+        echo "File exists: " . (file_exists($temp_file) ? "Yes" : "No") . "<br><br>";
+        
+        // Read and analyze CSV
+        $handle = fopen($temp_file, 'r');
+        if (!$handle) {
+            echo "<div style='color: red;'>Cannot open CSV file</div>";
+            return;
+        }
+        
+        // Get headers
+        $headers = fgetcsv($handle);
+        echo "<h4>Original Headers:</h4>";
+        echo "<pre>" . print_r($headers, true) . "</pre>";
+        
+        // Clean headers
+        $clean_headers = array_map(function($h) {
+            return trim(strtolower(str_replace([' ', '_', '-'], '_', $h)));
+        }, $headers);
+        
+        echo "<h4>Cleaned Headers:</h4>";
+        echo "<pre>" . print_r($clean_headers, true) . "</pre>";
+        
+        // Test column mapping
+        $mapping = $this->create_column_mapping($clean_headers);
+        echo "<h4>Column Mapping:</h4>";
+        echo "<pre>" . print_r($mapping, true) . "</pre>";
+        
+        // Read first data row
+        $first_row = fgetcsv($handle);
+        if ($first_row) {
+            echo "<h4>First Data Row:</h4>";
+            echo "<pre>" . print_r($first_row, true) . "</pre>";
+            
+            // Test data mapping
+            $mapped_data = $this->map_csv_row_to_student_data($first_row, $mapping, $clean_headers);
+            echo "<h4>Mapped Data:</h4>";
+            echo "<pre>" . print_r($mapped_data, true) . "</pre>";
+            
+            // Test data cleaning
+            $cleaned_data = $this->clean_school_post_data($mapped_data, false);
+            echo "<h4>Cleaned Data for Database:</h4>";
+            echo "<pre>" . print_r($cleaned_data, true) . "</pre>";
+            
+            // Test validation
+            $validation = $this->validate_csv_row_data($mapped_data, 2);
+            echo "<h4>Validation Result:</h4>";
+            echo "<pre>" . print_r($validation, true) . "</pre>";
+            
+            // Test if we can find existing student
+            $existing = $this->find_existing_student_for_import($mapped_data);
+            echo "<h4>Existing Student Check:</h4>";
+            echo $existing ? "Found existing student: " . print_r($existing, true) : "No existing student found<br>";
+        }
+        
+        fclose($handle);
+        unlink($temp_file);
+        
+        return;
+    }
+    
+    // Show form
+    echo '<form method="post" enctype="multipart/form-data">';
+    echo '<input type="file" name="debug_file" accept=".csv" required><br><br>';
+    echo '<input type="submit" name="test_file" value="Analyze CSV File" class="btn btn-primary">';
+    echo '</form>';
+    
+    echo "<h4>Current Database Schema:</h4>";
+    $fields = $this->db->list_fields(db_prefix() . 'school_students');
+    echo "<pre>" . print_r($fields, true) . "</pre>";
+    
+    echo "<h4>Sample Database Record:</h4>";
+    $sample = $this->db->limit(1)->get(db_prefix() . 'school_students')->row_array();
+    if ($sample) {
+        echo "<pre>" . print_r($sample, true) . "</pre>";
+    } else {
+        echo "No records in database yet.<br>";
+    }
+}
+/**
+ * Debug version of import processing with detailed logging
+ */
+private function process_school_students_import_debug($file_path)
+{
+    log_message('debug', 'Starting import processing for file: ' . $file_path);
+    
+    // Check if file exists
+    if (!file_exists($file_path)) {
+        log_message('error', 'Import file not found: ' . $file_path);
+        return ['success' => false, 'message' => 'Import file not found'];
+    }
+    
+    $added = 0;
+    $updated = 0;
+    $errors = 0;
+    $error_details = [];
+    
+    try {
+        // Handle CSV files directly
+        $file_ext = strtolower(pathinfo($file_path, PATHINFO_EXTENSION));
+        
+        if ($file_ext === 'csv') {
+            log_message('debug', 'Processing CSV file');
+            $rows = $this->read_csv_file($file_path);
+        } else {
+            log_message('debug', 'Processing Excel file');
+            
+            // Try to load PHPSpreadsheet
+            $autoload_paths = [
+                APPPATH . 'third_party/PHPOffice/vendor/autoload.php',
+                FCPATH . 'vendor/autoload.php',
+                APPPATH . 'libraries/vendor/autoload.php'
+            ];
+            
+            $phpspreadsheet_loaded = false;
+            foreach ($autoload_paths as $path) {
+                if (file_exists($path)) {
+                    require_once($path);
+                    $phpspreadsheet_loaded = true;
+                    log_message('debug', 'PHPSpreadsheet loaded from: ' . $path);
+                    break;
+                }
+            }
+            
+            if (!$phpspreadsheet_loaded || !class_exists('\PhpOffice\PhpSpreadsheet\IOFactory')) {
+                log_message('error', 'PHPSpreadsheet not available, converting Excel to CSV');
+                return ['success' => false, 'message' => 'Excel processing not available. Please use CSV format.'];
+            }
+            
+            $spreadsheet = \PhpOffice\PhpSpreadsheet\IOFactory::load($file_path);
+            $worksheet = $spreadsheet->getActiveSheet();
+            $rows = $worksheet->toArray();
+        }
+        
+        if (empty($rows)) {
+            log_message('error', 'No data found in import file');
+            return ['success' => false, 'message' => 'No data found in file'];
+        }
+        
+        log_message('debug', 'Total rows found: ' . count($rows));
+        
+        // Get header row and map columns
+        $headers = array_shift($rows);
+        log_message('debug', 'Headers: ' . json_encode($headers));
+        
+        $column_mapping = $this->map_import_columns_debug($headers);
+        log_message('debug', 'Column mapping: ' . json_encode($column_mapping));
+        
+        if (empty($column_mapping)) {
+            return ['success' => false, 'message' => 'No valid columns found. Please check the template.'];
+        }
+        
+        // Process each row
+        foreach ($rows as $row_index => $row) {
+            $actual_row = $row_index + 2; // +1 for 0-based index, +1 for header row
+            
+            try {
+                // Skip empty rows
+                if (empty(array_filter($row))) {
+                    log_message('debug', "Row {$actual_row}: Skipping empty row");
+                    continue;
+                }
+                
+                log_message('debug', "Row {$actual_row}: Processing data: " . json_encode(array_slice($row, 0, 5)) . '...');
+                
+                // Map row data to our format
+                $student_data = $this->map_row_data_debug($row, $column_mapping);
+                log_message('debug', "Row {$actual_row}: Mapped data: " . json_encode($student_data));
+                
+                // Validate required fields
+                $validation_result = $this->validate_import_row_debug($student_data, $actual_row);
+                if (!$validation_result['valid']) {
+                    $errors++;
+                    $error_details[] = "Row {$actual_row}: " . $validation_result['message'];
+                    log_message('debug', "Row {$actual_row}: Validation failed: " . $validation_result['message']);
+                    continue;
+                }
+                
+                // Check if student exists (by email or internal ID)
+                $existing_student = $this->find_existing_student_debug($student_data);
+                
+                if ($existing_student) {
+                    log_message('debug', "Row {$actual_row}: Found existing student ID: " . $existing_student['id']);
+                    
+                    // Update existing student
+                    $cleaned_data = $this->clean_school_post_data($student_data, false);
+                    log_message('debug', "Row {$actual_row}: Cleaned data for update: " . json_encode($cleaned_data));
+                    
+                    $result = $this->school_model->update($cleaned_data, $existing_student['id']);
+                    
+                    if ($result) {
+                        $updated++;
+                        log_message('debug', "Row {$actual_row}: Successfully updated student");
+                    } else {
+                        $errors++;
+                        $error_details[] = "Row {$actual_row}: Failed to update student";
+                        log_message('error', "Row {$actual_row}: Failed to update student");
+                    }
+                } else {
+                    log_message('debug', "Row {$actual_row}: Creating new student");
+                    
+                    // Add new student
+                    $cleaned_data = $this->clean_school_post_data($student_data, false);
+                    log_message('debug', "Row {$actual_row}: Cleaned data for insert: " . json_encode($cleaned_data));
+                    
+                    $result = $this->school_model->add($cleaned_data);
+                    
+                    if ($result && !is_array($result)) {
+                        $added++;
+                        log_message('debug', "Row {$actual_row}: Successfully added student with ID: " . $result);
+                    } else {
+                        $errors++;
+                        $message = is_array($result) ? $result['message'] : 'Failed to add student';
+                        $error_details[] = "Row {$actual_row}: {$message}";
+                        log_message('error', "Row {$actual_row}: Failed to add student: " . $message);
+                    }
+                }
+                
+            } catch (Exception $e) {
+                $errors++;
+                $error_details[] = "Row {$actual_row}: " . $e->getMessage();
+                log_message('error', "Import row {$actual_row} error: " . $e->getMessage());
+            }
+        }
+        
+        log_message('debug', "Import completed. Added: {$added}, Updated: {$updated}, Errors: {$errors}");
+        
+        return [
+            'success' => true,
+            'added' => $added,
+            'updated' => $updated,
+            'errors' => $errors,
+            'error_details' => $error_details
+        ];
+        
+    } catch (Exception $e) {
+        log_message('error', 'Excel processing error: ' . $e->getMessage());
+        return ['success' => false, 'message' => 'Failed to process file: ' . $e->getMessage()];
+    }
+}
+
+/**
+ * Test if basic student addition works
+ */
+public function test_add_student()
+{
+    if (!has_permission('student_sponsor_portal', '', 'view')) {
+        echo "Permission denied"; 
+        return;
+    }
+    
+    echo "<h3>Testing Student Addition</h3>";
+    
+    // Test adding a simple student
+    $test_data = [
+        'name' => 'Test Student ' . time(),
+        'email' => 'test' . time() . '@example.com',
+        'entity_type' => 'school'
+    ];
+    
+    echo "Test data: <br>";
+    echo "<pre>" . print_r($test_data, true) . "</pre>";
+    
+    try {
+        $result = $this->school_model->add($test_data);
+        echo "Add result: " . print_r($result, true) . "<br>";
+        
+        if ($result && !is_array($result)) {
+            echo "✅ SUCCESS: Student added with ID: " . $result . "<br>";
+            
+            // Verify in database
+            $student = $this->db->where('id', $result)->get(db_prefix() . 'school_students')->row_array();
+            if ($student) {
+                echo "✅ VERIFIED: Student found in database<br>";
+                echo "Student name: " . $student['name'] . "<br>";
+            } else {
+                echo "❌ ERROR: Student not found in database after insert<br>";
+            }
+        } else {
+            echo "❌ ERROR: Failed to add student<br>";
+            if (is_array($result)) {
+                echo "Error details: " . print_r($result, true) . "<br>";
+            }
+        }
+    } catch (Exception $e) {
+        echo "❌ EXCEPTION: " . $e->getMessage() . "<br>";
+    }
+    
+    // Test database connection
+    echo "<h4>Database Info</h4>";
+    $count = $this->db->count_all_results(db_prefix() . 'school_students');
+    echo "Total students in database: " . $count . "<br>";
+    
+    echo "<h4>Table Structure</h4>";
+    $fields = $this->db->list_fields(db_prefix() . 'school_students');
+    echo "Available fields: " . implode(', ', $fields) . "<br>";
+}
+
+/**
+ * Test file upload functionality
+ */
+public function test_upload()
+{
+    if (!has_permission('student_sponsor_portal', '', 'view')) {
+        echo "Permission denied"; 
+        return;
+    }
+    
+    if ($this->input->post()) {
+        echo "<h3>Processing Upload</h3>";
+        
+        if (empty($_FILES['test_file']['name'])) {
+            echo "❌ No file uploaded<br>";
+            return;
+        }
+        
+        $file = $_FILES['test_file'];
+        echo "File details:<br>";
+        echo "Name: " . $file['name'] . "<br>";
+        echo "Size: " . $file['size'] . " bytes<br>";
+        echo "Type: " . $file['type'] . "<br>";
+        echo "Error: " . $file['error'] . "<br>";
+        
+        if ($file['error'] !== UPLOAD_ERR_OK) {
+            echo "❌ Upload error code: " . $file['error'] . "<br>";
+            return;
+        }
+        
+        // Read file content
+        $content = file_get_contents($file['tmp_name']);
+        echo "Content length: " . strlen($content) . " bytes<br>";
+        echo "First 200 characters:<br>";
+        echo "<pre>" . htmlspecialchars(substr($content, 0, 200)) . "</pre>";
+        
+        // Try to parse as CSV
+        if (strtolower(pathinfo($file['name'], PATHINFO_EXTENSION)) === 'csv') {
+            echo "<h4>CSV Parsing Test</h4>";
+            $lines = explode("\n", $content);
+            echo "Number of lines: " . count($lines) . "<br>";
+            
+            for ($i = 0; $i < min(5, count($lines)); $i++) {
+                $data = str_getcsv($lines[$i]);
+                echo "Line " . ($i + 1) . ": " . implode(' | ', $data) . "<br>";
+            }
+        }
+        
+        return;
+    }
+    
+    // Show upload form
+    echo '<h3>Test File Upload</h3>';
+    echo '<form method="post" enctype="multipart/form-data">';
+    echo '<input type="file" name="test_file" accept=".csv,.xlsx,.xls"><br><br>';
+    echo '<input type="submit" value="Test Upload" class="btn btn-primary">';
+    echo '</form>';
+}
+
+/**
+ * Test the actual import process with a simple CSV
+ */
+public function test_import_process()
+{
+    if (!has_permission('student_sponsor_portal', '', 'create')) {
+        echo "Permission denied"; 
+        return;
+    }
+    
+    echo "<h3>Testing Import Process</h3>";
+    
+    // Create a simple test CSV
+    $csv_content = "Name,Email,Phone\n";
+    $csv_content .= "Test Student 1,test1@example.com,+94771234567\n";
+    $csv_content .= "Test Student 2,test2@example.com,+94771234568\n";
+    
+    // Save to temp file
+    $temp_file = TEMP_FOLDER . 'test_import_' . time() . '.csv';
+    file_put_contents($temp_file, $csv_content);
+    
+    echo "Created test CSV file: " . $temp_file . "<br>";
+    echo "File exists: " . (file_exists($temp_file) ? "Yes" : "No") . "<br>";
+    echo "File size: " . filesize($temp_file) . " bytes<br>";
+    
+    echo "<h4>CSV Content:</h4>";
+    echo "<pre>" . htmlspecialchars($csv_content) . "</pre>";
+    
+    try {
+        // Test the import processing
+        if (($handle = fopen($temp_file, "r")) !== FALSE) {
+            $row_count = 0;
+            $headers = fgetcsv($handle); // Read headers
+            echo "Headers: " . implode(', ', $headers) . "<br>";
+            
+            while (($row = fgetcsv($handle)) !== FALSE) {
+                $row_count++;
+                echo "Row $row_count: " . implode(', ', $row) . "<br>";
+                
+                // Try to add this student
+                $student_data = [
+                    'name' => $row[0],
+                    'email' => $row[1],
+                    'contact_no' => $row[2],
+                    'entity_type' => 'school'
+                ];
+                
+                echo "Attempting to add: " . $student_data['name'] . "<br>";
+                
+                $result = $this->school_model->add($student_data);
+                if ($result && !is_array($result)) {
+                    echo "✅ Added successfully with ID: " . $result . "<br>";
+                } else {
+                    echo "❌ Failed to add: " . print_r($result, true) . "<br>";
+                }
+                echo "<br>";
+            }
+            fclose($handle);
+        }
+        
+        // Clean up
+        unlink($temp_file);
+        
+    } catch (Exception $e) {
+        echo "❌ Exception: " . $e->getMessage() . "<br>";
+    }
+}
+
+/**
+ * Check system requirements
+ */
+public function check_system()
+{
+    echo "<h3>System Check</h3>";
+    
+    echo "<h4>PHP Settings</h4>";
+    echo "PHP Version: " . phpversion() . "<br>";
+    echo "Upload Max Filesize: " . ini_get('upload_max_filesize') . "<br>";
+    echo "Post Max Size: " . ini_get('post_max_size') . "<br>";
+    echo "Max Execution Time: " . ini_get('max_execution_time') . "<br>";
+    echo "Memory Limit: " . ini_get('memory_limit') . "<br>";
+    
+    echo "<h4>Directory Permissions</h4>";
+    echo "TEMP_FOLDER: " . TEMP_FOLDER . "<br>";
+    echo "TEMP_FOLDER exists: " . (is_dir(TEMP_FOLDER) ? "Yes" : "No") . "<br>";
+    echo "TEMP_FOLDER writable: " . (is_writable(TEMP_FOLDER) ? "Yes" : "No") . "<br>";
+    
+    echo "<h4>Database</h4>";
+    echo "Database connected: " . ($this->db->conn_id ? "Yes" : "No") . "<br>";
+    
+    $table_exists = $this->db->table_exists(db_prefix() . 'school_students');
+    echo "school_students table exists: " . ($table_exists ? "Yes" : "No") . "<br>";
+    
+    if ($table_exists) {
+        $count = $this->db->count_all_results(db_prefix() . 'school_students');
+        echo "Total students: " . $count . "<br>";
+    }
+    
+    echo "<h4>Models</h4>";
+    echo "School model loaded: " . (isset($this->school_model) ? "Yes" : "No") . "<br>";
+}
+
+/**
+ * Read CSV file with proper encoding handling
+ */
+private function read_csv_file($file_path)
+{
+    $rows = [];
+    
+    if (($handle = fopen($file_path, "r")) !== FALSE) {
+        while (($data = fgetcsv($handle, 1000, ",")) !== FALSE) {
+            $rows[] = $data;
+        }
+        fclose($handle);
+    }
+    
+    return $rows;
+}
+
+/**
+ * Debug version of column mapping
+ */
+private function map_import_columns_debug($headers)
+{
+    $mapping = [];
+    
+    // Define column mappings (case-insensitive)
+    $field_mappings = [
+        'name' => ['name', 'student_name', 'full_name', 'student name', 'full name', 'name*'],
+        'email' => ['email', 'email_address', 'email address'],
+        'phone' => ['phone', 'contact_no', 'phone_number', 'contact_number', 'mobile', 'phone number', 'contact number'],
+        'dob' => ['dob', 'date_of_birth', 'birth_date', 'date of birth', 'birth date'],
+        'address' => ['address', 'home_address', 'home address'],
+        'city' => ['city', 'district', 'location'],
+        'postal_code' => ['postal_code', 'zip', 'zip_code', 'postal code', 'zip code'],
+        'country_name' => ['country', 'country_name', 'country name'],
+        'school_id' => ['school_id', 'student_id', 'school student id', 'student id'],
+        'school_internal_id' => ['internal_id', 'school_internal_id', 'internal id', 'school internal id'],
+        'grade' => ['grade', 'class', 'school_grade', 'student_grade', 'school grade'],
+        'school_type' => ['school_type', 'school type'],
+        'school_name' => ['school', 'school_name', 'school name'],
+        'bank_name' => ['bank', 'bank_name', 'bank name'],
+        'bank_account_number' => ['account_number', 'bank_account', 'account number', 'bank account'],
+        'bank_branch_number' => ['branch_number', 'branch_code', 'branch number', 'branch code'],
+        'bank_branch_info' => ['branch_info', 'branch_information', 'branch info', 'branch information'],
+        'father_name' => ['father_name', 'father name', 'father'],
+        'father_income' => ['father_income', 'father income'],
+        'mother_name' => ['mother_name', 'mother name', 'mother'],
+        'mother_income' => ['mother_income', 'mother income'],
+        'guardian_name' => ['guardian_name', 'guardian name', 'guardian'],
+        'guardian_income' => ['guardian_income', 'guardian income'],
+        'background_information' => ['background', 'background_info', 'background_information', 'background information'],
+        'sponsorship_start' => ['sponsorship_start', 'sponsorship_start_date', 'sponsorship start', 'sponsorship start date'],
+        'sponsorship_end' => ['sponsorship_end', 'sponsorship_end_date', 'sponsorship end', 'sponsorship end date'],
+        'introduced_by' => ['introduced_by', 'introduced by', 'introducer'],
+        'introduced_phone' => ['introduced_phone', 'introducer_phone', 'introduced phone', 'introducer phone'],
+        'internal_comment' => ['internal_comment', 'internal comment', 'admin_notes', 'admin notes'],
+        'external_comment' => ['external_comment', 'external comment', 'public_notes', 'public notes']
+    ];
+    
+    foreach ($headers as $index => $header) {
+        $header = strtolower(trim($header));
+        
+        foreach ($field_mappings as $field => $possible_names) {
+            if (in_array($header, $possible_names)) {
+                $mapping[$field] = $index;
+                log_message('debug', "Mapped column '{$headers[$index]}' to field '{$field}'");
+                break;
+            }
+        }
+    }
+    
+    return $mapping;
+}
+
+/**
+ * Debug version of row data mapping
+ */
+private function map_row_data_debug($row, $mapping)
+{
+    $data = [];
+    
+    foreach ($mapping as $field => $column_index) {
+        $value = isset($row[$column_index]) ? trim($row[$column_index]) : '';
+        
+        // Handle special field transformations
+        switch ($field) {
+            case 'dob':
+                if ($value && $value !== '') {
+                    try {
+                        if (is_numeric($value)) {
+                            // Excel date serial number
+                            $date = \PhpOffice\PhpSpreadsheet\Shared\Date::excelToDateTimeObject($value);
+                            $data[$field] = $date->format('Y-m-d');
+                        } else {
+                            $date = new DateTime($value);
+                            $data[$field] = $date->format('Y-m-d');
+                        }
+                    } catch (Exception $e) {
+                        $data[$field] = ''; // Invalid date
+                        log_message('debug', "Invalid date format for field {$field}: {$value}");
+                    }
+                }
+                break;
+                
+            case 'father_income':
+            case 'mother_income':
+            case 'guardian_income':
+                $data[$field] = is_numeric($value) ? (float)$value : null;
+                break;
+                
+            case 'sponsorship_start':
+            case 'sponsorship_end':
+                if ($value && $value !== '') {
+                    try {
+                        if (is_numeric($value)) {
+                            $date = \PhpOffice\PhpSpreadsheet\Shared\Date::excelToDateTimeObject($value);
+                            $data[$field] = $date->format('Y-m-d');
+                        } else {
+                            $date = new DateTime($value);
+                            $data[$field] = $date->format('Y-m-d');
+                        }
+                    } catch (Exception $e) {
+                        $data[$field] = '';
+                        log_message('debug', "Invalid date format for field {$field}: {$value}");
+                    }
+                }
+                break;
+                
+            default:
+                $data[$field] = $value;
+                break;
+        }
+    }
+    
+    // Handle lookups for foreign key fields
+    if (!empty($data['country_name'])) {
+        $country_id = $this->get_or_create_country_id($data['country_name']);
+        if ($country_id) {
+            $data['country_id'] = $country_id;
+        }
+        unset($data['country_name']);
+    }
+    
+    if (!empty($data['school_name'])) {
+        $school_id = $this->school_model->get_or_create_school_name_id($data['school_name']);
+        if ($school_id) {
+            $data['school_name_id'] = $school_id;
+        }
+        unset($data['school_name']);
+    }
+    
+    if (!empty($data['bank_name'])) {
+        $bank_id = $this->get_or_create_bank_id($data['bank_name']);
+        if ($bank_id) {
+            $data['bank_id'] = $bank_id;
+        }
+        unset($data['bank_name']);
+    }
+    
+    return $data;
+}
+
+/**
+ * Debug version of validation
+ */
+private function validate_import_row_debug($data, $row_number)
+{
+    if (empty($data['name'])) {
+        return ['valid' => false, 'message' => 'Name is required'];
+    }
+    
+    if (!empty($data['email']) && !filter_var($data['email'], FILTER_VALIDATE_EMAIL)) {
+        return ['valid' => false, 'message' => 'Invalid email format'];
+    }
+    
+    return ['valid' => true];
+}
+
+/**
+ * Debug version of finding existing students
+ */
+private function find_existing_student_debug($data)
+{
+    if (!empty($data['email'])) {
+        $student = $this->db->where('email', $data['email'])
+                           ->get(db_prefix() . 'school_students')
+                           ->row_array();
+        if ($student) {
+            log_message('debug', 'Found existing student by email: ' . $data['email']);
+            return $student;
+        }
+    }
+    
+    if (!empty($data['school_internal_id'])) {
+        $student = $this->db->where('school_internal_id', $data['school_internal_id'])
+                           ->get(db_prefix() . 'school_students')
+                           ->row_array();
+        if ($student) {
+            log_message('debug', 'Found existing student by internal ID: ' . $data['school_internal_id']);
+            return $student;
+        }
+    }
+    
+    return null;
+}
+private function process_school_students_import($file_path)
+{
+    require_once(APPPATH . 'third_party/PHPOffice/vendor/autoload.php');
+    
+    $added = 0;
+    $updated = 0;
+    $errors = 0;
+    $error_details = [];
+    
+    try {
+        // Load the spreadsheet
+        $spreadsheet = \PhpOffice\PhpSpreadsheet\IOFactory::load($file_path);
+        $worksheet = $spreadsheet->getActiveSheet();
+        $rows = $worksheet->toArray();
+        
+        if (empty($rows)) {
+            return ['success' => false, 'message' => 'No data found in file'];
+        }
+        
+        // Get header row and map columns
+        $headers = array_shift($rows);
+        $column_mapping = $this->map_import_columns($headers);
+        
+        if (empty($column_mapping)) {
+            return ['success' => false, 'message' => 'No valid columns found. Please check the template.'];
+        }
+        
+        // Process each row
+        foreach ($rows as $row_index => $row) {
+            $actual_row = $row_index + 2; // +1 for 0-based index, +1 for header row
+            
+            try {
+                // Skip empty rows
+                if (empty(array_filter($row))) {
+                    continue;
+                }
+                
+                // Map row data to our format
+                $student_data = $this->map_row_data($row, $column_mapping);
+                
+                // Validate required fields
+                $validation_result = $this->validate_import_row($student_data, $actual_row);
+                if (!$validation_result['valid']) {
+                    $errors++;
+                    $error_details[] = "Row {$actual_row}: " . $validation_result['message'];
+                    continue;
+                }
+                
+                // Check if student exists (by email or internal ID)
+                $existing_student = $this->find_existing_student($student_data);
+                
+                if ($existing_student) {
+                    // Update existing student
+                    $cleaned_data = $this->clean_school_post_data($student_data, false);
+                    $result = $this->school_model->update($cleaned_data, $existing_student['id']);
+                    
+                    if ($result) {
+                        $updated++;
+                    } else {
+                        $errors++;
+                        $error_details[] = "Row {$actual_row}: Failed to update student";
+                    }
+                } else {
+                    // Add new student
+                    $cleaned_data = $this->clean_school_post_data($student_data, false);
+                    $result = $this->school_model->add($cleaned_data);
+                    
+                    if ($result && !is_array($result)) {
+                        $added++;
+                    } else {
+                        $errors++;
+                        $message = is_array($result) ? $result['message'] : 'Failed to add student';
+                        $error_details[] = "Row {$actual_row}: {$message}";
+                    }
+                }
+                
+            } catch (Exception $e) {
+                $errors++;
+                $error_details[] = "Row {$actual_row}: " . $e->getMessage();
+                log_message('error', "Import row {$actual_row} error: " . $e->getMessage());
+            }
+        }
+        
+        return [
+            'success' => true,
+            'added' => $added,
+            'updated' => $updated,
+            'errors' => $errors,
+            'error_details' => $error_details
+        ];
+        
+    } catch (Exception $e) {
+        log_message('error', 'Excel processing error: ' . $e->getMessage());
+        return ['success' => false, 'message' => 'Failed to process file: ' . $e->getMessage()];
+    }
+}
+
+/**
+ * Map Excel columns to our database fields
+ */
+private function map_import_columns($headers)
+{
+    $mapping = [];
+    
+    // Define column mappings (case-insensitive)
+    $field_mappings = [
+        'name' => ['name', 'student_name', 'full_name', 'student name', 'full name'],
+        'email' => ['email', 'email_address', 'email address'],
+        'phone' => ['phone', 'contact_no', 'phone_number', 'contact_number', 'mobile', 'phone number', 'contact number'],
+        'dob' => ['dob', 'date_of_birth', 'birth_date', 'date of birth', 'birth date'],
+        'address' => ['address', 'home_address', 'home address'],
+        'city' => ['city', 'district', 'location'],
+        'postal_code' => ['postal_code', 'zip', 'zip_code', 'postal code', 'zip code'],
+        'country_name' => ['country', 'country_name', 'country name'],
+        'school_id' => ['school_id', 'student_id', 'school student id', 'student id'],
+        'school_internal_id' => ['internal_id', 'school_internal_id', 'internal id', 'school internal id'],
+        'grade' => ['grade', 'class', 'school_grade', 'student_grade', 'school grade'],
+        'school_type' => ['school_type', 'school type'],
+        'school_name' => ['school', 'school_name', 'school name'],
+        'bank_name' => ['bank', 'bank_name', 'bank name'],
+        'bank_account_number' => ['account_number', 'bank_account', 'account number', 'bank account'],
+        'bank_branch_number' => ['branch_number', 'branch_code', 'branch number', 'branch code'],
+        'bank_branch_info' => ['branch_info', 'branch_information', 'branch info', 'branch information'],
+        'father_name' => ['father_name', 'father name', 'father'],
+        'father_income' => ['father_income', 'father income'],
+        'mother_name' => ['mother_name', 'mother name', 'mother'],
+        'mother_income' => ['mother_income', 'mother income'],
+        'guardian_name' => ['guardian_name', 'guardian name', 'guardian'],
+        'guardian_income' => ['guardian_income', 'guardian income'],
+        'background_information' => ['background', 'background_info', 'background_information', 'background information'],
+        'sponsorship_start' => ['sponsorship_start', 'sponsorship_start_date', 'sponsorship start', 'sponsorship start date'],
+        'sponsorship_end' => ['sponsorship_end', 'sponsorship_end_date', 'sponsorship end', 'sponsorship end date'],
+        'introduced_by' => ['introduced_by', 'introduced by', 'introducer'],
+        'introduced_phone' => ['introduced_phone', 'introducer_phone', 'introduced phone', 'introducer phone'],
+        'internal_comment' => ['internal_comment', 'internal comment', 'admin_notes', 'admin notes'],
+        'external_comment' => ['external_comment', 'external comment', 'public_notes', 'public notes']
+    ];
+    
+    foreach ($headers as $index => $header) {
+        $header = strtolower(trim($header));
+        
+        foreach ($field_mappings as $field => $possible_names) {
+            if (in_array($header, $possible_names)) {
+                $mapping[$field] = $index;
+                break;
+            }
+        }
+    }
+    
+    return $mapping;
+}
+
+/**
+ * Validate import row data
+ */
+private function validate_import_row($data, $row_number)
+{
+    if (empty($data['name'])) {
+        return ['valid' => false, 'message' => 'Name is required'];
+    }
+    
+    if (!empty($data['email']) && !filter_var($data['email'], FILTER_VALIDATE_EMAIL)) {
+        return ['valid' => false, 'message' => 'Invalid email format'];
+    }
+    
+    // Validate age-grade combination if both are provided
+    if (!empty($data['grade']) && !empty($data['dob'])) {
+        try {
+            $dob = new DateTime($data['dob']);
+            $age = $dob->diff(new DateTime())->y;
+            
+            $validation = $this->school_model->validate_age_grade($data['grade'], $age);
+            if (!$validation['valid']) {
+                return ['valid' => false, 'message' => $validation['message']];
+            }
+        } catch (Exception $e) {
+            // Skip age validation if DOB is invalid
+        }
+    }
+    
+    return ['valid' => true];
+}
+
+/**
+ * Find existing student by email or internal ID
+ */
+private function find_existing_student($data)
+{
+    if (!empty($data['email'])) {
+        $student = $this->db->where('email', $data['email'])
+                           ->get(db_prefix() . 'school_students')
+                           ->row_array();
+        if ($student) return $student;
+    }
+    
+    if (!empty($data['school_internal_id'])) {
+        $student = $this->db->where('school_internal_id', $data['school_internal_id'])
+                           ->get(db_prefix() . 'school_students')
+                           ->row_array();
+        if ($student) return $student;
+    }
+    
+    return null;
+}
+
+
+private function generate_csv_template()
+{
+    $filename = 'school_students_import_template_' . date('Y-m-d') . '.csv';
+    
+    // Clear any previous output
+    if (ob_get_length()) {
+        ob_end_clean();
+    }
+    
+    // Set headers for CSV download
+    header('Content-Type: text/csv; charset=utf-8');
+    header('Content-Disposition: attachment; filename="' . $filename . '"');
+    header('Cache-Control: max-age=0');
+    
+    // Create output stream
+    $output = fopen('php://output', 'w');
+    
+    // Add BOM for UTF-8
+    fprintf($output, chr(0xEF).chr(0xBB).chr(0xBF));
+    
+    // Headers
+    $headers = [
+        'Name', 'Email', 'Phone', 'Date of Birth', 'Address', 'City', 'Postal Code', 'Country',
+        'School ID', 'Internal ID', 'Grade', 'School Type', 'School Name',
+        'Bank Name', 'Account Number', 'Branch Number', 'Branch Info',
+        'Father Name', 'Father Income', 'Mother Name', 'Mother Income', 
+        'Guardian Name', 'Guardian Income', 'Background Information',
+        'Sponsorship Start', 'Sponsorship End', 'Introduced By', 'Introducer Phone',
+        'Internal Comment', 'External Comment'
+    ];
+    
+    fputcsv($output, $headers);
+    
+    // Sample data
+    $sampleData = [
+        'John Doe', 'john.doe@email.com', '+94771234567', '2010-01-15', '123 Main St, Colombo',
+        'Colombo', '00100', 'Sri Lanka', 'STU001', 'SCH001', '8', 'Type 1AB', 'Royal College',
+        'Bank of Ceylon', '1234567890', '001', 'Colombo Branch',
+        'Father Name', '50000', 'Mother Name', '30000', 'Guardian Name', '40000',
+        'Student background information', '2024-01-01', '2025-12-31', 'Teacher Name', '+94771234568',
+        'Internal notes', 'External notes'
+    ];
+    
+    fputcsv($output, $sampleData);
+    
+    // Add instructions as comments
+    fputcsv($output, []);
+    fputcsv($output, ['INSTRUCTIONS:']);
+    fputcsv($output, ['1. Fill in your student data starting from row 3']);
+    fputcsv($output, ['2. Name column is required, others are optional']);
+    fputcsv($output, ['3. Dates should be in YYYY-MM-DD format']);
+    fputcsv($output, ['4. Grades: 1-10, O/L, A/L1, A/L2']);
+    fputcsv($output, ['5. Schools and banks will be created if they don\'t exist']);
+    fputcsv($output, ['6. Students with existing email/internal ID will be updated']);
+    
+    fclose($output);
+    exit;
+}
+
+
+/**
+ * Enhanced export with all fields (updated from existing method)
+ */
+public function export_school_students()
+{
+    if (!has_permission('student_sponsor_portal', '', 'view')) {
+        access_denied('student_sponsor_portal');
+    }
+
+    // Check if PHPSpreadsheet is available
+    $autoload_paths = [
+        FCPATH . 'vendor/autoload.php',
+        APPPATH . 'third_party/vendor/autoload.php',
+        APPPATH . 'libraries/vendor/autoload.php'
+    ];
+    
+    $phpspreadsheet_loaded = false;
+    foreach ($autoload_paths as $path) {
+        if (file_exists($path)) {
+            require_once($path);
+            $phpspreadsheet_loaded = true;
+            break;
+        }
+    }
+    
+    if (!$phpspreadsheet_loaded || !class_exists('\PhpOffice\PhpSpreadsheet\Spreadsheet')) {
+        set_alert('danger', 'PHPSpreadsheet not available. Please install via Composer.');
+        redirect(admin_url('student_sponsor_portal/school_students'));
+        return;
+    }
+
+    $students = $this->school_model->get_all();
+    
+    $spreadsheet = new \PhpOffice\PhpSpreadsheet\Spreadsheet();
+    $sheet = $spreadsheet->getActiveSheet();
+    $sheet->setTitle('School Students');
+    
+    // Headers
+    $headers = [
+        'ID', 'Name', 'Email', 'Phone', 'Date of Birth', 'Age', 'Address', 'City', 'Postal Code', 'Country',
+        'School ID', 'Internal ID', 'Grade', 'School Type', 'School',
+        'Bank', 'Account Number', 'Branch Number', 'Branch Info',
+        'Father Name', 'Father Income', 'Mother Name', 'Mother Income',
+        'Guardian Name', 'Guardian Income', 'Background Information',
+        'Sponsorship Start', 'Sponsorship End', 'Introduced By', 'Introducer Phone',
+        'Internal Comment', 'External Comment', 'Staff Active', 'Profile Photo'
+    ];
+    
+    $sheet->fromArray($headers, null, 'A1');
+    
+    $row = 2;
+    foreach ($students as $s) {
+        $data = [
+            $s['id'] ?? '',
+            $s['name'] ?? '',
+            $s['email'] ?? '',
+            $s['contact_no'] ?? '',
+            $s['school_student_dob'] ?? '',
+            $s['school_age'] ?? '',
+            $s['address'] ?? '',
+            $s['city'] ?? '',
+            $s['zip'] ?? '',
+            $s['country_name'] ?? '',
+            $s['school_id'] ?? '',
+            $s['school_internal_id'] ?? '',
+            $s['school_grade'] ?? '',
+            $s['school_type'] ?? '',
+            $s['school_name'] ?? '',
+            $s['bank_name'] ?? '',
+            $s['school_bank_account_no'] ?? '',
+            $s['school_bank_branch_number'] ?? '',
+            $s['school_bank_branch_info'] ?? '',
+            $s['school_father_name'] ?? '',
+            $s['school_father_income'] ?? '',
+            $s['school_mother_name'] ?? '',
+            $s['school_mother_income'] ?? '',
+            $s['school_guardian_name'] ?? '',
+            $s['school_guardian_income'] ?? '',
+            $s['background_info'] ?? '',
+            $s['school_sponsorship_start_date'] ?? '',
+            $s['school_sponsorship_end_date'] ?? '',
+            $s['school_introducedby'] ?? '',
+            $s['school_introducedph'] ?? '',
+            $s['internal_comment'] ?? '',
+            $s['external_comment'] ?? '',
+            !empty($s['staff_active']) ? 'Yes' : 'No',
+            !empty($s['profile_photo']) ? 'Yes' : 'No'
+        ];
+        
+        $sheet->fromArray($data, null, 'A' . $row);
+        $row++;
+    }
+    
+    // Style header
+    $headerStyle = [
+        'font' => ['bold' => true, 'size' => 12],
+        'fill' => ['fillType' => \PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID, 'color' => ['rgb' => 'E8E8E8']],
+        'borders' => ['allBorders' => ['borderStyle' => \PhpOffice\PhpSpreadsheet\Style\Border::BORDER_THIN]],
+        'alignment' => ['horizontal' => \PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER]
+    ];
+    
+    $sheet->getStyle('A1:' . $sheet->getHighestColumn() . '1')->applyFromArray($headerStyle);
+    
+    // Auto-size columns
+    foreach (range('A', $sheet->getHighestColumn()) as $col) {
+        $sheet->getColumnDimension($col)->setAutoSize(true);
+    }
+    
+    // Add summary sheet
+    $summarySheet = $spreadsheet->createSheet();
+    $summarySheet->setTitle('Summary');
+    
+    $totalStudents = count($students);
+    $activeStudents = count(array_filter($students, function($s) { return !empty($s['staff_active']); }));
+    $verifiedStudents = count(array_filter($students, function($s) { return !empty($s['staff_id']); }));
+    $withPhotos = count(array_filter($students, function($s) { return !empty($s['profile_photo']); }));
+    
+    $summary = [
+        ['School Students Export Summary'],
+        [''],
+        ['Export Date:', date('Y-m-d H:i:s')],
+        ['Total Students:', $totalStudents],
+        ['Active Students:', $activeStudents],
+        ['Verified Students:', $verifiedStudents],
+        ['Students with Photos:', $withPhotos],
+        [''],
+        ['Grade Distribution:']
+    ];
+    
+    // Add grade distribution
+    $gradeDistribution = [];
+    foreach ($students as $student) {
+        $grade = $student['school_grade'] ?? 'Unknown';
+        if (!isset($gradeDistribution[$grade])) {
+            $gradeDistribution[$grade] = 0;
+        }
+        $gradeDistribution[$grade]++;
+    }
+    
+    foreach ($gradeDistribution as $grade => $count) {
+        $summary[] = ["Grade {$grade}:", $count];
+    }
+    
+    $summarySheet->fromArray($summary, null, 'A1');
+    $summarySheet->getColumnDimension('A')->setWidth(20);
+    $summarySheet->getColumnDimension('B')->setWidth(15);
+    
+    // Style summary header
+    $summarySheet->getStyle('A1')->applyFromArray([
+        'font' => ['bold' => true, 'size' => 14],
+        'fill' => ['fillType' => \PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID, 'color' => ['rgb' => 'D4E6F1']]
+    ]);
+    
+    // Set active sheet back to students
+    $spreadsheet->setActiveSheetIndex(0);
+    
+    $filename = 'school_students_export_' . date('Y-m-d_H-i-s') . '.xlsx';
+    
+    header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    header('Content-Disposition: attachment; filename="' . $filename . '"');
+    header('Cache-Control: max-age=0');
+    
+    $writer = new \PhpOffice\PhpSpreadsheet\Writer\Xlsx($spreadsheet);
+    $writer->save('php://output');
+    exit;
+}
+
+/**
+ * Export students by specific IDs (for filtered/selected exports)
+ */
+public function export_school_students_by_ids()
+{
+    if (!has_permission('student_sponsor_portal', '', 'view')) {
+        access_denied('student_sponsor_portal');
+    }
+
+    $student_ids_json = $this->input->post('student_ids');
+    $filename_prefix = $this->input->post('filename') ?: 'school_students_export';
+    
+    if (empty($student_ids_json)) {
+        set_alert('danger', 'No students selected for export');
+        redirect(admin_url('student_sponsor_portal/school_students'));
+        return;
+    }
+    
+    $student_ids = json_decode($student_ids_json, true);
+    if (!is_array($student_ids) || empty($student_ids)) {
+        set_alert('danger', 'Invalid student selection');
+        redirect(admin_url('student_sponsor_portal/school_students'));
+        return;
+    }
+    
+    // Sanitize IDs
+    $student_ids = array_map('intval', $student_ids);
+    $student_ids = array_filter($student_ids, function($id) { return $id > 0; });
+    
+    if (empty($student_ids)) {
+        set_alert('danger', 'No valid students selected');
+        redirect(admin_url('student_sponsor_portal/school_students'));
+        return;
+    }
+
+    // Check if PHPSpreadsheet is available
+    $autoload_paths = [
+        FCPATH . 'vendor/autoload.php',
+        APPPATH . 'third_party/vendor/autoload.php',
+        APPPATH . 'libraries/vendor/autoload.php'
+    ];
+    
+    $phpspreadsheet_loaded = false;
+    foreach ($autoload_paths as $path) {
+        if (file_exists($path)) {
+            require_once($path);
+            $phpspreadsheet_loaded = true;
+            break;
+        }
+    }
+    
+    if (!$phpspreadsheet_loaded || !class_exists('\PhpOffice\PhpSpreadsheet\Spreadsheet')) {
+        set_alert('danger', 'PHPSpreadsheet not available. Please install via Composer.');
+        redirect(admin_url('student_sponsor_portal/school_students'));
+        return;
+    }
+
+    // Get students by IDs
+    $students = $this->get_students_by_ids($student_ids);
+    
+    if (empty($students)) {
+        set_alert('danger', 'No students found for export');
+        redirect(admin_url('student_sponsor_portal/school_students'));
+        return;
+    }
+    
+    $spreadsheet = new \PhpOffice\PhpSpreadsheet\Spreadsheet();
+    $sheet = $spreadsheet->getActiveSheet();
+    $sheet->setTitle('Selected Students');
+    
+    // Headers (same as full export)
+    $headers = [
+        'ID', 'Name', 'Email', 'Phone', 'Date of Birth', 'Age', 'Address', 'City', 'Postal Code', 'Country',
+        'School ID', 'Internal ID', 'Grade', 'School Type', 'School',
+        'Bank', 'Account Number', 'Branch Number', 'Branch Info',
+        'Father Name', 'Father Income', 'Mother Name', 'Mother Income',
+        'Guardian Name', 'Guardian Income', 'Background Information',
+        'Sponsorship Start', 'Sponsorship End', 'Introduced By', 'Introducer Phone',
+        'Internal Comment', 'External Comment', 'Staff Active'
+    ];
+    
+    $sheet->fromArray($headers, null, 'A1');
+    
+    $row = 2;
+    foreach ($students as $s) {
+        $data = [
+            $s['id'] ?? '',
+            $s['name'] ?? '',
+            $s['email'] ?? '',
+            $s['contact_no'] ?? '',
+            $s['school_student_dob'] ?? '',
+            $s['school_age'] ?? '',
+            $s['address'] ?? '',
+            $s['city'] ?? '',
+            $s['zip'] ?? '',
+            $s['country_name'] ?? '',
+            $s['school_id'] ?? '',
+            $s['school_internal_id'] ?? '',
+            $s['school_grade'] ?? '',
+            $s['school_type'] ?? '',
+            $s['school_name'] ?? '',
+            $s['bank_name'] ?? '',
+            $s['school_bank_account_no'] ?? '',
+            $s['school_bank_branch_number'] ?? '',
+            $s['school_bank_branch_info'] ?? '',
+            $s['school_father_name'] ?? '',
+            $s['school_father_income'] ?? '',
+            $s['school_mother_name'] ?? '',
+            $s['school_mother_income'] ?? '',
+            $s['school_guardian_name'] ?? '',
+            $s['school_guardian_income'] ?? '',
+            $s['background_info'] ?? '',
+            $s['school_sponsorship_start_date'] ?? '',
+            $s['school_sponsorship_end_date'] ?? '',
+            $s['school_introducedby'] ?? '',
+            $s['school_introducedph'] ?? '',
+            $s['internal_comment'] ?? '',
+            $s['external_comment'] ?? '',
+            !empty($s['staff_active']) ? 'Yes' : 'No'
+        ];
+        
+        $sheet->fromArray($data, null, 'A' . $row);
+        $row++;
+    }
+    
+    // Style header
+    $headerStyle = [
+        'font' => ['bold' => true, 'size' => 12],
+        'fill' => ['fillType' => \PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID, 'color' => ['rgb' => 'E8E8E8']],
+        'borders' => ['allBorders' => ['borderStyle' => \PhpOffice\PhpSpreadsheet\Style\Border::BORDER_THIN]],
+        'alignment' => ['horizontal' => \PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER]
+    ];
+    
+    $sheet->getStyle('A1:' . $sheet->getHighestColumn() . '1')->applyFromArray($headerStyle);
+    
+    // Auto-size columns
+    foreach (range('A', $sheet->getHighestColumn()) as $col) {
+        $sheet->getColumnDimension($col)->setAutoSize(true);
+    }
+    
+    $filename = $filename_prefix . '_' . date('Y-m-d_H-i-s') . '.xlsx';
+    
+    header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    header('Content-Disposition: attachment; filename="' . $filename . '"');
+    header('Cache-Control: max-age=0');
+    
+    $writer = new \PhpOffice\PhpSpreadsheet\Writer\Xlsx($spreadsheet);
+    $writer->save('php://output');
+    exit;
+}
+
+/**
+ * Get students by specific IDs with all joined data
+ */
+private function get_students_by_ids($student_ids)
+{
+    if (empty($student_ids)) {
+        return [];
+    }
+    
+    $c = $this->country_schema();
+
+    $this->db->select('
+        ss.*,
+        sn.name AS school_name,
+        b.name  AS bank_name' .
+        ($c['table'] ? ', c.' . $c['name'] . ' AS country_name' : ', NULL AS country_name')
+    , false);
+
+    $this->db->from(db_prefix() . 'school_students ss');
+    $this->db->join(db_prefix() . 'school_name sn', 'sn.id = ss.school_name_id', 'left');
+
+    if ($c['table']) {
+        $this->db->join($c['table'].' c', 'c.'.$c['id'].' = ss.country_id', 'left');
+    }
+
+    $this->db->join(db_prefix() . 'bank b', 'b.id = ss.bank_id', 'left');
+    $this->db->where_in('ss.id', $student_ids);
+    $this->db->order_by('ss.id', 'ASC');
+    
+    return $this->db->get()->result_array();
+}
+
+/**
+ * Get country schema (helper method - add if not exists)
+ */
+private function country_schema()
+{
+    if ($this->db->table_exists(db_prefix().'countries')) {
+        return ['table'=>db_prefix().'countries','id'=>'country_id','name'=>'short_name'];
+    }
+    if ($this->db->table_exists(db_prefix().'country')) {
+        return ['table'=>db_prefix().'country','id'=>'id','name'=>'name'];
+    }
+    return ['table'=>null,'id'=>null,'name'=>null];
+}
     public function add_school_name()
     {
         header('Content-Type: application/json');
@@ -1466,6 +3913,706 @@ private function detect_mime_type($file_path, $uploaded_type = null)
         set_alert('success', 'Portal access revoked.');
         redirect(admin_url('student_sponsor_portal/school_student_form/' . $student_id));
     }
+
+
+    /**
+ * Check if current user is a sponsor with entity access
+ */
+private function is_sponsor_user()
+{
+    if (!is_staff_logged_in()) {
+        return false;
+    }
+    
+    $staff_id = get_staff_user_id();
+    
+    // Check if this staff member is linked to a sponsor record
+    $sponsor = $this->db->select('id, name, staff_id')
+                       ->where('staff_id', $staff_id)
+                       ->where('active', 1) // Assuming you have an active field
+                       ->get(db_prefix() . 'sponsor_records')
+                       ->row();
+    
+    return $sponsor ? $sponsor : false;
+}
+
+/**
+ * Check sponsor access control for restricted areas
+ */
+private function _check_sponsor_access()
+{
+    // Skip access control for AJAX requests and specific methods
+    if ($this->input->is_ajax_request()) {
+        return;
+    }
+    
+    $current_sponsor = $this->is_sponsor_user();
+    
+    if ($current_sponsor) {
+        $method = $this->router->fetch_method();
+        
+        // Allowed methods for sponsors (read-only access)
+        $allowed_methods = [
+            'index',  // Dashboard redirect
+            'sponsor_profile', // Sponsor profile view
+            'my_sponsored_students', // Students list
+            'student_detail', // Student detail view
+            'debug_sponsor_info', // Debug method for sponsors
+            'view_sponsored_student', // Alternative student detail view
+            'download_school_report_card', // Download student reports
+            'download_university_report_card', // Download university reports
+            'display_school_photo', // View student photos
+            'display_profile_photo', // View university student photos
+        ];
+        
+        // Only redirect if accessing forbidden methods
+        if (!in_array($method, $allowed_methods)) {
+            set_alert('info', 'You have been redirected to your sponsor dashboard.');
+            redirect(admin_url('student_sponsor_portal/sponsor_profile'));
+        }
+    }
+}
+
+/**
+ * Get current sponsor's sponsored students
+ */
+private function get_sponsor_students($sponsor_id)
+{
+    $students = [];
+    
+    // Get school students sponsored by this sponsor
+    $school_students = $this->db->select('
+        ss.id,
+        ss.name,
+        ss.school_grade,
+        ss.school_internal_id,
+        ss.email,
+        ss.contact_no,
+        ss.city,
+        sn.name as school_name,
+        "school" as student_type
+    ')
+    ->from(db_prefix() . 'sponsor_transactions st')
+    ->join(db_prefix() . 'school_students ss', 'ss.id = st.school_student_id', 'inner')
+    ->join(db_prefix() . 'school_name sn', 'sn.id = ss.school_name_id', 'left')
+    ->where('st.sponsor_id', $sponsor_id)
+    ->where('ss.school_internal_id IS NOT NULL')
+    ->group_by('ss.id')
+    ->get()
+    ->result_array();
+    
+    // Get university students sponsored by this sponsor
+    $university_students = $this->db->select('
+        us.id,
+        us.name,
+        us.university_year_of_study,
+        us.university_internal_id,
+        us.email,
+        us.contact_no,
+        us.city,
+        un.name as university_name,
+        up.name as program_name,
+        "university" as student_type
+    ')
+    ->from(db_prefix() . 'sponsor_transactions st')
+    ->join(db_prefix() . 'university_students us', 'us.id = st.university_student_id', 'inner')
+    ->join(db_prefix() . 'university_name un', 'un.id = us.university_name_id', 'left')
+    ->join(db_prefix() . 'university_program up', 'up.id = us.university_program_id', 'left')
+    ->where('st.sponsor_id', $sponsor_id)
+    ->where('us.university_internal_id IS NOT NULL')
+    ->group_by('us.id')
+    ->get()
+    ->result_array();
+    
+    return array_merge($school_students, $university_students);
+}
+
+/**
+ * Get sponsor's transaction summary
+ */
+private function get_sponsor_transaction_summary($sponsor_id)
+{
+    $summary = $this->db->select('
+        COUNT(*) as total_transactions,
+        SUM(total_amount) as total_committed,
+        SUM(amount_paid) as total_paid,
+        SUM(balance_amount) as total_outstanding
+    ')
+    ->where('sponsor_id', $sponsor_id)
+    ->get(db_prefix() . 'sponsor_transactions')
+    ->row_array();
+    
+    return $summary;
+}
+
+/**
+ * Sponsor Dashboard - Read-only view of sponsored students
+ */
+public function sponsor_dashboard()
+{
+    // Check if user is a sponsor
+    $current_sponsor = $this->is_sponsor_user();
+    if (!$current_sponsor) {
+        // If not a sponsor, check if they have regular permissions
+        if (!has_permission('student_sponsor_portal', '', 'view')) {
+            access_denied('student_sponsor_portal');
+        }
+        // If admin/staff, redirect to main dashboard
+        redirect(admin_url('student_sponsor_portal'));
+        return;
+    }
+
+    try {
+        $sponsor_id = (int)$current_sponsor->id;
+        
+        // Get sponsored students
+        $sponsored_students = $this->get_sponsor_students($sponsor_id);
+        
+        // Get transaction summary
+        $transaction_summary = $this->get_sponsor_transaction_summary($sponsor_id);
+        
+        // Get recent transactions
+        $recent_transactions = $this->db->select('
+            st.*,
+            ss.name as school_student_name,
+            ss.school_internal_id,
+            us.name as university_student_name,
+            us.university_internal_id
+        ')
+        ->from(db_prefix() . 'sponsor_transactions st')
+        ->join(db_prefix() . 'school_students ss', 'ss.id = st.school_student_id', 'left')
+        ->join(db_prefix() . 'university_students us', 'us.id = st.university_student_id', 'left')
+        ->where('st.sponsor_id', $sponsor_id)
+        ->order_by('st.created_date', 'DESC')
+        ->limit(10)
+        ->get()
+        ->result_array();
+        
+        // Get payment history
+        $payment_history = $this->db->select('
+            sp.*,
+            st.total_amount,
+            ss.name as school_student_name,
+            us.name as university_student_name
+        ')
+        ->from(db_prefix() . 'sponsor_payments sp')
+        ->join(db_prefix() . 'sponsor_transactions st', 'st.id = sp.transaction_id', 'inner')
+        ->join(db_prefix() . 'school_students ss', 'ss.id = st.school_student_id', 'left')
+        ->join(db_prefix() . 'university_students us', 'us.id = st.university_student_id', 'left')
+        ->where('sp.sponsor_id', $sponsor_id)
+        ->order_by('sp.payment_date', 'DESC')
+        ->limit(15)
+        ->get()
+        ->result_array();
+        
+        $data = [
+            'title' => 'My Sponsored Students',
+            'sponsor' => $current_sponsor,
+            'sponsored_students' => $sponsored_students,
+            'transaction_summary' => $transaction_summary,
+            'recent_transactions' => $recent_transactions,
+            'payment_history' => $payment_history,
+            'is_sponsor_view' => true
+        ];
+        
+        $this->load->view('student_sponsor_portal/sponsor_dashboard', $data);
+        
+    } catch (Exception $e) {
+        log_message('error', 'Error in sponsor_dashboard: ' . $e->getMessage());
+        show_error('An error occurred while loading your dashboard: ' . $e->getMessage(), 500);
+    }
+}
+
+
+/**
+ * View transaction details (read-only for sponsors)
+ */
+public function view_transaction_details($transaction_id = null)
+{
+    $current_sponsor = $this->is_sponsor_user();
+    if (!$current_sponsor) {
+        access_denied('student_sponsor_portal');
+    }
+    
+    if (!$transaction_id) {
+        set_alert('danger', 'Transaction ID required');
+        redirect(admin_url('student_sponsor_portal/sponsor_dashboard'));
+        return;
+    }
+    
+    $sponsor_id = (int)$current_sponsor->id;
+    $transaction_id = (int)$transaction_id;
+    
+    // Get transaction and verify sponsor access
+    $transaction = $this->db->select('
+        st.*,
+        ss.name as school_student_name,
+        ss.school_internal_id,
+        us.name as university_student_name,
+        us.university_internal_id
+    ')
+    ->from(db_prefix() . 'sponsor_transactions st')
+    ->join(db_prefix() . 'school_students ss', 'ss.id = st.school_student_id', 'left')
+    ->join(db_prefix() . 'university_students us', 'us.id = st.university_student_id', 'left')
+    ->where('st.id', $transaction_id)
+    ->where('st.sponsor_id', $sponsor_id)
+    ->get()
+    ->row_array();
+    
+    if (!$transaction) {
+        set_alert('danger', 'Transaction not found or access denied');
+        redirect(admin_url('student_sponsor_portal/sponsor_dashboard'));
+        return;
+    }
+    
+    // Get payments for this transaction
+    $payments = $this->db->select('*')
+        ->where('transaction_id', $transaction_id)
+        ->order_by('payment_date', 'DESC')
+        ->get(db_prefix() . 'sponsor_payments')
+        ->result_array();
+    
+    $data = [
+        'title' => 'Transaction Details',
+        'transaction' => $transaction,
+        'payments' => $payments,
+        'sponsor' => $current_sponsor,
+        'is_sponsor_view' => true
+    ];
+    
+    $this->load->view('student_sponsor_portal/sponsor_transaction_detail', $data);
+}
+
+
+
+
+
+// Add these methods to your Student_sponsor_portal.php controller
+
+/**
+ * Sponsor Profile - Read-only view for sponsors
+ */
+public function sponsor_profile()
+{
+    $current_sponsor = $this->is_sponsor_user();
+    if (!$current_sponsor) {
+        access_denied('student_sponsor_portal');
+    }
+
+    try {
+        $sponsor_id = (int)$current_sponsor->id;
+        $sponsor = $this->sponsor_model->get_by_id($sponsor_id);
+        
+        if (!$sponsor) {
+            set_alert('danger', 'Sponsor profile not found');
+            redirect(admin_url(''));
+            return;
+        }
+
+        // Get basic statistics
+        $stats = [
+            'total_students' => count($this->get_sponsor_students($sponsor_id)),
+            'school_students' => count($this->get_sponsor_students_by_type($sponsor_id, 'school')),
+            'university_students' => count($this->get_sponsor_students_by_type($sponsor_id, 'university')),
+            'total_transactions' => $this->db->where('sponsor_id', $sponsor_id)->count_all_results(db_prefix() . 'sponsor_transactions'),
+            'total_committed' => $this->db->select_sum('total_amount')->where('sponsor_id', $sponsor_id)->get(db_prefix() . 'sponsor_transactions')->row()->total_amount ?? 0,
+            'total_paid' => $this->db->select_sum('amount_paid')->where('sponsor_id', $sponsor_id)->get(db_prefix() . 'sponsor_transactions')->row()->amount_paid ?? 0,
+        ];
+
+        $data = [
+            'title' => 'My Profile',
+            'sponsor' => $sponsor,
+            'stats' => $stats,
+            'is_sponsor_view' => true
+        ];
+
+        $this->load->view('student_sponsor_portal/sponsor_profile', $data);
+
+    } catch (Exception $e) {
+        log_message('error', 'Error in sponsor_profile: ' . $e->getMessage());
+        show_error('Error loading profile', 500);
+    }
+}
+public function view_sponsored_student($student_type = null, $student_id = null)
+{
+    $current_sponsor = $this->is_sponsor_user();
+    if (!$current_sponsor) {
+        access_denied('student_sponsor_portal');
+    }
+    
+    if (!$student_type || !$student_id || !in_array($student_type, ['school', 'university'])) {
+        set_alert('danger', 'Invalid student reference');
+        redirect(admin_url('student_sponsor_portal/my_sponsored_students'));
+        return;
+    }
+    
+    $sponsor_id = (int)$current_sponsor->id;
+    $student_id = (int)$student_id;
+    
+    // Verify this sponsor has access to this student
+    $access_check = $this->db->select('id')
+        ->where('sponsor_id', $sponsor_id)
+        ->where($student_type . '_student_id', $student_id)
+        ->get(db_prefix() . 'sponsor_transactions')
+        ->row();
+    
+    if (!$access_check) {
+        set_alert('danger', 'You do not have access to view this student');
+        redirect(admin_url('student_sponsor_portal/my_sponsored_students'));
+        return;
+    }
+    
+    try {
+        if ($student_type === 'school') {
+            $student = $this->school_model->get_by_id($student_id);
+            $report_cards = $this->school_model->get_report_cards($student_id);
+        } else {
+            $student = $this->university_model->get_by_id($student_id);
+            $report_cards = $this->university_model->get_report_cards($student_id);
+        }
+        
+        if (!$student) {
+            set_alert('danger', 'Student not found');
+            redirect(admin_url('student_sponsor_portal/my_sponsored_students'));
+            return;
+        }
+        
+        // Get transactions for this student from this sponsor
+        $transactions = $this->db->select('*')
+            ->where('sponsor_id', $sponsor_id)
+            ->where($student_type . '_student_id', $student_id)
+            ->order_by('created_date', 'DESC')
+            ->get(db_prefix() . 'sponsor_transactions')
+            ->result_array();
+        
+        $data = [
+            'title' => 'Student Details - ' . $student['name'],
+            'student' => $student,
+            'student_type' => $student_type,
+            'transactions' => $transactions,
+            'report_cards' => $report_cards,
+            'sponsor' => $current_sponsor,
+            'is_sponsor_view' => true
+        ];
+        
+        $this->load->view('student_sponsor_portal/sponsor_student_detail', $data);
+        
+    } catch (Exception $e) {
+        log_message('error', 'Error viewing sponsored student: ' . $e->getMessage());
+        set_alert('danger', 'Error loading student details');
+        redirect(admin_url('student_sponsor_portal/my_sponsored_students'));
+    }
+}
+
+/**
+ * Alternative student view method with simpler routing
+ */
+public function student_detail()
+{
+    $current_sponsor = $this->is_sponsor_user();
+    if (!$current_sponsor) {
+        access_denied('student_sponsor_portal');
+    }
+    
+    $student_type = $this->input->get('type'); // 'school' or 'university'
+    $student_id = (int)$this->input->get('id');
+    
+    if (!$student_type || !$student_id || !in_array($student_type, ['school', 'university'])) {
+        set_alert('danger', 'Invalid student reference');
+        redirect(admin_url('student_sponsor_portal/my_sponsored_students'));
+        return;
+    }
+    
+    $sponsor_id = (int)$current_sponsor->id;
+    
+    try {
+        // Step 1: Verify this sponsor has access to this student
+        $table_name = db_prefix() . 'sponsor_transactions';
+        $access_query = $this->db->select('id')
+            ->from($table_name)
+            ->where('sponsor_id', $sponsor_id)
+            ->where($student_type . '_student_id', $student_id);
+        
+        $access_check = $access_query->get()->row();
+        
+        if (!$access_check) {
+            set_alert('danger', 'You do not have access to view this student');
+            redirect(admin_url('student_sponsor_portal/my_sponsored_students'));
+            return;
+        }
+        
+        // Step 2: Get student information
+        if ($student_type === 'school') {
+            $student = $this->school_model->get_by_id($student_id);
+            // Handle report cards safely
+            try {
+                $report_cards = $this->school_model->get_report_cards($student_id);
+            } catch (Exception $e) {
+                log_message('warning', 'Could not load school report cards: ' . $e->getMessage());
+                $report_cards = ['success' => false, 'report_cards' => []];
+            }
+        } else {
+            $student = $this->university_model->get_by_id($student_id);
+            // Handle report cards safely
+            try {
+                $report_cards = $this->university_model->get_report_cards($student_id);
+            } catch (Exception $e) {
+                log_message('warning', 'Could not load university report cards: ' . $e->getMessage());
+                $report_cards = ['success' => false, 'report_cards' => []];
+            }
+        }
+        
+        if (!$student) {
+            set_alert('danger', 'Student not found');
+            redirect(admin_url('student_sponsor_portal/my_sponsored_students'));
+            return;
+        }
+        
+        // Step 3: Get transactions for this student from this sponsor (with error handling)
+        $transactions = [];
+        try {
+            $txn_query = $this->db->select('*')
+                ->from($table_name)
+                ->where('sponsor_id', $sponsor_id)
+                ->where($student_type . '_student_id', $student_id);
+            
+            $transactions = $txn_query->get()->result_array();
+            
+            // Sort in PHP if we got results
+            if (!empty($transactions)) {
+                usort($transactions, function($a, $b) {
+                    return $b['id'] - $a['id']; // Sort by ID DESC
+                });
+            }
+        } catch (Exception $e) {
+            log_message('error', 'Error loading transactions: ' . $e->getMessage());
+            $transactions = [];
+        }
+        
+        $data = [
+            'title' => 'Student Details - ' . $student['name'],
+            'student' => $student,
+            'student_type' => $student_type,
+            'transactions' => $transactions,
+            'report_cards' => $report_cards,
+            'sponsor' => $current_sponsor,
+            'is_sponsor_view' => true
+        ];
+        
+        $this->load->view('student_sponsor_portal/sponsor_student_detail', $data);
+        
+    } catch (Exception $e) {
+        log_message('error', 'Error in student_detail: ' . $e->getMessage());
+        set_alert('danger', 'Error loading student details. Please try again or contact support.');
+        redirect(admin_url('student_sponsor_portal/my_sponsored_students'));
+    }
+}
+
+
+public function debug_sponsor_info()
+{
+    $current_sponsor = $this->is_sponsor_user();
+    if (!$current_sponsor) {
+        show_error('Sponsor access required', 403);
+    }
+    
+    echo "<h2>Debug Sponsor Information</h2>";
+    echo "<p><strong>Sponsor ID:</strong> " . $current_sponsor->id . "</p>";
+    echo "<p><strong>Sponsor Name:</strong> " . $current_sponsor->name . "</p>";
+    
+    $table_name = db_prefix() . 'sponsor_transactions';
+    
+    // Check if table exists
+    if ($this->db->table_exists($table_name)) {
+        echo "<p><strong>Table exists:</strong> $table_name</p>";
+        
+        // Get table structure
+        $fields = $this->db->list_fields($table_name);
+        echo "<h3>Table Columns:</h3>";
+        echo "<ul>";
+        foreach ($fields as $field) {
+            echo "<li>$field</li>";
+        }
+        echo "</ul>";
+        
+        // Check for transactions for this sponsor
+        $sponsor_txns = $this->db->where('sponsor_id', $current_sponsor->id)
+                                ->get($table_name)
+                                ->result_array();
+        
+        echo "<h3>Your Transactions:</h3>";
+        echo "<p>Found " . count($sponsor_txns) . " transactions</p>";
+        
+        if (!empty($sponsor_txns)) {
+            echo "<h4>Sample Transaction:</h4>";
+            echo "<pre>" . print_r($sponsor_txns[0], true) . "</pre>";
+        }
+        
+        // Check for students linked to this sponsor
+        echo "<h3>Students Check:</h3>";
+        
+        // School students
+        $school_students = $this->db->select('ss.id, ss.name, ss.school_internal_id')
+            ->from(db_prefix() . 'sponsor_transactions st')
+            ->join(db_prefix() . 'school_students ss', 'ss.id = st.school_student_id', 'inner')
+            ->where('st.sponsor_id', $current_sponsor->id)
+            ->where('ss.school_internal_id IS NOT NULL')
+            ->group_by('ss.id')
+            ->get()
+            ->result_array();
+        
+        echo "<p><strong>School Students:</strong> " . count($school_students) . "</p>";
+        if (!empty($school_students)) {
+            foreach ($school_students as $student) {
+                echo "<p>- ID {$student['id']}: {$student['name']} ({$student['school_internal_id']})</p>";
+            }
+        }
+        
+        // University students
+        $university_students = $this->db->select('us.id, us.name, us.university_internal_id')
+            ->from(db_prefix() . 'sponsor_transactions st')
+            ->join(db_prefix() . 'university_students us', 'us.id = st.university_student_id', 'inner')
+            ->where('st.sponsor_id', $current_sponsor->id)
+            ->where('us.university_internal_id IS NOT NULL')
+            ->group_by('us.id')
+            ->get()
+            ->result_array();
+        
+        echo "<p><strong>University Students:</strong> " . count($university_students) . "</p>";
+        if (!empty($university_students)) {
+            foreach ($university_students as $student) {
+                echo "<p>- ID {$student['id']}: {$student['name']} ({$student['university_internal_id']})</p>";
+            }
+        }
+        
+    } else {
+        echo "<p style='color:red;'><strong>Table does not exist:</strong> $table_name</p>";
+    }
+}
+
+
+
+
+
+/**
+ * My Sponsored Students - Filterable list for sponsors
+ */
+public function my_sponsored_students()
+{
+    $current_sponsor = $this->is_sponsor_user();
+    if (!$current_sponsor) {
+        access_denied('student_sponsor_portal');
+    }
+
+    try {
+        $sponsor_id = (int)$current_sponsor->id;
+        
+        // Get filter parameters
+        $student_type = $this->input->get('type'); // 'school', 'university', or 'all'
+        $search = trim($this->input->get('search') ?? '');
+        
+        // Get students based on filter
+        if ($student_type === 'school') {
+            $students = $this->get_sponsor_students_by_type($sponsor_id, 'school');
+        } elseif ($student_type === 'university') {
+            $students = $this->get_sponsor_students_by_type($sponsor_id, 'university');
+        } else {
+            $students = $this->get_sponsor_students($sponsor_id);
+        }
+
+        // Apply search filter if provided
+        if (!empty($search)) {
+            $students = array_filter($students, function($student) use ($search) {
+                return stripos($student['name'], $search) !== false ||
+                       stripos($student['school_internal_id'] ?? $student['university_internal_id'], $search) !== false ||
+                       stripos($student['city'] ?? '', $search) !== false;
+            });
+        }
+
+        // Get transaction summaries for each student
+        foreach ($students as &$student) {
+            $student_id_field = $student['student_type'] . '_student_id';
+            
+            $txn_summary = $this->db->select('
+                COUNT(*) as transaction_count,
+                SUM(total_amount) as total_amount,
+                SUM(amount_paid) as amount_paid,
+                SUM(balance_amount) as balance_amount
+            ')
+            ->where('sponsor_id', $sponsor_id)
+            ->where($student_id_field, $student['id'])
+            ->get(db_prefix() . 'sponsor_transactions')
+            ->row_array();
+            
+            $student['transaction_summary'] = $txn_summary;
+        }
+
+        $data = [
+            'title' => 'My Sponsored Students',
+            'sponsor' => $current_sponsor,
+            'students' => $students,
+            'current_filter' => $student_type ?: 'all',
+            'current_search' => $search,
+            'is_sponsor_view' => true
+        ];
+
+        $this->load->view('student_sponsor_portal/sponsor_students_list', $data);
+
+    } catch (Exception $e) {
+        log_message('error', 'Error in my_sponsored_students: ' . $e->getMessage());
+        show_error('Error loading students', 500);
+    }
+}
+
+/**
+ * Get sponsor students by type (helper method)
+ */
+private function get_sponsor_students_by_type($sponsor_id, $type)
+{
+    if ($type === 'school') {
+        return $this->db->select('
+            ss.id,
+            ss.name,
+            ss.school_grade,
+            ss.school_internal_id,
+            ss.email,
+            ss.contact_no,
+            ss.city,
+            sn.name as school_name,
+            "school" as student_type
+        ')
+        ->from(db_prefix() . 'sponsor_transactions st')
+        ->join(db_prefix() . 'school_students ss', 'ss.id = st.school_student_id', 'inner')
+        ->join(db_prefix() . 'school_name sn', 'sn.id = ss.school_name_id', 'left')
+        ->where('st.sponsor_id', $sponsor_id)
+        ->where('ss.school_internal_id IS NOT NULL')
+        ->group_by('ss.id')
+        ->get()
+        ->result_array();
+    } else {
+        return $this->db->select('
+            us.id,
+            us.name,
+            us.university_year_of_study,
+            us.university_internal_id,
+            us.email,
+            us.contact_no,
+            us.city,
+            un.name as university_name,
+            up.name as program_name,
+            "university" as student_type
+        ')
+        ->from(db_prefix() . 'sponsor_transactions st')
+        ->join(db_prefix() . 'university_students us', 'us.id = st.university_student_id', 'inner')
+        ->join(db_prefix() . 'university_name un', 'un.id = us.university_name_id', 'left')
+        ->join(db_prefix() . 'university_program up', 'up.id = us.university_program_id', 'left')
+        ->where('st.sponsor_id', $sponsor_id)
+        ->where('us.university_internal_id IS NOT NULL')
+        ->group_by('us.id')
+        ->get()
+        ->result_array();
+    }
+}
 
 
 
@@ -2358,6 +5505,585 @@ private function detect_mime_type($file_path, $uploaded_type = null)
             echo json_encode(['success'=>false,'message'=>'Failed to delete student']);
         }
     }
+
+/**
+ * Bulk import university students from Excel/CSV
+ */
+public function bulk_import_university_students()
+{
+    if (!has_permission('student_sponsor_portal', '', 'create')) {
+        access_denied('student_sponsor_portal');
+    }
+
+    // Handle POST submission
+    if ($this->input->method() === 'post') {
+        log_message('debug', 'University Import: POST request received for bulk import');
+        
+        if (empty($_FILES['import_file']['name'])) {
+            log_message('error', 'University Import: No file uploaded');
+            set_alert('danger', 'Please select a file to import');
+            redirect(admin_url('student_sponsor_portal/bulk_import_university_students'));
+            return;
+        }
+
+        $file_data = $_FILES['import_file'];
+        log_message('debug', 'University Import: File uploaded - ' . $file_data['name'] . ' (' . $file_data['size'] . ' bytes)');
+
+        // Validate file type - Accept both Excel and CSV
+        $file_ext = strtolower(pathinfo($file_data['name'], PATHINFO_EXTENSION));
+        $allowed_extensions = ['xlsx', 'xls', 'csv'];
+        
+        if (!in_array($file_ext, $allowed_extensions)) {
+            log_message('error', 'University Import: Invalid file type - ' . $file_ext);
+            set_alert('danger', 'Only Excel (.xlsx, .xls) and CSV files are supported.');
+            redirect(admin_url('student_sponsor_portal/bulk_import_university_students'));
+            return;
+        }
+
+        // Check file size (max 20MB for Excel files)
+        if ($file_data['size'] > 20 * 1024 * 1024) {
+            log_message('error', 'University Import: File too large - ' . $file_data['size'] . ' bytes');
+            set_alert('danger', 'File size exceeds 20MB limit');
+            redirect(admin_url('student_sponsor_portal/bulk_import_university_students'));
+            return;
+        }
+
+        // Process the uploaded file
+        $temp_file = $file_data['tmp_name'];
+        
+        try {
+            log_message('debug', 'University Import: Starting to process file');
+            $result = $this->process_university_import_file($temp_file, $file_ext);
+            
+            if ($result['success']) {
+                $message = "University import completed! ";
+                $message .= "Added: {$result['added']}, ";
+                $message .= "Updated: {$result['updated']}, ";
+                $message .= "Errors: {$result['errors']}";
+                
+                log_message('info', 'University Import: ' . $message);
+                
+                if (!empty($result['error_details'])) {
+                    $this->session->set_flashdata('import_errors', $result['error_details']);
+                }
+                
+                set_alert('success', $message);
+            } else {
+                log_message('error', 'University import failed: ' . $result['message']);
+                set_alert('danger', 'Import failed: ' . $result['message']);
+            }
+            
+        } catch (Exception $e) {
+            log_message('error', 'University Import Exception: ' . $e->getMessage());
+            set_alert('danger', 'Import failed: ' . $e->getMessage());
+        }
+        
+        redirect(admin_url('student_sponsor_portal/bulk_import_university_students'));
+        return;
+    }
+    
+    // Show the form
+    $data['title'] = 'Bulk Import University Students';
+    $data['import_errors'] = $this->session->flashdata('import_errors');
+    $this->load->view('student_sponsor_portal/bulk_import_university_students', $data);
+}
+
+/**
+ * Process university import file (Excel or CSV)
+ */
+private function process_university_import_file($file_path, $file_ext)
+{
+    log_message('debug', 'University Import: Processing file: ' . $file_path . ' (.' . $file_ext . ')');
+    
+    if (!file_exists($file_path) || !is_readable($file_path)) {
+        return ['success' => false, 'message' => 'Cannot read upload file'];
+    }
+    
+    $added = 0;
+    $updated = 0;
+    $errors = 0;
+    $error_details = [];
+    
+    try {
+        // Load PHPSpreadsheet for Excel files
+        if (in_array($file_ext, ['xlsx', 'xls'])) {
+            // Check if PHPSpreadsheet is available
+            $autoload_paths = [
+                FCPATH . 'vendor/autoload.php',
+                APPPATH . 'third_party/vendor/autoload.php',
+                APPPATH . 'libraries/vendor/autoload.php'
+            ];
+            
+            $phpspreadsheet_loaded = false;
+            foreach ($autoload_paths as $path) {
+                if (file_exists($path)) {
+                    require_once($path);
+                    $phpspreadsheet_loaded = true;
+                    log_message('debug', 'University Import: PHPSpreadsheet loaded from: ' . $path);
+                    break;
+                }
+            }
+            
+            if (!$phpspreadsheet_loaded || !class_exists('\PhpOffice\PhpSpreadsheet\IOFactory')) {
+                return ['success' => false, 'message' => 'PHPSpreadsheet not available. Please install via Composer or use CSV format.'];
+            }
+            
+            try {
+                $spreadsheet = \PhpOffice\PhpSpreadsheet\IOFactory::load($file_path);
+                $worksheet = $spreadsheet->getActiveSheet();
+                $rows = $worksheet->toArray(null, true, true, true);
+                log_message('debug', 'University Import: Excel file loaded successfully with ' . count($rows) . ' rows');
+            } catch (Exception $e) {
+                return ['success' => false, 'message' => 'Error reading Excel file: ' . $e->getMessage()];
+            }
+        } else {
+            // Process CSV file
+            $rows = [];
+            if (($handle = fopen($file_path, "r")) !== FALSE) {
+                while (($data = fgetcsv($handle, 1000, ",")) !== FALSE) {
+                    $rows[] = $data;
+                }
+                fclose($handle);
+                log_message('debug', 'University Import: CSV file loaded successfully with ' . count($rows) . ' rows');
+            } else {
+                return ['success' => false, 'message' => 'Cannot open CSV file'];
+            }
+        }
+        
+        if (empty($rows)) {
+            return ['success' => false, 'message' => 'No data found in file'];
+        }
+        
+        // Get header row and create column mapping
+        $headers = array_shift($rows);
+        if (empty($headers)) {
+            return ['success' => false, 'message' => 'No headers found in file'];
+        }
+        
+        log_message('debug', 'University Import: Headers found: ' . json_encode($headers));
+        
+        // Create column mapping
+        $column_map = $this->create_university_column_mapping($headers);
+        
+        if (empty($column_map)) {
+            return ['success' => false, 'message' => 'No valid columns found. Please check your headers match the template.'];
+        }
+        
+        log_message('debug', 'University Import: Column mapping: ' . json_encode($column_map));
+        
+        $row_number = 1; // Start from 1 (header is row 0)
+        
+        // Process each data row
+        foreach ($rows as $row) {
+            $row_number++;
+            
+            try {
+                // Skip empty rows
+                if (empty(array_filter($row))) {
+                    continue;
+                }
+                
+                log_message('debug', 'University Import: Processing row ' . $row_number);
+                
+                // Map the row data
+                $student_data = $this->map_university_row_data($row, $column_map);
+                
+                // Basic validation
+                if (empty($student_data['name'])) {
+                    $errors++;
+                    $error_details[] = "Row {$row_number}: Name is required";
+                    continue;
+                }
+                
+                // Check for existing student
+                $existing = null;
+                if (!empty($student_data['email'])) {
+                    $existing = $this->db->where('email', $student_data['email'])
+                                       ->get(db_prefix().'university_students')
+                                       ->row_array();
+                } elseif (!empty($student_data['university_internal_id'])) {
+                    $existing = $this->db->where('university_internal_id', $student_data['university_internal_id'])
+                                       ->get(db_prefix().'university_students')
+                                       ->row_array();
+                }
+                
+                // Clean data using the same method as the form
+                $cleaned_data = $this->clean_university_post_data($student_data, false);
+                
+                if ($existing) {
+                    // Update existing student
+                    log_message('debug', 'University Import: Updating existing student: ' . $existing['id']);
+                    
+                    $result = $this->university_model->update($cleaned_data, $existing['id']);
+                    
+                    if ($result) {
+                        $updated++;
+                    } else {
+                        $errors++;
+                        $error_details[] = "Row {$row_number}: Failed to update student";
+                    }
+                } else {
+                    // Add new student
+                    log_message('debug', 'University Import: Adding new student');
+                    
+                    $result = $this->university_model->add($cleaned_data);
+                    
+                    if ($result && !is_array($result)) {
+                        $added++;
+                        log_message('debug', 'University Import: Added student with ID: ' . $result);
+                    } else {
+                        $errors++;
+                        $message = is_array($result) ? ($result['message'] ?? 'Unknown error') : 'Failed to add student';
+                        $error_details[] = "Row {$row_number}: {$message}";
+                    }
+                }
+                
+            } catch (Exception $e) {
+                $errors++;
+                $error_details[] = "Row {$row_number}: " . $e->getMessage();
+                log_message('error', 'University Import: Row error: ' . $e->getMessage());
+            }
+        }
+        
+        log_message('info', "University import completed. Added: {$added}, Updated: {$updated}, Errors: {$errors}");
+        
+        return [
+            'success' => true,
+            'added' => $added,
+            'updated' => $updated,
+            'errors' => $errors,
+            'error_details' => $error_details
+        ];
+        
+    } catch (Exception $e) {
+        log_message('error', 'University import processing error: ' . $e->getMessage());
+        return ['success' => false, 'message' => 'Processing error: ' . $e->getMessage()];
+    }
+}
+
+/**
+ * Create column mapping for university students
+ */
+private function create_university_column_mapping($headers)
+{
+    $mapping = [];
+    
+    // Comprehensive field mappings for university students
+    $field_mappings = [
+        'name' => ['name', 'student_name', 'full_name', 'student name', 'full name'],
+        'email' => ['email', 'email_address', 'email address'],
+        'phone' => ['phone', 'contact_no', 'phone_number', 'contact_number', 'mobile', 'phone number'],
+        'dob' => ['dob', 'date_of_birth', 'birth_date', 'date of birth', 'birth date'],
+        'address' => ['address', 'home_address', 'home address'],
+        'city' => ['city', 'district', 'location'],
+        'postal_code' => ['postal_code', 'zip', 'zip_code', 'postal code', 'zip code'],
+        'country_name' => ['country', 'country_name', 'country name'],
+        'university_id' => ['university_id', 'student_id', 'university student id', 'student id'],
+        'university_internal_id' => ['internal_id', 'university_internal_id', 'internal id', 'university internal id'],
+        'university_name' => ['university', 'university_name', 'university name'],
+        'program_name' => ['program', 'program_name', 'program name', 'degree', 'course'],
+        'year_of_study' => ['year_of_study', 'year', 'semester', 'year of study'],
+        'bank_name' => ['bank', 'bank_name', 'bank name'],
+        'bank_account_number' => ['account_number', 'bank_account', 'account number', 'bank account', 'bank_account_number'],
+        'bank_branch_number' => ['branch_number', 'branch_code', 'branch number', 'branch code'],
+        'bank_branch_info' => ['branch_info', 'branch_information', 'branch info', 'branch information'],
+        'father_name' => ['father_name', 'father name', 'father'],
+        'father_income' => ['father_income', 'father income'],
+        'mother_name' => ['mother_name', 'mother name', 'mother'],
+        'mother_income' => ['mother_income', 'mother income'],
+        'guardian_name' => ['guardian_name', 'guardian name', 'guardian'],
+        'guardian_income' => ['guardian_income', 'guardian income'],
+        'background_information' => ['background', 'background_info', 'background_information', 'background information'],
+        'sponsorship_start' => ['sponsorship_start', 'sponsorship_start_date', 'sponsorship start', 'sponsorship start date'],
+        'sponsorship_end' => ['sponsorship_end', 'sponsorship_end_date', 'sponsorship end', 'sponsorship end date'],
+        'introduced_by' => ['introduced_by', 'introduced by', 'introducer'],
+        'introduced_phone' => ['introduced_phone', 'introducer_phone', 'introduced phone', 'introducer phone'],
+        'internal_comment' => ['internal_comment', 'internal comment', 'admin_notes', 'admin notes'],
+        'external_comment' => ['external_comment', 'external comment', 'public_notes', 'public notes'],
+    ];
+    
+    foreach ($headers as $index => $header) {
+        $header = strtolower(trim($header));
+        
+        foreach ($field_mappings as $field => $possible_names) {
+            if (in_array($header, $possible_names)) {
+                $mapping[$field] = $index;
+                log_message('debug', "University Import: Mapped column '{$headers[$index]}' to field '{$field}'");
+                break;
+            }
+        }
+    }
+    
+    return $mapping;
+}
+
+/**
+ * Map row data for university students
+ */
+private function map_university_row_data($row, $mapping)
+{
+    $data = [];
+    
+    foreach ($mapping as $field => $column_index) {
+        $value = isset($row[$column_index]) ? trim($row[$column_index]) : '';
+        
+        // Handle special field transformations
+        switch ($field) {
+            case 'dob':
+                if ($value && $value !== '') {
+                    try {
+                        // Handle Excel date serial numbers
+                        if (is_numeric($value) && class_exists('\PhpOffice\PhpSpreadsheet\Shared\Date')) {
+                            $date = \PhpOffice\PhpSpreadsheet\Shared\Date::excelToDateTimeObject($value);
+                            $data[$field] = $date->format('Y-m-d');
+                        } else {
+                            $date = new DateTime($value);
+                            $data[$field] = $date->format('Y-m-d');
+                        }
+                    } catch (Exception $e) {
+                        $data[$field] = '';
+                        log_message('debug', "University Import: Invalid date format for field {$field}: {$value}");
+                    }
+                }
+                break;
+                
+            case 'father_income':
+            case 'mother_income':
+            case 'guardian_income':
+                $data[$field] = is_numeric($value) ? (float)$value : null;
+                break;
+                
+            case 'sponsorship_start':
+            case 'sponsorship_end':
+                if ($value && $value !== '') {
+                    try {
+                        if (is_numeric($value) && class_exists('\PhpOffice\PhpSpreadsheet\Shared\Date')) {
+                            $date = \PhpOffice\PhpSpreadsheet\Shared\Date::excelToDateTimeObject($value);
+                            $data[$field] = $date->format('Y-m-d');
+                        } else {
+                            $date = new DateTime($value);
+                            $data[$field] = $date->format('Y-m-d');
+                        }
+                    } catch (Exception $e) {
+                        $data[$field] = '';
+                        log_message('debug', "University Import: Invalid date format for field {$field}: {$value}");
+                    }
+                }
+                break;
+                
+            case 'year_of_study':
+                // Map common year formats to our enum values
+                $year_map = [
+                    '1' => '1Y1S', 'year 1' => '1Y1S', '1st year' => '1Y1S',
+                    '2' => '2Y1S', 'year 2' => '2Y1S', '2nd year' => '2Y1S',
+                    '3' => '3Y1S', 'year 3' => '3Y1S', '3rd year' => '3Y1S',
+                    '4' => '4Y1S', 'year 4' => '4Y1S', '4th year' => '4Y1S',
+                    '5' => '5Y1S', 'year 5' => '5Y1S', '5th year' => '5Y1S',
+                ];
+                $normalized = strtolower($value);
+                $data[$field] = $year_map[$normalized] ?? $value;
+                break;
+                
+            default:
+                $data[$field] = $value !== '' ? $value : null;
+                break;
+        }
+    }
+    
+    // Handle foreign key lookups
+    if (!empty($data['country_name'])) {
+        $country_id = $this->get_or_create_country_id($data['country_name']);
+        if ($country_id) {
+            $data['country_id'] = $country_id;
+        }
+        unset($data['country_name']);
+    }
+    
+    if (!empty($data['university_name'])) {
+        $university_id = $this->university_model->get_or_create_university_name_id($data['university_name']);
+        if ($university_id) {
+            $data['university_name_id'] = $university_id;
+        }
+        unset($data['university_name']);
+    }
+    
+    if (!empty($data['program_name'])) {
+        $program_id = $this->university_model->get_or_create_university_program_id($data['program_name']);
+        if ($program_id) {
+            $data['university_program_id'] = $program_id;
+        }
+        unset($data['program_name']);
+    }
+    
+    if (!empty($data['bank_name'])) {
+        $bank_id = $this->get_or_create_bank_id($data['bank_name']);
+        if ($bank_id) {
+            $data['bank_id'] = $bank_id;
+        }
+        unset($data['bank_name']);
+    }
+    
+    return $data;
+}
+
+/**
+ * Download Excel template for university students
+ */
+public function download_university_students_template()
+{
+    if (!has_permission('student_sponsor_portal', '', 'view')) {
+        access_denied('student_sponsor_portal');
+    }
+    
+    // Check if PHPSpreadsheet is available
+    $autoload_paths = [
+        FCPATH . 'vendor/autoload.php',
+        APPPATH . 'third_party/vendor/autoload.php',
+        APPPATH . 'libraries/vendor/autoload.php'
+    ];
+    
+    $phpspreadsheet_loaded = false;
+    foreach ($autoload_paths as $path) {
+        if (file_exists($path)) {
+            require_once($path);
+            $phpspreadsheet_loaded = true;
+            break;
+        }
+    }
+    
+    if (!$phpspreadsheet_loaded || !class_exists('\PhpOffice\PhpSpreadsheet\Spreadsheet')) {
+        // Fallback to CSV template
+        $this->download_university_csv_template();
+        return;
+    }
+    
+    $spreadsheet = new \PhpOffice\PhpSpreadsheet\Spreadsheet();
+    $sheet = $spreadsheet->getActiveSheet();
+    
+    // Set headers
+    $headers = [
+        'Name', 'Email', 'Phone', 'Date of Birth', 'Address', 'City', 'Postal Code', 'Country',
+        'University ID', 'Internal ID', 'University', 'Program', 'Year of Study',
+        'Bank Name', 'Account Number', 'Branch Number', 'Branch Info',
+        'Father Name', 'Father Income', 'Mother Name', 'Mother Income', 
+        'Guardian Name', 'Guardian Income', 'Background Information',
+        'Sponsorship Start', 'Sponsorship End', 'Introduced By', 'Introducer Phone',
+        'Internal Comment', 'External Comment'
+    ];
+    
+    $sheet->fromArray($headers, null, 'A1');
+    
+    // Add sample data
+    $sampleData = [
+        'Jane Doe', 'jane.doe@university.edu', '+94771234567', '2000-01-15', '123 University Avenue',
+        'Colombo', '00100', 'Sri Lanka', 'UNI001', 'UNIV001', 'University of Colombo', 'Computer Science',
+        '2Y1S', 'Bank of Ceylon', '1234567890', '001', 'Colombo Branch',
+        'Father Name', 50000, 'Mother Name', 30000, 'Guardian Name', 40000,
+        'Student background information', '2024-01-01', '2026-12-31', 'Professor Name', '+94771234568',
+        'Internal notes', 'External notes'
+    ];
+    
+    $sheet->fromArray($sampleData, null, 'A2');
+    
+    // Style the header
+    $headerStyle = [
+        'font' => ['bold' => true],
+        'fill' => ['fillType' => \PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID, 'color' => ['rgb' => 'E8E8E8']],
+        'borders' => ['allBorders' => ['borderStyle' => \PhpOffice\PhpSpreadsheet\Style\Border::BORDER_THIN]]
+    ];
+    
+    $sheet->getStyle('A1:' . $sheet->getHighestColumn() . '1')->applyFromArray($headerStyle);
+    
+    // Auto-size columns
+    foreach (range('A', $sheet->getHighestColumn()) as $col) {
+        $sheet->getColumnDimension($col)->setAutoSize(true);
+    }
+    
+    // Add instructions sheet
+    $instructionsSheet = $spreadsheet->createSheet();
+    $instructionsSheet->setTitle('Instructions');
+    
+    $instructions = [
+        ['University Students Import Template - Instructions'],
+        [''],
+        ['REQUIRED FIELDS:'],
+        ['- Name: Student\'s full name (required)'],
+        [''],
+        ['OPTIONAL FIELDS:'],
+        ['- Email: Student\'s email address'],
+        ['- Phone: Contact number'],
+        ['- Date of Birth: Format YYYY-MM-DD (e.g., 2000-01-15)'],
+        ['- Year of Study: 1Y1S, 1Y2S, 2Y1S, 2Y2S, 3Y1S, 3Y2S, 4Y1S, 4Y2S, 5Y1S, 5Y2S'],
+        ['- All other fields are optional'],
+        [''],
+        ['NOTES:'],
+        ['- Students with existing email/internal ID will be updated'],
+        ['- Universities, programs, and banks will be created if they don\'t exist'],
+        ['- Remove the sample data before importing'],
+        ['- Maximum file size: 20MB']
+    ];
+    
+    $instructionsSheet->fromArray($instructions, null, 'A1');
+    $instructionsSheet->getColumnDimension('A')->setWidth(50);
+    
+    // Set active sheet back to template
+    $spreadsheet->setActiveSheetIndex(0);
+    
+    $filename = 'university_students_template_' . date('Y-m-d') . '.xlsx';
+    
+    header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    header('Content-Disposition: attachment; filename="' . $filename . '"');
+    header('Cache-Control: max-age=0');
+    
+    $writer = new \PhpOffice\PhpSpreadsheet\Writer\Xlsx($spreadsheet);
+    $writer->save('php://output');
+    exit;
+}
+
+/**
+ * Fallback CSV template download for university students
+ */
+private function download_university_csv_template()
+{
+    $filename = 'university_students_template_' . date('Y-m-d') . '.csv';
+    
+    header('Content-Type: text/csv; charset=utf-8');
+    header('Content-Disposition: attachment; filename="' . $filename . '"');
+    header('Cache-Control: max-age=0');
+    
+    $output = fopen('php://output', 'w');
+    
+    // Add BOM for UTF-8
+    fprintf($output, chr(0xEF).chr(0xBB).chr(0xBF));
+    
+    // Headers
+    $headers = [
+        'Name', 'Email', 'Phone', 'Date of Birth', 'Address', 'City', 'Postal Code', 'Country',
+        'University ID', 'Internal ID', 'University', 'Program', 'Year of Study',
+        'Bank Name', 'Account Number', 'Branch Number', 'Branch Info',
+        'Father Name', 'Father Income', 'Mother Name', 'Mother Income', 
+        'Guardian Name', 'Guardian Income', 'Background Information',
+        'Sponsorship Start', 'Sponsorship End', 'Introduced By', 'Introducer Phone',
+        'Internal Comment', 'External Comment'
+    ];
+    
+    fputcsv($output, $headers);
+    
+    // Sample data
+    $sample = [
+        'Jane Doe', 'jane.doe@university.edu', '+94771234567', '2000-01-15', '123 University Avenue',
+        'Colombo', '00100', 'Sri Lanka', 'UNI001', 'UNIV001', 'University of Colombo', 'Computer Science',
+        '2Y1S', 'Bank of Ceylon', '1234567890', '001', 'Colombo Branch',
+        'Father Name', '50000', 'Mother Name', '30000', 'Guardian Name', '40000',
+        'Student background information', '2024-01-01', '2026-12-31', 'Professor Name', '+94771234568',
+        'Internal notes', 'External notes'
+    ];
+    
+    fputcsv($output, $sample);
+    
+    fclose($output);
+    exit;
+}
 
     public function export_university_students()
     {

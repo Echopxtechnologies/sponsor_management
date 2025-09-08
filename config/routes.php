@@ -117,3 +117,14 @@ $route['admin/student_sponsor_portal/send_test_email/(:num)'] = 'student_sponsor
 /* =================================================================================== */
 
 $route['admin/student_sponsor_portal/get_stats'] = 'student_sponsor_portal/get_stats';
+
+
+
+$route['admin/student_sponsor_portal/debug_csv_import'] = 'student_sponsor_portal/debug_csv_import';
+// Enhanced import/export routes
+$route['admin/student_sponsor_portal/download_school_students_template'] = 'student_sponsor_portal/download_school_students_template';
+$route['admin/student_sponsor_portal/export_school_students_by_ids'] = 'student_sponsor_portal/export_school_students_by_ids';// Bulk import routes for university students
+
+
+$route['admin/student_sponsor_portal/bulk_import_university_students'] = 'student_sponsor_portal/bulk_import_university_students';
+$route['admin/student_sponsor_portal/download_university_students_template'] = 'student_sponsor_portal/download_university_students_template';
