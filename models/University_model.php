@@ -8,11 +8,265 @@ class University_model extends App_Model
     private $tbl_program  = 'tbluniversity_program';
     private $tbl_bank     = 'tblbank';
     private $tbl_rcard    = 'tbluniversity_report_card';
+    private $tbl_sponsor  = 'tblsponsor_records';
+    private $tbl_sponsor_txn = 'tblsponsor_transactions';
 
     public function __construct()
     {
         parent::__construct();
         $this->ensure_required_tables();
+    }
+
+    /* ----------------- ENHANCED SPONSOR METHODS ----------------- */
+
+    /**
+     * Get sponsor information for a university student
+     * 
+     * @param int $student_id Student ID
+     * @return array|null Sponsor information
+     */
+    public function get_student_sponsor($student_id)
+    {
+        $student_id = (int)$student_id;
+        if ($student_id <= 0) return null;
+
+        // First try direct sponsor_id relationship
+        $this->db->select('
+            sr.id as sponsor_id,
+            sr.name as sponsor_name,
+            sr.email as sponsor_email,
+            sr.sponsor_type,
+            sr.sponsor_occupation,
+            "direct" as relationship_type
+        ');
+        $this->db->from($this->tbl_students . ' us');
+        $this->db->join($this->tbl_sponsor . ' sr', 'sr.id = us.sponsor_id', 'inner');
+        $this->db->where('us.id', $student_id);
+        $this->db->where('us.sponsor_id IS NOT NULL');
+        
+        $direct_sponsor = $this->db->get()->row_array();
+        if ($direct_sponsor) {
+            return $direct_sponsor;
+        }
+
+        // If no direct relationship, check sponsor_transactions table
+        $this->db->select('
+            sr.id as sponsor_id,
+            sr.name as sponsor_name,
+            sr.email as sponsor_email,
+            sr.sponsor_type,
+            sr.sponsor_occupation,
+            st.total_amount,
+            st.amount_paid,
+            st.currency,
+            st.payment_type,
+            st.sponsorship_start,
+            st.sponsorship_end,
+            st.next_payment_due,
+            "transaction" as relationship_type
+        ');
+        $this->db->from($this->tbl_sponsor_txn . ' st');
+        $this->db->join($this->tbl_sponsor . ' sr', 'sr.id = st.sponsor_id', 'inner');
+        $this->db->where('st.university_student_id', $student_id);
+        $this->db->order_by('st.id', 'DESC');
+        $this->db->limit(1);
+        
+        return $this->db->get()->row_array();
+    }
+
+    /**
+     * Get all sponsors for a university student (including transaction history)
+     * 
+     * @param int $student_id Student ID
+     * @return array Array of sponsor relationships
+     */
+    public function get_student_sponsors_history($student_id)
+    {
+        $student_id = (int)$student_id;
+        if ($student_id <= 0) return [];
+
+        $sponsors = [];
+
+        // Get direct sponsor relationship
+        $direct = $this->get_student_sponsor($student_id);
+        if ($direct && $direct['relationship_type'] === 'direct') {
+            $sponsors[] = $direct;
+        }
+
+        // Get all sponsors from transactions
+        $this->db->select('
+            sr.id as sponsor_id,
+            sr.name as sponsor_name,
+            sr.email as sponsor_email,
+            sr.sponsor_type,
+            sr.sponsor_occupation,
+            st.total_amount,
+            st.amount_paid,
+            st.currency,
+            st.payment_type,
+            st.sponsorship_start,
+            st.sponsorship_end,
+            st.next_payment_due,
+            st.created_at as transaction_date,
+            "transaction" as relationship_type
+        ');
+        $this->db->from($this->tbl_sponsor_txn . ' st');
+        $this->db->join($this->tbl_sponsor . ' sr', 'sr.id = st.sponsor_id', 'inner');
+        $this->db->where('st.university_student_id', $student_id);
+        $this->db->order_by('st.created_at', 'DESC');
+        
+        $transaction_sponsors = $this->db->get()->result_array();
+        
+        // Merge and deduplicate
+        foreach ($transaction_sponsors as $txn_sponsor) {
+            $exists = false;
+            foreach ($sponsors as $existing) {
+                if ($existing['sponsor_id'] == $txn_sponsor['sponsor_id']) {
+                    $exists = true;
+                    break;
+                }
+            }
+            if (!$exists) {
+                $sponsors[] = $txn_sponsor;
+            }
+        }
+
+        return $sponsors;
+    }
+
+    /**
+     * Check if a university student is currently sponsored
+     * 
+     * @param int $student_id Student ID
+     * @return bool True if sponsored
+     */
+    public function is_student_sponsored($student_id)
+    {
+        $sponsor = $this->get_student_sponsor($student_id);
+        return !empty($sponsor);
+    }
+
+    /**
+     * Get sponsor summary for multiple university students (for list views)
+     * 
+     * @param array $student_ids Array of student IDs
+     * @return array Associative array [student_id => sponsor_info]
+     */
+    public function get_students_sponsor_summary($student_ids)
+    {
+        if (empty($student_ids)) return [];
+        
+        $student_ids = array_map('intval', $student_ids);
+        $sponsor_map = [];
+
+        // Get direct sponsor relationships
+        $this->db->select('
+            us.id as student_id,
+            sr.id as sponsor_id,
+            sr.name as sponsor_name,
+            sr.sponsor_type,
+            "direct" as relationship_type
+        ');
+        $this->db->from($this->tbl_students . ' us');
+        $this->db->join($this->tbl_sponsor . ' sr', 'sr.id = us.sponsor_id', 'inner');
+        $this->db->where_in('us.id', $student_ids);
+        $this->db->where('us.sponsor_id IS NOT NULL');
+        
+        $direct_sponsors = $this->db->get()->result_array();
+        foreach ($direct_sponsors as $ds) {
+            $sponsor_map[$ds['student_id']] = $ds;
+        }
+
+        // Get transaction-based sponsors for students without direct sponsors
+        $remaining_students = array_diff($student_ids, array_keys($sponsor_map));
+        if (!empty($remaining_students)) {
+            $this->db->select('
+                st.university_student_id as student_id,
+                sr.id as sponsor_id,
+                sr.name as sponsor_name,
+                sr.sponsor_type,
+                st.sponsorship_start,
+                st.sponsorship_end,
+                "transaction" as relationship_type,
+                ROW_NUMBER() OVER (PARTITION BY st.university_student_id ORDER BY st.id DESC) as rn
+            ', false);
+            $this->db->from($this->tbl_sponsor_txn . ' st');
+            $this->db->join($this->tbl_sponsor . ' sr', 'sr.id = st.sponsor_id', 'inner');
+            $this->db->where_in('st.university_student_id', $remaining_students);
+            
+            // Get the latest transaction for each student
+            $subquery = $this->db->get_compiled_select();
+            $this->db->reset_query();
+            
+            $this->db->query("
+                SELECT student_id, sponsor_id, sponsor_name, sponsor_type, sponsorship_start, sponsorship_end, relationship_type
+                FROM ({$subquery}) ranked 
+                WHERE rn = 1
+            ");
+            
+            $txn_sponsors = $this->db->get()->result_array();
+            foreach ($txn_sponsors as $ts) {
+                if (!isset($sponsor_map[$ts['student_id']])) {
+                    $sponsor_map[$ts['student_id']] = $ts;
+                }
+            }
+        }
+
+        return $sponsor_map;
+    }
+
+    /**
+     * Get sponsor transactions for a university student
+     * 
+     * @param int $student_id Student ID
+     * @return array Transaction details
+     */
+    public function get_student_sponsor_transactions($student_id)
+    {
+        $student_id = (int)$student_id;
+        if ($student_id <= 0) return [];
+
+        $this->db->select('
+            st.*,
+            sr.name as sponsor_name,
+            sr.sponsor_type
+        ');
+        $this->db->from($this->tbl_sponsor_txn . ' st');
+        $this->db->join($this->tbl_sponsor . ' sr', 'sr.id = st.sponsor_id', 'left');
+        $this->db->where('st.university_student_id', $student_id);
+        $this->db->order_by('st.created_at', 'DESC');
+        
+        return $this->db->get()->result_array();
+    }
+
+    /**
+     * Get all sponsors for dropdown
+     * 
+     * @return array List of all sponsors
+     */
+    public function get_all_sponsors()
+    {
+        $this->db->select('id, name, email, sponsor_type, sponsor_occupation, city, created_at');
+        $this->db->from($this->tbl_sponsor);
+        $this->db->order_by('name', 'ASC');
+        return $this->db->get()->result_array();
+    }
+
+    /**
+     * Add new sponsor
+     * 
+     * @param array $data Sponsor data
+     * @return int|false Sponsor ID or false on failure
+     */
+    public function add_sponsor($data)
+    {
+        try {
+            $this->db->insert($this->tbl_sponsor, $data);
+            return $this->db->insert_id();
+        } catch (Exception $e) {
+            log_message('error', 'Error adding sponsor: ' . $e->getMessage());
+            return false;
+        }
     }
 
     /* ----------------- ENHANCED FILTERING & STATISTICS ----------------- */
@@ -22,7 +276,7 @@ class University_model extends App_Model
      * 
      * @return array Statistics array with counts
      */
-    public function get_statistics()
+    public function get_statistics($filters = [])
     {
         $stats = [
             'total' => 0,
@@ -30,58 +284,96 @@ class University_model extends App_Model
             'inactive' => 0,
             'verified' => 0,
             'unverified' => 0,
+            'sponsored' => 0,
+            'unsponsored' => 0,
             'by_year' => [],
             'by_status' => [],
             'by_program' => [],
+            'by_sponsor_type' => [],
             'recent_additions' => 0
         ];
 
-        // Base query for all students with status information
-        $this->db->select('
-            us.id,
-            us.university_year_of_study,
-            us.staff_id,
-            s.active as staff_active,
-            us.created_at,
-            up.name as program_name
-        ');
-        $this->db->from(db_prefix() . 'university_students us');
-        $this->db->join(db_prefix() . 'staff s', 's.staffid = us.staff_id', 'left');
-        $this->db->join(db_prefix() . 'university_program up', 'up.id = us.university_program_id', 'left');
-        
-        $students = $this->db->get()->result_array();
-
-        $stats['total'] = count($students);
-
-        // Count recent additions (last 30 days)
-        $thirty_days_ago = date('Y-m-d H:i:s', strtotime('-30 days'));
-
-        foreach ($students as $student) {
-            // Determine status
-            $status = $this->determine_student_status($student);
-            $stats['by_status'][$status] = ($stats['by_status'][$status] ?? 0) + 1;
+        try {
+            // Base query for all students with status and sponsor information
+            $this->db->select('
+                us.id,
+                us.university_year_of_study,
+                us.staff_id,
+                us.sponsor_id,
+                s.active as staff_active,
+                us.created_at,
+                up.name as program_name,
+                sr.sponsor_type
+            ');
+            $this->db->from(db_prefix() . 'university_students us');
+            $this->db->join(db_prefix() . 'staff s', 's.staffid = us.staff_id', 'left');
+            $this->db->join(db_prefix() . 'university_program up', 'up.id = us.university_program_id', 'left');
+            $this->db->join($this->tbl_sponsor . ' sr', 'sr.id = us.sponsor_id', 'left');
             
-            // Count by main categories
-            if ($status === 'active') $stats['active']++;
-            elseif ($status === 'inactive') $stats['inactive']++;
-            elseif ($status === 'verified') $stats['verified']++;
-            else $stats['unverified']++;
-
-            // Count by year
-            $year = $student['university_year_of_study'] ?? 'Unknown';
-            $stats['by_year'][$year] = ($stats['by_year'][$year] ?? 0) + 1;
-
-            // Count by program
-            $program = $student['program_name'] ?? 'Unknown';
-            $stats['by_program'][$program] = ($stats['by_program'][$program] ?? 0) + 1;
-
-            // Count recent additions
-            if (!empty($student['created_at']) && $student['created_at'] >= $thirty_days_ago) {
-                $stats['recent_additions']++;
+            // Apply filters if provided
+            if (!empty($filters)) {
+                $this->apply_filters($filters);
             }
-        }
+            
+            $students = $this->db->get()->result_array();
+            $stats['total'] = count($students);
 
-        return $stats;
+            // Count recent additions (last 30 days)
+            $thirty_days_ago = date('Y-m-d H:i:s', strtotime('-30 days'));
+
+            foreach ($students as $student) {
+                // Determine status
+                $status = $this->determine_student_status($student);
+                $stats['by_status'][$status] = ($stats['by_status'][$status] ?? 0) + 1;
+                
+                // Count by main categories
+                if ($status === 'active') $stats['active']++;
+                elseif ($status === 'inactive') $stats['inactive']++;
+                elseif ($status === 'verified') $stats['verified']++;
+                else $stats['unverified']++;
+
+                // Count by sponsorship status
+                $is_sponsored = !empty($student['sponsor_id']);
+                if ($is_sponsored) {
+                    $stats['sponsored']++;
+                    
+                    // Count by sponsor type
+                    $sponsor_type = $student['sponsor_type'] ?? 'Unknown';
+                    $stats['by_sponsor_type'][$sponsor_type] = ($stats['by_sponsor_type'][$sponsor_type] ?? 0) + 1;
+                } else {
+                    $stats['unsponsored']++;
+                    
+                    // Check for transaction-based sponsorship
+                    $txn_sponsor = $this->get_student_sponsor($student['id']);
+                    if ($txn_sponsor && $txn_sponsor['relationship_type'] === 'transaction') {
+                        $stats['sponsored']++;
+                        $stats['unsponsored']--;
+                        
+                        $sponsor_type = $txn_sponsor['sponsor_type'] ?? 'Unknown';
+                        $stats['by_sponsor_type'][$sponsor_type] = ($stats['by_sponsor_type'][$sponsor_type] ?? 0) + 1;
+                    }
+                }
+
+                // Count by year
+                $year = $student['university_year_of_study'] ?? 'Unknown';
+                $stats['by_year'][$year] = ($stats['by_year'][$year] ?? 0) + 1;
+
+                // Count by program
+                $program = $student['program_name'] ?? 'Unknown';
+                $stats['by_program'][$program] = ($stats['by_program'][$program] ?? 0) + 1;
+
+                // Count recent additions
+                if (!empty($student['created_at']) && $student['created_at'] >= $thirty_days_ago) {
+                    $stats['recent_additions']++;
+                }
+            }
+
+            return $stats;
+
+        } catch (Exception $e) {
+            log_message('error', 'University_model::get_statistics - ' . $e->getMessage());
+            return $stats;
+        }
     }
 
     /**
@@ -93,79 +385,153 @@ class University_model extends App_Model
      */
     public function get_students_filtered($filters = [], $datatables_params = [])
     {
-        // Build base query with all necessary joins
-        $this->db->select('
-            us.*,
-            un.name AS university_name,
-            up.name AS program_name,
-            b.name AS bank_name,
-            c.short_name AS country_name,
-            s.active as staff_active,
-            s.staffid as staff_id
-        ', false);
+        try {
+            // Build base query with all necessary joins including sponsor
+            $this->db->select('
+                us.*,
+                un.name AS university_name,
+                up.name AS program_name,
+                b.name AS bank_name,
+                c.short_name AS country_name,
+                s.active as staff_active,
+                s.staffid as staff_id,
+                s.firstname as staff_firstname,
+                s.lastname as staff_lastname,
+                sr.id as sponsor_id,
+                sr.name as sponsor_name,
+                sr.sponsor_type,
+                sr.email as sponsor_email
+            ', false);
 
-        $this->db->from(db_prefix() . 'university_students us');
-        $this->db->join(db_prefix() . 'university_name un', 'un.id = us.university_name_id', 'left');
-        $this->db->join(db_prefix() . 'university_program up', 'up.id = us.university_program_id', 'left');
-        $this->db->join(db_prefix() . 'bank b', 'b.id = us.bank_id', 'left');
-        $this->db->join(db_prefix() . 'countries c', 'c.country_id = us.country_id', 'left');
-        $this->db->join(db_prefix() . 'staff s', 's.staffid = us.staff_id', 'left');
+            $this->db->from(db_prefix() . 'university_students us');
+            $this->db->join(db_prefix() . 'university_name un', 'un.id = us.university_name_id', 'left');
+            $this->db->join(db_prefix() . 'university_program up', 'up.id = us.university_program_id', 'left');
+            $this->db->join(db_prefix() . 'bank b', 'b.id = us.bank_id', 'left');
+            $this->db->join(db_prefix() . 'countries c', 'c.country_id = us.country_id', 'left');
+            $this->db->join(db_prefix() . 'staff s', 's.staffid = us.staff_id', 'left');
+            $this->db->join($this->tbl_sponsor . ' sr', 'sr.id = us.sponsor_id', 'left');
 
-        // Apply filters
-        $this->apply_filters($filters);
+            // Apply filters before getting count
+            $this->apply_filters($filters);
 
-        // Handle DataTables search
-        if (!empty($datatables_params['search']['value'])) {
-            $search = $datatables_params['search']['value'];
-            $this->db->group_start();
-            $this->db->like('us.name', $search);
-            $this->db->or_like('us.email', $search);
-            $this->db->or_like('us.contact_no', $search);
-            $this->db->or_like('us.university_internal_id', $search);
-            $this->db->or_like('un.name', $search);
-            $this->db->or_like('up.name', $search);
-            $this->db->group_end();
-        }
+            // Handle DataTables search
+            if (!empty($datatables_params['search']['value'])) {
+                $search = $this->db->escape_like_str($datatables_params['search']['value']);
+                $this->db->group_start();
+                $this->db->like('us.name', $search);
+                $this->db->or_like('us.email', $search);
+                $this->db->or_like('us.contact_no', $search);
+                $this->db->or_like('us.university_internal_id', $search);
+                $this->db->or_like('un.name', $search);
+                $this->db->or_like('up.name', $search);
+                $this->db->or_like('sr.name', $search); // Add sponsor name to search
+                $this->db->group_end();
+            }
 
-        // Get total count before pagination
-        $total_query = clone $this->db;
-        $total_records = $total_query->count_all_results('', false);
+            // Clone query for counting filtered records
+            $count_query = clone $this->db;
+            $filtered_count = $count_query->count_all_results('', false);
 
-        // Handle ordering
-        if (!empty($datatables_params['order'])) {
-            foreach ($datatables_params['order'] as $order) {
-                $column_index = (int)$order['column'];
-                $direction = $order['dir'] === 'desc' ? 'DESC' : 'ASC';
-                
-                // Map column indices to actual columns
-                $columns = ['us.id', 'us.name', 'un.name', 'up.name', 'us.university_year_of_study', 'status', 'us.contact_no'];
-                if (isset($columns[$column_index])) {
-                    if ($columns[$column_index] !== 'status') {
+            // Handle ordering
+            if (!empty($datatables_params['order'])) {
+                foreach ($datatables_params['order'] as $order) {
+                    $column_index = (int)$order['column'];
+                    $direction = strtoupper($order['dir']) === 'DESC' ? 'DESC' : 'ASC';
+                    
+                    // Map column indices to actual columns
+                    $columns = [
+                        0 => 'us.id',
+                        1 => 'us.name', 
+                        2 => 'us.university_year_of_study',
+                        3 => 'un.name',
+                        4 => 'up.name',
+                        5 => null, // Status column - handle separately
+                        6 => 'sr.name', // Sponsor column
+                        7 => 'us.contact_no'
+                    ];
+                    
+                    if (isset($columns[$column_index]) && $columns[$column_index] !== null) {
                         $this->db->order_by($columns[$column_index], $direction);
                     }
                 }
+            } else {
+                $this->db->order_by('us.id', 'DESC');
             }
-        } else {
-            $this->db->order_by('us.id', 'DESC');
+
+            // Handle pagination
+            if (isset($datatables_params['length']) && $datatables_params['length'] != -1) {
+                $start = $datatables_params['start'] ?? 0;
+                $length = $datatables_params['length'];
+                $this->db->limit($length, $start);
+            }
+
+            $students = $this->db->get()->result_array();
+
+            // Add computed status and complete sponsor info to each student
+            foreach ($students as &$student) {
+                $student['computed_status'] = $this->determine_student_status($student);
+                
+                // Get all sponsors for this student
+                $sponsors = $this->get_student_sponsors_history($student['id']);
+                
+                if (!empty($sponsors)) {
+                    // Get the primary/latest sponsor
+                    $primary_sponsor = $sponsors[0];
+                    $student['sponsor_id'] = $primary_sponsor['sponsor_id'];
+                    $student['sponsor_name'] = $primary_sponsor['sponsor_name'];
+                    $student['sponsor_type'] = $primary_sponsor['sponsor_type'];
+                    $student['sponsor_email'] = $primary_sponsor['sponsor_email'] ?? '';
+                    $student['sponsor_relationship_type'] = $primary_sponsor['relationship_type'];
+                    
+                    // Add all sponsors information for display
+                    $sponsor_names = [];
+                    $sponsor_types = [];
+                    foreach ($sponsors as $sponsor) {
+                        $sponsor_names[] = $sponsor['sponsor_name'];
+                        if (!empty($sponsor['sponsor_type'])) {
+                            $sponsor_types[] = $sponsor['sponsor_type'];
+                        }
+                    }
+                    
+                    // For multiple sponsors, create combined display
+                    if (count($sponsors) > 1) {
+                        $student['all_sponsor_names'] = implode(', ', array_unique($sponsor_names));
+                        $student['all_sponsor_types'] = implode(', ', array_unique($sponsor_types));
+                        $student['sponsor_count'] = count($sponsors);
+                    } else {
+                        $student['all_sponsor_names'] = $student['sponsor_name'];
+                        $student['all_sponsor_types'] = $student['sponsor_type'];
+                        $student['sponsor_count'] = 1;
+                    }
+                } else {
+                    // No sponsors
+                    $student['sponsor_id'] = null;
+                    $student['sponsor_name'] = '';
+                    $student['sponsor_type'] = '';
+                    $student['sponsor_email'] = '';
+                    $student['sponsor_relationship_type'] = '';
+                    $student['all_sponsor_names'] = '';
+                    $student['all_sponsor_types'] = '';
+                    $student['sponsor_count'] = 0;
+                }
+            }
+
+            return [
+                'data' => $students,
+                'recordsTotal' => $this->count_all(),
+                'recordsFiltered' => $filtered_count
+            ];
+
+        } catch (Exception $e) {
+            log_message('error', 'University_model::get_students_filtered - ' . $e->getMessage());
+            
+            return [
+                'data' => [],
+                'recordsTotal' => 0,
+                'recordsFiltered' => 0,
+                'error' => $e->getMessage()
+            ];
         }
-
-        // Handle pagination
-        if (isset($datatables_params['length']) && $datatables_params['length'] != -1) {
-            $this->db->limit($datatables_params['length'], $datatables_params['start'] ?? 0);
-        }
-
-        $students = $this->db->get()->result_array();
-
-        // Add computed status to each student
-        foreach ($students as &$student) {
-            $student['computed_status'] = $this->determine_student_status($student);
-        }
-
-        return [
-            'data' => $students,
-            'recordsTotal' => $this->count_all(),
-            'recordsFiltered' => $total_records
-        ];
     }
 
     /**
@@ -195,6 +561,24 @@ class University_model extends App_Model
             $this->db->like('up.name', $filters['program']);
         }
 
+        // Sponsor filter
+        if (!empty($filters['sponsor'])) {
+            $this->db->like('sr.name', $filters['sponsor']);
+        }
+
+        // Sponsorship status filter
+        if (!empty($filters['sponsorship_status'])) {
+            if ($filters['sponsorship_status'] === 'sponsored') {
+                $this->db->group_start();
+                $this->db->where('us.sponsor_id IS NOT NULL');
+                $this->db->or_where('us.id IN (SELECT DISTINCT university_student_id FROM ' . $this->tbl_sponsor_txn . ' WHERE university_student_id IS NOT NULL)', null, false);
+                $this->db->group_end();
+            } elseif ($filters['sponsorship_status'] === 'unsponsored') {
+                $this->db->where('us.sponsor_id IS NULL');
+                $this->db->where('us.id NOT IN (SELECT DISTINCT university_student_id FROM ' . $this->tbl_sponsor_txn . ' WHERE university_student_id IS NOT NULL)', null, false);
+            }
+        }
+
         // City filter
         if (!empty($filters['city'])) {
             $this->db->like('us.city', $filters['city']);
@@ -214,15 +598,6 @@ class University_model extends App_Model
         }
         if (!empty($filters['created_to'])) {
             $this->db->where('DATE(us.created_at) <=', $filters['created_to']);
-        }
-
-        // Sponsorship status
-        if (!empty($filters['sponsorship_status'])) {
-            if ($filters['sponsorship_status'] === 'sponsored') {
-                $this->db->where('us.sponsor_id IS NOT NULL');
-            } elseif ($filters['sponsorship_status'] === 'unsponsored') {
-                $this->db->where('us.sponsor_id IS NULL');
-            }
         }
     }
 
@@ -283,10 +658,50 @@ class University_model extends App_Model
             'years' => $this->get_available_years(),
             'universities' => $this->get_universities(),
             'programs' => $this->get_programs(),
+            'sponsors' => $this->get_available_sponsors(),
             'cities' => $this->get_available_cities(),
             'countries' => $this->get_countries(),
             'banks' => $this->get_banks()
         ];
+    }
+
+    /**
+     * Get available sponsors from existing relationships
+     * 
+     * @return array List of sponsors
+     */
+    public function get_available_sponsors()
+    {
+        // Get sponsors from direct relationships
+        $this->db->select('DISTINCT sr.id, sr.name, sr.sponsor_type');
+        $this->db->from($this->tbl_students . ' us');
+        $this->db->join($this->tbl_sponsor . ' sr', 'sr.id = us.sponsor_id', 'inner');
+        $this->db->where('us.sponsor_id IS NOT NULL');
+        $this->db->order_by('sr.name', 'ASC');
+        
+        $direct_sponsors = $this->db->get()->result_array();
+        
+        // Get sponsors from transactions
+        $this->db->select('DISTINCT sr.id, sr.name, sr.sponsor_type');
+        $this->db->from($this->tbl_sponsor_txn . ' st');
+        $this->db->join($this->tbl_sponsor . ' sr', 'sr.id = st.sponsor_id', 'inner');
+        $this->db->where('st.university_student_id IS NOT NULL');
+        $this->db->order_by('sr.name', 'ASC');
+        
+        $txn_sponsors = $this->db->get()->result_array();
+        
+        // Merge and deduplicate
+        $sponsors = [];
+        $seen_ids = [];
+        
+        foreach (array_merge($direct_sponsors, $txn_sponsors) as $sponsor) {
+            if (!in_array($sponsor['id'], $seen_ids)) {
+                $sponsors[] = $sponsor;
+                $seen_ids[] = $sponsor['id'];
+            }
+        }
+        
+        return $sponsors;
     }
 
     /**
@@ -349,6 +764,50 @@ class University_model extends App_Model
         $this->ensure_university_report_card_table();
         $this->ensure_bank_table();
         $this->ensure_university_students_photo_column();
+        $this->ensure_sponsor_tables();
+    }
+
+    private function ensure_sponsor_tables()
+    {
+        // Ensure sponsor_records table exists
+        if (!$this->db->table_exists($this->tbl_sponsor)) {
+            $this->db->query("
+                CREATE TABLE IF NOT EXISTS `{$this->tbl_sponsor}` (
+                    `id` int(11) NOT NULL AUTO_INCREMENT,
+                    `name` varchar(255) NOT NULL,
+                    `email` varchar(255) DEFAULT NULL,
+                    `sponsor_type` varchar(100) DEFAULT NULL,
+                    `sponsor_occupation` varchar(255) DEFAULT NULL,
+                    `address` text DEFAULT NULL,
+                    `city` varchar(100) DEFAULT NULL,
+                    `created_at` datetime DEFAULT current_timestamp(),
+                    PRIMARY KEY (`id`)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8
+            ");
+        }
+
+        // Ensure sponsor_transactions table exists
+        if (!$this->db->table_exists($this->tbl_sponsor_txn)) {
+            $this->db->query("
+                CREATE TABLE IF NOT EXISTS `{$this->tbl_sponsor_txn}` (
+                    `id` int(11) NOT NULL AUTO_INCREMENT,
+                    `sponsor_id` int(11) NOT NULL,
+                    `school_student_id` int(11) DEFAULT NULL,
+                    `university_student_id` int(11) DEFAULT NULL,
+                    `total_amount` decimal(15,2) NOT NULL DEFAULT 0,
+                    `amount_paid` decimal(15,2) NOT NULL DEFAULT 0,
+                    `currency` varchar(10) NOT NULL DEFAULT 'INR',
+                    `payment_type` varchar(30) NOT NULL DEFAULT 'one_time',
+                    `sponsorship_start` date DEFAULT NULL,
+                    `sponsorship_end` date DEFAULT NULL,
+                    `created_at` datetime DEFAULT current_timestamp(),
+                    PRIMARY KEY (`id`),
+                    KEY `sponsor_id` (`sponsor_id`),
+                    KEY `school_student_id` (`school_student_id`),
+                    KEY `university_student_id` (`university_student_id`)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8
+            ");
+        }
     }
 
     private function ensure_university_students_photo_column()
@@ -807,7 +1266,56 @@ class University_model extends App_Model
 
         $this->db->join(db_prefix() . 'bank b', 'b.id = us.bank_id', 'left');
         $this->db->order_by('us.id', 'DESC');
-        return $this->db->get()->result_array();
+        
+        $students = $this->db->get()->result_array();
+        
+        // Enhance each student with complete sponsor information
+        foreach ($students as &$student) {
+            $sponsors = $this->get_student_sponsors_history($student['id']);
+            
+            if (!empty($sponsors)) {
+                // Get the primary/latest sponsor
+                $primary_sponsor = $sponsors[0];
+                $student['sponsor_id'] = $primary_sponsor['sponsor_id'];
+                $student['sponsor_name'] = $primary_sponsor['sponsor_name'];
+                $student['sponsor_type'] = $primary_sponsor['sponsor_type'];
+                $student['sponsor_email'] = $primary_sponsor['sponsor_email'];
+                $student['sponsor_relationship_type'] = $primary_sponsor['relationship_type'];
+                
+                // Add all sponsors information for display
+                $sponsor_names = [];
+                $sponsor_types = [];
+                foreach ($sponsors as $sponsor) {
+                    $sponsor_names[] = $sponsor['sponsor_name'];
+                    if (!empty($sponsor['sponsor_type'])) {
+                        $sponsor_types[] = $sponsor['sponsor_type'];
+                    }
+                }
+                
+                // For multiple sponsors, create combined display
+                if (count($sponsors) > 1) {
+                    $student['all_sponsor_names'] = implode(', ', array_unique($sponsor_names));
+                    $student['all_sponsor_types'] = implode(', ', array_unique($sponsor_types));
+                    $student['sponsor_count'] = count($sponsors);
+                } else {
+                    $student['all_sponsor_names'] = $student['sponsor_name'];
+                    $student['all_sponsor_types'] = $student['sponsor_type'];
+                    $student['sponsor_count'] = 1;
+                }
+            } else {
+                // No sponsors
+                $student['sponsor_id'] = null;
+                $student['sponsor_name'] = '';
+                $student['sponsor_type'] = '';
+                $student['sponsor_email'] = '';
+                $student['sponsor_relationship_type'] = '';
+                $student['all_sponsor_names'] = '';
+                $student['all_sponsor_types'] = '';
+                $student['sponsor_count'] = 0;
+            }
+        }
+        
+        return $students;
     }
 
     public function get_by_id($id)
@@ -832,7 +1340,25 @@ class University_model extends App_Model
 
         $this->db->join(db_prefix() . 'bank b', 'b.id = us.bank_id', 'left');
         $this->db->where('us.id', (int)$id);
-        return $this->db->get()->row_array();
+        
+        $student = $this->db->get()->row_array();
+        
+        if ($student) {
+            // Get full sponsor history
+            $student['sponsor_history'] = $this->get_student_sponsors_history($student['id']);
+            
+            // Get primary sponsor info
+            if (!empty($student['sponsor_history'])) {
+                $primary_sponsor = $student['sponsor_history'][0];
+                $student['sponsor_id'] = $primary_sponsor['sponsor_id'];
+                $student['sponsor_name'] = $primary_sponsor['sponsor_name'];
+                $student['sponsor_type'] = $primary_sponsor['sponsor_type'];
+                $student['sponsor_email'] = $primary_sponsor['sponsor_email'];
+                $student['sponsor_relationship_type'] = $primary_sponsor['relationship_type'];
+            }
+        }
+        
+        return $student;
     }
 
     public function count_all()
@@ -917,7 +1443,7 @@ class University_model extends App_Model
                 return $this->db->where('id', $id)->count_all_results(db_prefix() . 'university_program') > 0;
                 
             case 'sponsor_id':
-                return $this->db->where('id', $id)->count_all_results(db_prefix() . 'sponsor_records') > 0;
+                return $this->db->where('id', $id)->count_all_results($this->tbl_sponsor) > 0;
                 
             default:
                 return true;
@@ -1089,9 +1615,8 @@ class University_model extends App_Model
 
     public function get_sponsors()
     {
-        if ($this->db->table_exists(db_prefix() . 'sponsor_records')) {
-            $this->db->where('entity_type', 'sponsor');
-            return $this->db->get(db_prefix() . 'sponsor_records')->result_array();
+        if ($this->db->table_exists($this->tbl_sponsor)) {
+            return $this->db->order_by('name', 'ASC')->get($this->tbl_sponsor)->result_array();
         }
         return [];
     }

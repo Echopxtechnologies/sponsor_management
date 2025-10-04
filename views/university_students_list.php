@@ -9,43 +9,39 @@
 
             <!-- Header -->
             <div class="row">
-              <div class="col-md-8">
+              <div class="col-md-6">
                 <h4 class="customer-profile-group-heading" style="margin-top:20px;">
                   <i class="fa fa-university"></i> <?php echo isset($title) ? $title : 'University Students'; ?>
                 </h4>
               </div>
-              <div class="col-md-4">
-                <div class="pull-right" style="margin-top:15px;">
-                  <div class="btn-toolbar" role="toolbar">
-                    <!-- Import/Export Group -->
-                    <div class="btn-group" role="group">
-                      <a href="<?php echo admin_url('student_sponsor_portal/bulk_import_university_students'); ?>" 
-                         class="btn btn-warning btn-sm" title="Bulk Import Students">
-                        <i class="fa fa-upload"></i> Import
-                      </a>
-                      <div class="btn-group" role="group">
-                        <button type="button" class="btn btn-success btn-sm dropdown-toggle" 
-                                data-toggle="dropdown" title="Export Options">
-                          <i class="fa fa-download"></i> Export <span class="caret"></span>
-                        </button>
-                        <ul class="dropdown-menu dropdown-menu-right">
-                          <li><a href="<?php echo admin_url('student_sponsor_portal/export_university_students'); ?>">
-                            <i class="fa fa-file-excel-o"></i> Export All Students (Excel)</a></li>
-                          <li><a href="#" onclick="exportFilteredStudents(); return false;">
-                            <i class="fa fa-filter"></i> Export Filtered Results (Excel)</a></li>
-                          <li class="divider"></li>
-                          <li><a href="<?php echo admin_url('student_sponsor_portal/download_university_students_template'); ?>">
-                            <i class="fa fa-download"></i> Download Excel Template</a></li>
-                        </ul>
-                      </div>
-                    </div>
-                    <!-- Add Student Button -->
-                    <div class="btn-group" role="group">
-                      <a href="<?php echo admin_url('student_sponsor_portal/university_student_form'); ?>" 
-                         class="btn btn-primary btn-sm">
-                        <i class="fa fa-plus"></i> New Student
-                      </a>
-                    </div>
+              <div class="col-md-6">
+                <div class="text-right" style="margin-top:15px;">
+                  <div class="btn-group" role="group" style="margin-right: 5px;">
+                    <a href="<?php echo admin_url('student_sponsor_portal/bulk_import_university_students'); ?>" 
+                       class="btn btn-warning btn-sm" title="Bulk Import Students">
+                      <i class="fa fa-upload"></i> Import
+                    </a>
+                  </div>
+                  <div class="btn-group" role="group" style="margin-right: 5px;">
+                    <button type="button" class="btn btn-success btn-sm dropdown-toggle" 
+                            data-toggle="dropdown" title="Export Options">
+                      <i class="fa fa-download"></i> Export <span class="caret"></span>
+                    </button>
+                    <ul class="dropdown-menu dropdown-menu-right">
+                      <li><a href="<?php echo admin_url('student_sponsor_portal/export_university_students'); ?>">
+                        <i class="fa fa-file-excel-o"></i> Export All Students (Excel)</a></li>
+                      <li><a href="#" onclick="exportFilteredStudents(); return false;">
+                        <i class="fa fa-filter"></i> Export Filtered Results (Excel)</a></li>
+                      <li class="divider"></li>
+                      <li><a href="<?php echo admin_url('student_sponsor_portal/download_university_students_template'); ?>">
+                        <i class="fa fa-download"></i> Download Excel Template</a></li>
+                    </ul>
+                  </div>
+                  <div class="btn-group" role="group">
+                    <a href="<?php echo admin_url('student_sponsor_portal/university_student_form'); ?>" 
+                       class="btn btn-primary btn-sm">
+                      <i class="fa fa-plus"></i> New Student
+                    </a>
                   </div>
                 </div>
               </div>
@@ -53,111 +49,27 @@
 
             <hr class="hr-panel-heading">
 
-            <!-- Quick Stats -->
-            <div class="row stats-row" style="margin-bottom: 20px;">
-              <div class="col-md-3">
-                <div class="quick-stat">
-                  <div class="quick-stat-number" id="total-students"><?php echo $stats['total'] ?? 0; ?></div>
-                  <div class="quick-stat-label">Total Students</div>
-                </div>
-              </div>
-              <div class="col-md-3">
-                <div class="quick-stat">
-                  <div class="quick-stat-number text-success" id="active-students"><?php echo $stats['active'] ?? 0; ?></div>
-                  <div class="quick-stat-label">Active</div>
-                </div>
-              </div>
-              <div class="col-md-3">
-                <div class="quick-stat">
-                  <div class="quick-stat-number text-warning" id="inactive-students"><?php echo $stats['inactive'] ?? 0; ?></div>
-                  <div class="quick-stat-label">Inactive</div>
-                </div>
-              </div>
-              <div class="col-md-3">
-                <div class="quick-stat">
-                  <div class="quick-stat-number text-info" id="verified-students"><?php echo $stats['verified'] ?? 0; ?></div>
-                  <div class="quick-stat-label">Verified</div>
-                </div>
-              </div>
-            </div>
-
-            <!-- Filters -->
-            <div class="row filters-row">
-              <div class="col-md-2">
-                <div class="form-group">
-                  <label for="filter_year">Year of Study</label>
-                  <select id="filter_year" class="form-control selectpicker" data-none-selected-text="All Years">
-                    <option value="">All Years</option>
-                    <option value="1Y1S">1st Year, 1st Semester</option>
-                    <option value="1Y2S">1st Year, 2nd Semester</option>
-                    <option value="2Y1S">2nd Year, 1st Semester</option>
-                    <option value="2Y2S">2nd Year, 2nd Semester</option>
-                    <option value="3Y1S">3rd Year, 1st Semester</option>
-                    <option value="3Y2S">3rd Year, 2nd Semester</option>
-                    <option value="4Y1S">4th Year, 1st Semester</option>
-                    <option value="4Y2S">4th Year, 2nd Semester</option>
-                    <option value="5Y1S">5th Year, 1st Semester</option>
-                    <option value="5Y2S">5th Year, 2nd Semester</option>
-                  </select>
-                </div>
-              </div>
-              <div class="col-md-2">
-                <div class="form-group">
-                  <label for="filter_status">Status</label>
-                  <select id="filter_status" class="form-control selectpicker" data-none-selected-text="All Status">
-                    <option value="">All Status</option>
-                    <option value="verified">Verified</option>
-                    <option value="active">Active</option>
-                    <option value="inactive">Inactive</option>
-                    <option value="unverified">Unverified</option>
-                  </select>
-                </div>
-              </div>
-              <div class="col-md-2">
-                <div class="form-group">
-                  <label for="filter_program">Program</label>
-                  <input type="text" id="filter_program" class="form-control" placeholder="Filter by program">
-                </div>
-              </div>
-              <div class="col-md-3">
-                <div class="form-group">
-                  <label for="filter_university">University</label>
-                  <input type="text" id="filter_university" class="form-control" placeholder="Filter by university">
-                </div>
-              </div>
-              <div class="col-md-2">
-                <div class="form-group">
-                  <label for="search_students">Search</label>
-                  <input type="text" id="search_students" class="form-control" placeholder="Search students...">
-                </div>
-              </div>
-              <div class="col-md-1">
-                <div class="form-group">
-                  <label>&nbsp;</label>
-                  <button type="button" class="btn btn-default btn-block" onclick="clearAllFilters()" title="Clear Filters">
-                    <i class="fa fa-refresh"></i>
-                  </button>
-                </div>
-              </div>
-            </div>
-
             <!-- Table -->
             <div class="table-responsive">
               <table class="table table-hover students-table" id="university-students-table">
                 <thead>
                   <tr>
-                    <th width="8%">ID</th>
-                    <th width="25%">Student Name</th>
+                    <th width="5%">#</th>
+                    <th width="20%">Student Name</th>
                     <th width="15%">University</th>
                     <th width="15%">Program</th>
                     <th width="12%">Year of Study</th>
                     <th width="10%">Status</th>
+                    <th width="13%">Sponsor</th>
                     <th width="15%">Contact</th>
                   </tr>
                 </thead>
                 <tbody>
                 <?php if(!empty($students)): ?>
-                  <?php foreach ($students as $s): ?>
+                  <?php 
+                    $serial = 1; 
+                    foreach ($students as $s): 
+                  ?>
                     <?php
                       $sid    = (int)($s['id'] ?? 0);
                       $name   = (string)($s['name'] ?? '');
@@ -173,6 +85,12 @@
                       $status = 'unverified';
                       $status_class = 'default';
                       $status_icon = 'fa-question-circle';
+                        $sponsor_name = (string)($s['sponsor_name'] ?? '');
+  $sponsor_type = (string)($s['sponsor_type'] ?? '');
+  $sponsor_relationship = $s['sponsor_relationship_type'] ?? 'direct';
+  $all_sponsor_names = (string)($s['all_sponsor_names'] ?? '');
+  $all_sponsor_types = (string)($s['all_sponsor_types'] ?? '');
+  $sponsor_count = (int)($s['sponsor_count'] ?? 0);
                       
                       if ($staff_id !== null) {
                         $status = 'verified';
@@ -221,7 +139,7 @@
                         data-university="<?php echo html_escape(mb_strtolower($university)); ?>"
                         data-status="<?php echo html_escape($status); ?>">
                       
-                      <td><strong><?php echo $sid; ?></strong></td>
+                      <td><strong><?php echo $serial; ?></strong></td>
 
                       <!-- Student Name with circular photo -->
                       <td>
@@ -242,6 +160,7 @@
                           </div>
                           <div class="media-body">
                             <strong><?php echo html_escape($name); ?></strong>
+                            <br><small class="text-muted">ID: <?php echo $sid; ?></small>
                             <div class="row-options" style="display:none;">
                               <a href="<?php echo admin_url('student_sponsor_portal/university_student_form/' . $sid); ?>">Edit</a> |
                               <a href="#" onclick="viewStudent(<?php echo $sid; ?>); return false;">View</a> |
@@ -268,6 +187,26 @@
                         </span>
                       </td>
                       
+                      <!-- Sponsor Column -->
+<td>
+  <?php if($all_sponsor_names): ?>
+    <div class="sponsor-info">
+      <strong class="text-success">
+        <i class="fa fa-heart"></i> <?php echo html_escape($all_sponsor_names); ?>
+      </strong>
+     
+      <?php if($sponsor_count > 1): ?>
+        <br><small class="text-info">
+          <i class="fa fa-users"></i> <?php echo $sponsor_count; ?> Sponsors
+        </small>
+      <?php endif; ?>
+    </div>
+  <?php else: ?>
+    <span class="text-muted">
+      <i class="fa fa-heart-o"></i> No Sponsor
+    </span>
+  <?php endif; ?>
+</td>
                       <!-- Contact Column (Combined Email/Phone) -->
                       <td>
                         <div class="contact-info">
@@ -283,10 +222,12 @@
                         </div>
                       </td>
                     </tr>
-                  <?php endforeach; ?>
+                  <?php 
+                    $serial++; 
+                  endforeach; ?>
                 <?php else: ?>
                   <tr>
-                    <td colspan="7" class="text-center">
+                    <td colspan="8" class="text-center">
                       <div style="padding:40px;">
                         <i class="fa fa-university fa-3x text-muted"></i>
                         <h4 class="text-muted">No students found</h4>
@@ -337,38 +278,6 @@
 </div>
 
 <style>
-/* Enhanced styling */
-.quick-stat {
-  text-align: center;
-  padding: 20px 15px;
-  background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
-  border-radius: 8px;
-  border: 1px solid #e9ecef;
-  margin-bottom: 10px;
-  transition: all 0.3s ease;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-}
-
-.quick-stat:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 8px rgba(0,0,0,0.1);
-}
-
-.quick-stat-number {
-  font-size: 28px;
-  font-weight: 700;
-  margin-bottom: 8px;
-  line-height: 1;
-}
-
-.quick-stat-label {
-  font-size: 12px;
-  color: #6c757d;
-  text-transform: uppercase;
-  font-weight: 600;
-  letter-spacing: 0.5px;
-}
-
 /* Button toolbar alignment */
 .btn-toolbar {
   display: flex;
@@ -528,45 +437,11 @@
   padding-right: 12px; 
 }
 
-/* Filters styling */
-.filters-row {
-  background: #f8f9fa;
-  padding: 15px;
-  border-radius: 6px;
-  margin-bottom: 20px;
-  border: 1px solid #e9ecef;
-}
-
-.filters-row .form-group {
-  margin-bottom: 0;
-}
-
-.filters-row label {
-  font-weight: 600;
-  font-size: 11px;
-  text-transform: uppercase;
-  color: #6c757d;
-  margin-bottom: 5px;
-}
-
-/* Stats row spacing */
-.stats-row {
-  padding: 0 15px;
-}
-
 /* Responsive adjustments */
 @media (max-width: 768px) {
   .btn-toolbar {
     flex-direction: column;
     gap: 10px;
-  }
-  
-  .quick-stat {
-    margin-bottom: 15px;
-  }
-  
-  .quick-stat-number {
-    font-size: 24px;
   }
 }
 </style>
@@ -656,27 +531,6 @@ function exportStudentsByIds(studentIds, filename) {
   form.remove();
 }
 
-function clearAllFilters() {
-  $('#filter_year').val('').trigger('change');
-  $('#filter_status').val('').trigger('change');
-  $('#filter_program').val('');
-  $('#filter_university').val('');
-  $('#search_students').val('');
-  
-  if ($.fn.selectpicker) {
-    $('.selectpicker').selectpicker('refresh');
-  }
-  
-  if (table) {
-    table.search('').columns().search('').draw();
-    // Clear custom filters
-    $.fn.dataTable.ext.search = [];
-    table.draw();
-    // Re-add custom filters
-    addCustomFilters();
-  }
-}
-
 // Student management functions
 function viewStudent(id) {
   $('#studentViewModal').modal('show');
@@ -735,42 +589,6 @@ function deleteStudent(id) {
   });
 }
 
-function addCustomFilters() {
-  // Custom filter for year/program/university/status using data attributes
-  $.fn.dataTable.ext.search.push(function(settings, data, dataIndex) {
-    if (settings.nTable !== table.table().node()) return true;
-
-    var node = table.row(dataIndex).node();
-    if (!node) return true;
-
-    var needYear = ($('#filter_year').val() || '').trim();
-    var needProg = ($('#filter_program').val() || '').toLowerCase().trim();
-    var needUni  = ($('#filter_university').val() || '').toLowerCase().trim();
-    var needStatus = ($('#filter_status').val() || '').trim();
-
-    var rowYear = (node.getAttribute('data-year') || '').trim();
-    var rowProg = (node.getAttribute('data-program') || '').toLowerCase().trim();
-    var rowUni  = (node.getAttribute('data-university') || '').toLowerCase().trim();
-    var rowStatus = (node.getAttribute('data-status') || '').trim();
-
-    if (needYear && rowYear !== needYear) return false;
-    if (needProg && rowProg.indexOf(needProg) === -1) return false;
-    if (needUni  && rowUni.indexOf(needUni)   === -1) return false;
-    if (needStatus && rowStatus !== needStatus) return false;
-
-    return true;
-  });
-}
-
-function debounce(fn, delay) {
-  var t;
-  return function() {
-    clearTimeout(t);
-    var args = arguments, ctx = this;
-    t = setTimeout(function(){ fn.apply(ctx, args); }, delay || 300);
-  };
-}
-
 $(document).ready(function() {
   // Initialize avatar states
   $('.avatar__image').each(function() {
@@ -802,42 +620,12 @@ $(document).ready(function() {
     }
   });
 
-  // Add custom filters
-  addCustomFilters();
-
   // Row hover effects
   $(document).on('mouseenter', '.student-row', function(){ 
     $(this).find('.row-options').show(); 
   }).on('mouseleave', '.student-row', function(){ 
     $(this).find('.row-options').hide(); 
   });
-
-  // Search functionality
-  $('#search_students').on('keyup', debounce(function(){
-    table.search(this.value).draw();
-  }, 250));
-
-  // Filter event handlers
-  $('#filter_year').on('change', function(){
-    table.draw();
-  });
-
-  $('#filter_status').on('change', function(){
-    table.draw();
-  });
-
-  $('#filter_program').on('keyup', debounce(function(){
-    table.draw();
-  }, 250));
-
-  $('#filter_university').on('keyup', debounce(function(){
-    table.draw();
-  }, 250));
-
-  // Initialize selectpicker
-  if($.fn.selectpicker){ 
-    $('.selectpicker').selectpicker(); 
-  }
 });
 </script>
 

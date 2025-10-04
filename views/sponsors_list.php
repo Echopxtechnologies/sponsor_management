@@ -8,86 +8,55 @@
                     <div class="panel-body">
                         <!-- Header Section -->
                         <div class="row">
-                            <div class="col-md-8">
-                                <h4 class="customer-profile-group-heading" style="margin-top:50px;">
+                            <div class="col-md-6">
+                                <h4 class="customer-profile-group-heading" style="margin-top:20px;">
                                     <i class="fa fa-users"></i> Sponsor Management
                                 </h4>
                             </div>
-                            <div class="col-md-4 text-right">
-                                <a href="<?php echo admin_url('student_sponsor_portal/export_sponsors'); ?>" class="btn btn-success">
-                                    <i class="fa fa-download"></i> Export Sponsors
-                                </a>
-                                <a href="<?php echo admin_url('student_sponsor_portal/sponsor_form'); ?>" class="btn btn-primary">
-                                    <i class="fa fa-plus"></i> New Sponsor
-                                </a>
+                            <div class="col-md-6">
+                                <div class="text-right" style="margin-top:15px;">
+                                    <div class="btn-group" role="group" style="margin-right: 5px;">
+                                        <a href="<?php echo admin_url('student_sponsor_portal/export_sponsors'); ?>" class="btn btn-success btn-sm">
+                                            <i class="fa fa-download"></i> Export Sponsors
+                                        </a>
+                                    </div>
+                                    <div class="btn-group" role="group">
+                                        <a href="<?php echo admin_url('student_sponsor_portal/sponsor_form'); ?>" class="btn btn-primary btn-sm">
+                                            <i class="fa fa-plus"></i> New Sponsor
+                                        </a>
+                                    </div>
+                                </div>
                             </div>
                         </div>
 
                         <hr class="hr-panel-heading">
 
-                        <!-- Filters and Search -->
-                        <div class="row">
-                            <div class="col-md-2">
-                                <div class="form-group">
-                                    <label for="filter_status">Access Status</label>
-                                    <select id="filter_status" class="form-control selectpicker">
-                                        <option value="">All Status</option>
-                                        <option value="verified">Verified</option>
-                                        <option value="active">Active</option>
-                                        <option value="inactive">Inactive</option>
-                                        <option value="unverified">Unverified</option>
-                                    </select>
-                                </div>
-                            </div>
-                            <div class="col-md-2">
-                                <div class="form-group">
-                                    <label for="filter_type">Sponsor Type</label>
-                                    <select id="filter_type" class="form-control selectpicker">
-                                        <option value="">All Types</option>
-                                        <option value="individual">Individual</option>
-                                        <option value="company">Company</option>
-                                    </select>
-                                </div>
-                            </div>
-                            <div class="col-md-2">
-                                <div class="form-group">
-                                    <label for="filter_frequency">Frequency</label>
-                                    <select id="filter_frequency" class="form-control selectpicker">
-                                        <option value="">All Frequencies</option>
-                                        <option value="one_time">One-time</option>
-                                        <option value="monthly">Monthly</option>
-                                        <option value="quarterly">Quarterly</option>
-                                        <option value="half_yearly">Half-yearly</option>
-                                        <option value="yearly">Yearly</option>
-                                    </select>
-                                </div>
-                            </div>
-                            <div class="col-md-4">
-                                <div class="form-group">
-                                    <label for="search_sponsors">Search</label>
-                                    <input type="text" id="search_sponsors" class="form-control" placeholder="Search sponsors (name, email, phone)...">
-                                </div>
-                            </div>
-                        </div>
-
+                 
                         <!-- Sponsors Table -->
                         <div class="table-responsive">
                             <table class="table table-hover sponsors-table" id="sponsors-table">
                                 <thead>
                                     <tr>
-                                        <th width="6%">ID</th>
-                                        <th width="28%">Sponsor Name</th>
+                                        <th width="5%">#</th>
+                                        <th width="18%">Sponsor Details</th>
                                         <th width="10%">Type</th>
-                                        <th width="16%">Email</th>
-                                        <th width="12%">Phone</th>
-                                        <th width="10%">Access Status</th>
-                                        <th width="10%">Frequency</th>
-                                        <th width="8%">Membership</th>
+                                        <th width="15%">Contact Info</th>
+                                        <th width="25%">Sponsored Students</th>
+                                        <th width="15%">Financial Summary</th>
+                                        <th width="7%">Status</th>
+                                        <th width="5%">Actions</th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     <?php if(!empty($sponsors)): ?>
-                                        <?php foreach($sponsors as $index => $sponsor): ?>
+                                        <?php 
+                                            $serial = 1;
+                                            $active_sponsoring_count = 0;
+                                            $active_no_students_count = 0;
+                                            $inactive_count = 0;
+                                            
+                                            foreach($sponsors as $index => $sponsor): 
+                                        ?>
                                         <?php
                                             $sponsor_id = (int)($sponsor['id'] ?? 0);
                                             $sponsor_name = (string)($sponsor['name'] ?? '');
@@ -98,53 +67,48 @@
                                             $staff_id = $sponsor['staff_id'] ?? null;
                                             $active_flag = (int)($sponsor['active'] ?? 0);
 
-                                            // Determine access status based on staff_id and active
-                                            $access_status = 'unverified';
-                                            $access_status_class = 'default';
-                                            $access_status_icon = 'fa-question-circle';
+                                            // Get sponsored students counts and names
+                                            $school_students_count = (int)($sponsor['school_students_count'] ?? 0);
+                                            $university_students_count = (int)($sponsor['university_students_count'] ?? 0);
+                                            $total_students_count = $school_students_count + $university_students_count;
                                             
-                                            if ($staff_id !== null) {
-                                                $access_status = 'verified';
-                                                $access_status_class = 'info';
-                                                $access_status_icon = 'fa-check-circle';
-                                                
-                                                if ($active_flag == 1) {
-                                                    $access_status = 'active';
-                                                    $access_status_class = 'success';
-                                                    $access_status_icon = 'fa-check-circle';
-                                                } else {
-                                                    $access_status = 'inactive';
-                                                    $access_status_class = 'warning';
-                                                    $access_status_icon = 'fa-pause-circle';
-                                                }
-                                            }
+                                            // Get student names data
+                                            $student_names_data = $sponsor['sponsored_student_names'] ?? [
+                                                'school_students' => [],
+                                                'university_students' => [],
+                                                'school_names_display' => '',
+                                                'university_names_display' => '',
+                                                'school_total_count' => 0,
+                                                'university_total_count' => 0,
+                                                'school_has_more' => false,
+                                                'university_has_more' => false
+                                            ];
+                                            
+                                            // Get financial info
+                                            $total_commitment = (float)($sponsor['total_commitment'] ?? 0);
+                                            $total_paid = (float)($sponsor['total_paid'] ?? 0);
+                                            $total_balance = $total_commitment - $total_paid;
+                                            $total_transactions = (int)($sponsor['total_transactions'] ?? 0);
 
-                                            // Calculate membership status based on sponsorship dates
-                                            $membership_status = 'inactive';
-                                            $membership_class = 'default';
+                                            // Determine status
+                                            $sponsor_status = 'inactive';
+                                            $sponsor_status_class = 'danger';
+                                            $sponsor_status_label = 'Inactive';
                                             
                                             if ($active_flag == 1) {
-                                                if(!empty($sponsor['membership_start_date'])) {
-                                                    $start_date = strtotime($sponsor['membership_start_date']);
-                                                    $current_date = time();
-                                                    
-                                                    if($start_date <= $current_date) {
-                                                        if(empty($sponsor['membership_end_date'])) {
-                                                            $membership_status = 'active';
-                                                            $membership_class = 'success';
-                                                        } else {
-                                                            $end_date = strtotime($sponsor['membership_end_date']);
-                                                            if($end_date >= $current_date) {
-                                                                $membership_status = 'active';
-                                                                $membership_class = 'success';
-                                                            }
-                                                        }
-                                                    }
+                                                if ($total_students_count > 0) {
+                                                    $sponsor_status = 'active_sponsoring';
+                                                    $sponsor_status_class = 'success';
+                                                    $sponsor_status_label = 'Active & Sponsoring';
+                                                    $active_sponsoring_count++;
                                                 } else {
-                                                    // If active flag is 1 but no start date, consider as active
-                                                    $membership_status = 'active';
-                                                    $membership_class = 'success';
+                                                    $sponsor_status = 'active_no_students';
+                                                    $sponsor_status_class = 'warning';
+                                                    $sponsor_status_label = 'Active (No Students)';
+                                                    $active_no_students_count++;
                                                 }
+                                            } else {
+                                                $inactive_count++;
                                             }
 
                                             // Create initials from sponsor name
@@ -158,11 +122,12 @@
                                             id="sponsor-row-<?php echo $sponsor_id; ?>"
                                             data-type="<?php echo html_escape(mb_strtolower($sponsor_type)); ?>"
                                             data-frequency="<?php echo html_escape(mb_strtolower($sponsor_frequency)); ?>"
-                                            data-access-status="<?php echo html_escape($access_status); ?>">
+                                            data-status="<?php echo html_escape($sponsor_status); ?>"
+                                            data-students-count="<?php echo $total_students_count; ?>">
                                             
-                                            <td><strong><?php echo $sponsor_id; ?></strong></td>
+                                            <td><strong><?php echo $serial; ?></strong></td>
                                             
-                                            <!-- Sponsor Name with avatar placeholder -->
+                                            <!-- Sponsor Details -->
                                             <td>
                                                 <div class="media">
                                                     <div class="media-left">
@@ -174,18 +139,10 @@
                                                     </div>
                                                     <div class="media-body">
                                                         <strong><?php echo htmlspecialchars($sponsor_name); ?></strong>
-                                                        <?php if(!empty($sponsor_type)): ?>
-                                                            <br><small class="text-muted"><?php echo ucfirst($sponsor_type); ?></small>
+                                                        <br><small class="text-muted">ID: <?php echo $sponsor_id; ?></small>
+                                                        <?php if(!empty($sponsor['city'])): ?>
+                                                            <br><small class="text-muted"><i class="fa fa-map-marker"></i> <?php echo htmlspecialchars($sponsor['city']); ?></small>
                                                         <?php endif; ?>
-                                                        <div class="row-options" style="display:none;">
- 
-                                                            <?php if(has_permission('student_sponsor_portal', '', 'edit')): ?>
-                                                            <a href="<?php echo admin_url('student_sponsor_portal/sponsor_form/' . $sponsor_id); ?>">Edit</a> |
-                                                            <?php endif; ?>
-                                                            <?php if(has_permission('student_sponsor_portal', '', 'delete')): ?>
-                                                            <a href="#" onclick="deleteSponsor(<?php echo $sponsor_id; ?>); return false;" class="text-danger">Delete</a>
-                                                            <?php endif; ?>
-                                                        </div>
                                                     </div>
                                                 </div>
                                             </td>
@@ -194,55 +151,168 @@
                                             <td>
                                                 <?php if(!empty($sponsor_type)): ?>
                                                     <?php if($sponsor_type == 'individual'): ?>
-                                                        <span class="label label-primary">Individual</span>
+                                                        <span class="label label-primary"><i class="fa fa-user"></i> Individual</span>
                                                     <?php elseif($sponsor_type == 'company'): ?>
-                                                        <span class="label label-info">Company</span>
+                                                        <span class="label label-info"><i class="fa fa-building"></i> Company</span>
                                                     <?php else: ?>
                                                         <span class="label label-default"><?php echo ucfirst($sponsor_type); ?></span>
+                                                    <?php endif; ?>
+                                                    <?php if(!empty($sponsor_frequency)): ?>
+                                                        <br><small class="text-muted"><?php echo ucfirst($sponsor_frequency); ?> donor</small>
                                                     <?php endif; ?>
                                                 <?php else: ?>
                                                     <span class="text-muted">Not set</span>
                                                 <?php endif; ?>
                                             </td>
 
-                                            <!-- Email -->
+                                            <!-- Contact Info -->
                                             <td>
                                                 <?php if(!empty($sponsor_email)): ?>
-                                                    <a href="mailto:<?php echo html_escape($sponsor_email); ?>"><?php echo htmlspecialchars($sponsor_email); ?></a>
-                                                <?php else: ?>
-                                                    <span class="text-muted">Not provided</span>
+                                                    <div style="margin-bottom: 3px;">
+                                                        <i class="fa fa-envelope text-muted" style="width: 12px;"></i>
+                                                        <a href="mailto:<?php echo html_escape($sponsor_email); ?>" style="font-size: 11px;">
+                                                            <?php echo htmlspecialchars($sponsor_email); ?>
+                                                        </a>
+                                                    </div>
+                                                <?php endif; ?>
+                                                <?php if(!empty($sponsor_phone)): ?>
+                                                    <div>
+                                                        <i class="fa fa-phone text-muted" style="width: 12px;"></i>
+                                                        <span style="font-size: 11px;"><?php echo htmlspecialchars($sponsor_phone); ?></span>
+                                                    </div>
+                                                <?php endif; ?>
+                                                <?php if(empty($sponsor_email) && empty($sponsor_phone)): ?>
+                                                    <span class="text-muted">No contact info</span>
                                                 <?php endif; ?>
                                             </td>
 
-                                            <!-- Phone -->
-                                            <td><?php echo !empty($sponsor_phone) ? htmlspecialchars($sponsor_phone) : '<span class="text-muted">Not provided</span>'; ?></td>
-
-                                            <!-- Access Status -->
+                                            <!-- Sponsored Students - Enhanced with Names -->
                                             <td>
-                                                <span class="label label-<?php echo $access_status_class; ?>" title="<?php echo ucfirst($access_status); ?>">
-                                                    <i class="fa <?php echo $access_status_icon; ?>"></i> <?php echo ucfirst($access_status); ?>
+                                                <?php if($total_students_count > 0): ?>
+                                                    <div class="sponsored-students-names">
+                                                        <!-- School Students -->
+                                                        <?php if($student_names_data['school_total_count'] > 0): ?>
+                                                            <div class="student-category-section" style="margin-bottom: 8px;">
+                                                                <div class="category-header">
+                                                                    <span class="label label-primary" style="font-size: 9px;">
+                                                                     School (<?php echo $student_names_data['school_total_count']; ?>)
+                                                                    </span>
+                                                                </div>
+                                                                <div class="student-names-list" style="margin-top: 3px; font-size: 11px; line-height: 1.3;">
+                                                                    <?php if(!empty($student_names_data['school_names_display'])): ?>
+                                                                        <span class="text-primary student-names-text" 
+                                                                              title="<?php echo html_escape($student_names_data['school_names_display']); ?>">
+                                                                            <?php echo htmlspecialchars($student_names_data['school_names_display']); ?>
+                                                                        </span>
+                                                                    <?php endif; ?>
+                                                                </div>
+                                                            </div>
+                                                        <?php endif; ?>
+                                                        
+                                                        <!-- University Students -->
+                                                        <?php if($student_names_data['university_total_count'] > 0): ?>
+                                                            <div class="student-category-section" style="margin-bottom: 8px;">
+                                                                <div class="category-header">
+                                                                    <span class="label label-success" style="font-size: 9px;">
+                                                                      University (<?php echo $student_names_data['university_total_count']; ?>)
+                                                                    </span>
+                                                                </div>
+                                                                <div class="student-names-list" style="margin-top: 3px; font-size: 11px; line-height: 1.3;">
+                                                                    <?php if(!empty($student_names_data['university_names_display'])): ?>
+                                                                        <span class="text-success student-names-text" 
+                                                                              title="<?php echo html_escape($student_names_data['university_names_display']); ?>">
+                                                                            <?php echo htmlspecialchars($student_names_data['university_names_display']); ?>
+                                                                        </span>
+                                                                    <?php endif; ?>
+                                                                </div>
+                                                            </div>
+                                                        <?php endif; ?>
+                                                                
+                                                    </div>
+                                                <?php else: ?>
+                                                    <div class="no-students">
+                                                        <span class="text-muted" style="font-size: 11px;">
+                                                            <i class="fa fa-users text-muted"></i> No students sponsored
+                                                        </span>
+                                                      
+                                                    </div>
+                                                <?php endif; ?>
+                                            </td>
+
+                                            <!-- Financial Summary -->
+                                            <td>
+                                                <?php if($total_commitment > 0 || $total_paid > 0): ?>
+                                                    <div class="financial-summary" style="font-size: 11px;">
+                                                        <?php if($total_commitment > 0): ?>
+                                                        <div>
+                                                            <strong>Committed:</strong> ₹<?php echo number_format($total_commitment, 2); ?>
+                                                        </div>
+                                                        <?php endif; ?>
+                                                        
+                                                        <?php if($total_paid > 0): ?>
+                                                        <div class="text-success">
+                                                            <strong>Paid:</strong> ₹<?php echo number_format($total_paid, 2); ?>
+                                                        </div>
+                                                        <?php endif; ?>
+                                                        
+                                                        <?php if($total_balance != 0): ?>
+                                                        <div class="<?php echo $total_balance > 0 ? 'text-warning' : 'text-info'; ?>">
+                                                            <strong><?php echo $total_balance > 0 ? 'Balance' : 'Overpaid'; ?>:</strong> 
+                                                            ₹<?php echo number_format(abs($total_balance), 2); ?>
+                                                        </div>
+                                                        <?php endif; ?>
+                                                        
+                                                        <?php if($total_transactions > 0): ?>
+                                                        <div class="text-muted">
+                                                            <?php echo $total_transactions; ?> transaction<?php echo $total_transactions > 1 ? 's' : ''; ?>
+                                                        </div>
+                                                        <?php endif; ?>
+                                                    </div>
+                                                <?php else: ?>
+                                                    <span class="text-muted" style="font-size: 11px;">No financial data</span>
+                                                <?php endif; ?>
+                                            </td>
+
+                                            <!-- Status -->
+                                            <td>
+                                                <span class="label label-<?php echo $sponsor_status_class; ?>" 
+                                                      title="<?php echo $sponsor_status_label; ?>" 
+                                                      style="font-size: 10px;">
+                                                    <?php if($sponsor_status == 'active_sponsoring'): ?>
+                                                        <i class="fa fa-check-circle"></i>
+                                                    <?php elseif($sponsor_status == 'active_no_students'): ?>
+                                                        <i class="fa fa-exclamation-triangle"></i>
+                                                    <?php else: ?>
+                                                        <i class="fa fa-times-circle"></i>
+                                                    <?php endif; ?>
+                                                    <?php echo $sponsor_status_label; ?>
                                                 </span>
                                             </td>
 
-                                            <!-- Frequency -->
+                                            <!-- Actions -->
                                             <td>
-                                                <?php 
-                                                if(!empty($sponsor_frequency)) {
-                                                    echo ucfirst(str_replace('_', ' ', $sponsor_frequency));
-                                                } else {
-                                                    echo '<span class="text-muted">Not set</span>';
-                                                }
-                                                ?>
-                                            </td>
-
-                                            <!-- Membership Status -->
-                                            <td>
-                                                <span class="label label-<?php echo $membership_class; ?>">
-                                                    <?php echo ucfirst($membership_status); ?>
-                                                </span>
+                                                <div class="dropdown">
+                                                    <button class="btn btn-default btn-xs dropdown-toggle" type="button" data-toggle="dropdown">
+                                                        <i class="fa fa-cog"></i>
+                                                        <span class="caret"></span>
+                                                    </button>
+                                                    <ul class="dropdown-menu dropdown-menu-right">
+                                                        <li><a href="#" onclick="viewSponsorDetails(<?php echo $sponsor_id; ?>); return false;"><i class="fa fa-eye"></i> View Details</a></li>
+                                                        <?php if(has_permission('student_sponsor_portal', '', 'edit')): ?>
+                                                        <li><a href="<?php echo admin_url('student_sponsor_portal/sponsor_form/' . $sponsor_id); ?>"><i class="fa fa-edit"></i> Edit</a></li>
+                                                        <?php endif; ?>
+                                                        <li><a href="#" onclick="viewSponsorTransactions(<?php echo $sponsor_id; ?>); return false;"><i class="fa fa-money"></i> View Transactions</a></li>
+                                                        <?php if(has_permission('student_sponsor_portal', '', 'delete')): ?>
+                                                        <li class="divider"></li>
+                                                        <li><a href="#" onclick="deleteSponsor(<?php echo $sponsor_id; ?>); return false;" class="text-danger"><i class="fa fa-trash"></i> Delete</a></li>
+                                                        <?php endif; ?>
+                                                    </ul>
+                                                </div>
                                             </td>
                                         </tr>
-                                        <?php endforeach; ?>
+                                        <?php 
+                                            $serial++;
+                                        endforeach; ?>
                                     <?php else: ?>
                                         <tr>
                                             <td colspan="8" class="text-center">
@@ -267,14 +337,40 @@
     </div>
 </div>
 
-<!-- View Sponsor Modal -->
+<!-- Sponsored Students Modal -->
+<div class="modal fade" id="sponsoredStudentsModal" tabindex="-1" role="dialog">
+    <div class="modal-dialog modal-lg" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <button type="button" class="close" data-dismiss="modal">&times;</button>
+                <h4 class="modal-title">
+                    <i class="fa fa-graduation-cap"></i> Students Sponsored by <span id="sponsor-name-display"></span>
+                </h4>
+            </div>
+            <div class="modal-body" id="sponsored-students-content">
+                <div class="text-center">
+                    <i class="fa fa-spinner fa-spin fa-2x"></i>
+                    <p>Loading sponsored students...</p>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-default" data-dismiss="modal">Close</button>
+                <button type="button" class="btn btn-primary" id="manage-students-btn" onclick="manageStudents()">
+                    <i class="fa fa-edit"></i> Manage Students
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- View Sponsor Details Modal -->
 <div class="modal fade" id="viewSponsorModal" tabindex="-1" role="dialog">
     <div class="modal-dialog modal-lg" role="document">
         <div class="modal-content">
             <div class="modal-header">
                 <button type="button" class="close" data-dismiss="modal">&times;</button>
                 <h4 class="modal-title">
-                    <i class="fa fa-eye"></i> Sponsor Details
+                    <i class="fa fa-user"></i> Sponsor Details
                 </h4>
             </div>
             <div class="modal-body" id="sponsor-details-content">
@@ -294,158 +390,191 @@
 </div>
 
 <style>
-/* Enhanced Sponsors List Styling - Matching Students Lists */
+/* Enhanced Sponsors List Styling */
+.sponsors-table {
+    border: 1px solid #e9ecef;
+    border-radius: 6px;
+    overflow: hidden;
+}
 
 .sponsors-table th { 
-    background: #f8f9fa; 
+    background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
     font-weight: 600; 
     font-size: 12px; 
-    border-bottom: 2px solid #dee2e6; 
+    border-bottom: 2px solid #dee2e6;
+    color: #495057;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    padding: 12px 8px;
 }
 
 .sponsors-table td { 
     vertical-align: middle; 
-    font-size: 13px; 
+    font-size: 13px;
+    padding: 12px 8px;
+    border-bottom: 1px solid #f1f3f4;
 }
 
 .label { 
     font-size: 10px; 
-    padding: 3px 6px; 
+    padding: 4px 8px;
+    border-radius: 12px;
+    font-weight: 500;
 }
 
-/* Status-specific styling */
-.label-success { background-color: #fbfcfbff; }
-.label-warning { background-color: #fafaf9ff; }
-.label-info { background-color: #f1f3f3ff; }
-.label-default { background-color: #fef7f7ff; }
-.label-primary { background-color: #eff4f8ff; }
+.label-success { background-color: #28a745; color: white; }
+.label-warning { background-color: #ffc107; color: #212529; }
+.label-info { background-color: #17a2b8; color: white; }
+.label-default { background-color: #6c757d; color: white; }
+.label-primary { background-color: #007bff; color: white; }
+.label-danger { background-color: #dc3545; color: white; }
 
-.row-options { 
-    font-size: 11px; 
-    color: #777; 
-    display: none !important; 
-    margin-top: 2px; 
-}
-
-.row-options a { 
-    color: #777; 
-    text-decoration: none; 
-}
-
-.row-options a:hover { 
-    color: #333; 
-    text-decoration: none; 
-}
-
-.row-options a.text-danger { 
-    color: #d9534f !important; 
-}
-
-.row-options a.text-danger:hover { 
-    color: #c9302c !important; 
+.sponsor-row {
+    transition: all 0.2s ease;
 }
 
 .sponsor-row:hover { 
-    background: #f9f9f9; 
-}
-
-.sponsor-row:hover .row-options { 
-    display: block !important; 
-}
-
-.modal-lg { 
-    width: 900px; 
-}
-
-#sponsor-details-content h5 { 
-    color: #337ab7; 
-    border-bottom: 1px solid #ddd; 
-    padding-bottom: 10px; 
-    margin-bottom: 15px; 
-}
-
-#sponsor-details-content p { 
-    margin-bottom: 8px; 
-}
-
-#sponsor-details-content .row { 
-    margin-bottom: 15px; 
+    background: #f8f9fa;
+    transform: translateX(2px);
 }
 
 .avatar {
-    width: 40px;
-    height: 40px;
+    width: 42px;
+    height: 42px;
     border-radius: 50%;
     overflow: hidden;
-    border: 2px solid #ddd;
-    background: #f0f0f0;
+    border: 2px solid #e9ecef;
+    background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
     display: flex;
     align-items: center;
     justify-content: center;
-    position: relative;
+    transition: all 0.3s ease;
 }
 
-.avatar img {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-    display: block;
+.avatar:hover {
+    border-color: #007bff;
+    transform: scale(1.05);
 }
 
 .avatar__initials {
-    font-size: 12px;
-    color: #666;
+    font-size: 13px;
+    color: #6c757d;
     line-height: 1;
-    text-align: center;
     font-weight: 600;
 }
 
 .media-left { 
-    padding-right: 10px; 
+    padding-right: 12px; 
 }
 
-.btn-xs { 
-    padding: 2px 5px; 
-    font-size: 11px; 
+/* Enhanced Student Names Styling */
+.sponsored-students-names {
+    padding: 8px;
+    background: #f8f9fa;
+    border-radius: 6px;
+    border: 1px solid #e9ecef;
 }
 
-.dropdown-menu { 
-    min-width: 140px; 
+.student-category-section {
+    margin-bottom: 6px;
 }
 
-.text-muted { 
-    font-size: 12px; 
+.category-header {
+    margin-bottom: 4px;
 }
 
-/* Ensure consistent table styling */
-.sponsors-table tbody tr:hover {
-    background-color: #f9f9f9 !important;
+.student-names-list {
+    background: white;
+    padding: 6px 8px;
+    border-radius: 4px;
+    border: 1px solid #e3e6ea;
+    font-weight: 500;
 }
 
-.sponsors-table .media {
-    margin: 0;
+.student-names-text {
+    display: block;
+    word-wrap: break-word;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 100%;
 }
 
-.sponsors-table .media-body {
+.students-summary {
+    text-align: center;
+}
+
+.financial-summary {
+    line-height: 1.4;
+}
+
+.no-students {
+    text-align: center;
+    padding: 8px;
+    background: #f8f9fa;
+    border-radius: 6px;
+    border: 1px solid #e9ecef;
+}
+
+/* Filter buttons */
+#sponsor-filters .btn {
+    border-radius: 3px;
+    margin-right: 2px;
+}
+
+#sponsor-filters .btn.active {
+    background-color: #007bff;
+    color: white;
+    border-color: #007bff;
+}
+
+#sponsor-filters .badge {
+    background-color: rgba(255,255,255,0.3);
+    margin-left: 5px;
+}
+
+#sponsor-filters .btn.active .badge {
+    background-color: rgba(255,255,255,0.9);
+    color: #007bff;
+}
+
+/* Modal styling */
+.modal-lg { 
+    width: 900px; 
+}
+
+.sponsored-students-table th {
+    background-color: #f8f9fa;
+    font-weight: 600;
+    font-size: 11px;
+    padding: 8px;
+}
+
+.sponsored-students-table td {
+    font-size: 12px;
+    padding: 8px;
     vertical-align: middle;
 }
 
-/* Filter styling */
-.form-group {
-    margin-bottom: 15px;
-}
-
-.form-group label {
-    font-weight: 500;
-    color: #333;
-    margin-bottom: 5px;
+.student-avatar {
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    font-weight: 600;
+    color: #1976d2;
+    margin-right: 8px;
 }
 
 /* Responsive adjustments */
 @media (max-width: 768px) {
     .sponsors-table th,
     .sponsors-table td {
-        padding: 8px 4px;
+        padding: 6px 4px;
         font-size: 11px;
     }
     
@@ -458,26 +587,165 @@
         font-size: 10px;
     }
     
-    .media-left {
-        padding-right: 8px;
+    .sponsored-students-names {
+        padding: 4px;
     }
+    
+    .student-names-list {
+        padding: 4px 6px;
+        font-size: 10px;
+    }
+}
+
+/* Hide specific columns on mobile */
+@media (max-width: 992px) {
+    .sponsors-table th:nth-child(6),
+    .sponsors-table td:nth-child(6) {
+        display: none;
+    }
+}
+
+@media (max-width: 768px) {
+    .sponsors-table th:nth-child(3),
+    .sponsors-table td:nth-child(3),
+    .sponsors-table th:nth-child(4),
+    .sponsors-table td:nth-child(4) {
+        display: none;
+    }
+}
+
+/* Enhanced tooltips for long student names */
+.student-names-text[title] {
+    cursor: help;
 }
 </style>
 
 <script>
-// Global variable to store current sponsor being viewed
+// Global variables
 let currentSponsorId = null;
+let currentSponsorName = '';
 
-// Define functions globally first (matching school structure exactly)
-function viewSponsor(id) {
-    currentSponsorId = id;
+$(document).ready(function() {
+    // Initialize DataTable
+    var table = $('#sponsors-table').DataTable({
+        responsive: true,
+        pageLength: 25,
+        order: [[1, "asc"]],
+        columnDefs: [
+            { orderable: false, targets: [7] }, // Actions column
+            { searchable: false, targets: [0] }, // Serial number column
+            { orderable: false, targets: [4] }   // Sponsored students column (names are dynamic)
+        ],
+        language: {
+            emptyTable: "No sponsors found",
+            zeroRecords: "No matching sponsors found",
+            info: "Showing _START_ to _END_ of _TOTAL_ sponsors",
+            infoEmpty: "Showing 0 to 0 of 0 sponsors",
+            infoFiltered: "(filtered from _MAX_ total sponsors)"
+        }
+    });
+    
+    // Update filter counts
+    updateFilterCounts();
+    
+    // Filter functionality
+    $('#sponsor-filters button').on('click', function() {
+        $('#sponsor-filters button').removeClass('active');
+        $(this).addClass('active');
+        
+        var filter = $(this).data('filter');
+        if (filter === 'all') {
+            table.column(6).search('').draw();
+        } else {
+            table.column(6).search(filter).draw();
+        }
+    });
+    
+    // View students button click
+    $(document).on('click', '.view-students-btn', function() {
+        var sponsorId = $(this).data('sponsor-id');
+        var sponsorName = $(this).data('sponsor-name');
+        viewSponsoredStudents(sponsorId, sponsorName);
+    });
+    
+    // Assign students button click
+    $(document).on('click', '.assign-students-btn', function() {
+        var sponsorId = $(this).data('sponsor-id');
+        assignStudentsToSponsor(sponsorId);
+    });
+    
+    // Enhanced tooltip handling for student names
+    $('.student-names-text[title]').on('mouseenter', function() {
+        var $this = $(this);
+        var title = $this.attr('title');
+        if (title && title.length > 50) {
+            $this.tooltip({
+                placement: 'top',
+                trigger: 'hover',
+                container: 'body',
+                html: false,
+                title: title
+            }).tooltip('show');
+        }
+    });
+});
+
+// Update filter badge counts
+function updateFilterCounts() {
+    var activeSponsoring = $('.sponsor-row[data-status="active_sponsoring"]').length;
+    var activeNoStudents = $('.sponsor-row[data-status="active_no_students"]').length;
+    var inactive = $('.sponsor-row[data-status="inactive"]').length;
+    
+    $('#active-sponsoring-count').text(activeSponsoring);
+    $('#active-no-students-count').text(activeNoStudents);
+    $('#inactive-count').text(inactive);
+}
+
+// View sponsored students
+function viewSponsoredStudents(sponsorId, sponsorName) {
+    currentSponsorId = sponsorId;
+    currentSponsorName = sponsorName;
+    
+    $('#sponsor-name-display').text(sponsorName);
+    $('#sponsoredStudentsModal').modal('show');
+    
+    $.ajax({
+        url: '<?php echo admin_url("student_sponsor_portal/get_sponsored_students"); ?>',
+        type: 'POST',
+        data: { 
+            sponsor_id: sponsorId,
+            <?php echo $this->security->get_csrf_token_name(); ?>: '<?php echo $this->security->get_csrf_hash(); ?>'
+        },
+        dataType: 'json',
+        success: function(response) {
+            if(response.success) {
+                $('#sponsored-students-content').html(response.html);
+                
+                // Update CSRF token
+                if (typeof csrfData !== 'undefined' && response[csrfData.token_name]) {
+                    csrfData.hash = response[csrfData.token_name];
+                }
+            } else {
+                $('#sponsored-students-content').html('<div class="alert alert-danger">' + (response.message || 'Error loading students') + '</div>');
+            }
+        },
+        error: function(xhr, status, error) {
+            console.error('AJAX Error:', xhr.responseText);
+            $('#sponsored-students-content').html('<div class="alert alert-danger">Error loading sponsored students</div>');
+        }
+    });
+}
+
+// View sponsor details
+function viewSponsorDetails(sponsorId) {
+    currentSponsorId = sponsorId;
     $('#viewSponsorModal').modal('show');
     
     $.ajax({
         url: '<?php echo admin_url("student_sponsor_portal/get_sponsor"); ?>',
         type: 'POST',
         data: { 
-            sponsor_id: id,
+            sponsor_id: sponsorId,
             action: 'view',
             <?php echo $this->security->get_csrf_token_name(); ?>: '<?php echo $this->security->get_csrf_hash(); ?>'
         },
@@ -486,7 +754,7 @@ function viewSponsor(id) {
             if(response.success) {
                 $('#sponsor-details-content').html(response.html);
                 
-                // Update CSRF token if provided
+                // Update CSRF token
                 if (typeof csrfData !== 'undefined' && response[csrfData.token_name]) {
                     csrfData.hash = response[csrfData.token_name];
                 }
@@ -501,22 +769,43 @@ function viewSponsor(id) {
     });
 }
 
+// View sponsor transactions
+function viewSponsorTransactions(sponsorId) {
+    window.location.href = '<?php echo admin_url("student_sponsor_portal/sponsor_transactions/"); ?>' + sponsorId;
+}
+
+// Edit current sponsor
 function editCurrentSponsor() {
     if (currentSponsorId) {
         window.location.href = '<?php echo admin_url("student_sponsor_portal/sponsor_form/"); ?>' + currentSponsorId;
     }
 }
 
-function deleteSponsor(id) {
-    if (!confirm('Are you sure you want to delete this sponsor? This action cannot be undone.')) return;
+// Manage students
+function manageStudents() {
+    if (currentSponsorId) {
+        window.location.href = '<?php echo admin_url("student_sponsor_portal/manage_sponsored_students/"); ?>' + currentSponsorId;
+    }
+}
 
-    var row = $('#sponsor-row-' + id).css('opacity', '0.5');
+// Assign students to sponsor
+function assignStudentsToSponsor(sponsorId) {
+    window.location.href = '<?php echo admin_url("student_sponsor_portal/assign_students/"); ?>' + sponsorId;
+}
+
+// Delete sponsor
+function deleteSponsor(sponsorId) {
+    if (!confirm('Are you sure you want to delete this sponsor? This will remove all sponsorship relationships but keep student records intact.')) {
+        return;
+    }
+
+    var row = $('#sponsor-row-' + sponsorId).css('opacity', '0.5');
 
     $.ajax({
         url: '<?php echo admin_url("student_sponsor_portal/delete_sponsor"); ?>',
         type: 'POST',
         data: { 
-            sponsor_id: id,
+            sponsor_id: sponsorId,
             <?php echo $this->security->get_csrf_token_name(); ?>: '<?php echo $this->security->get_csrf_hash(); ?>'
         },
         dataType: 'json',
@@ -525,10 +814,13 @@ function deleteSponsor(id) {
                 // Remove the row from DataTable
                 if ($.fn.DataTable && $.fn.DataTable.isDataTable('#sponsors-table')) {
                     var table = $('#sponsors-table').DataTable();
-                    table.row('#sponsor-row-' + id).remove().draw();
+                    table.row('#sponsor-row-' + sponsorId).remove().draw();
                 } else {
-                    $('#sponsor-row-' + id).remove();
+                    $('#sponsor-row-' + sponsorId).remove();
                 }
+                
+                // Update filter counts
+                updateFilterCounts();
                 
                 if (typeof alert_float === 'function') {
                     alert_float('success', response.message || 'Sponsor deleted successfully');
@@ -562,89 +854,33 @@ function deleteSponsor(id) {
     });
 }
 
-function debounce(fn, delay) {
-    var t;
-    return function() {
-        clearTimeout(t);
-        var args = arguments, ctx = this;
-        t = setTimeout(function(){ fn.apply(ctx, args); }, delay || 300);
-    };
-}
-
+// Update filter counts when filters change
 $(document).ready(function() {
-    // Initialize DataTable with proper configuration
-    var table = $('#sponsors-table').DataTable({
-        responsive: true,
-        pageLength: 10,
-        order: [[0, "desc"]],
-        columnDefs: [
-            { orderable: false, targets: [1] },
-            { className: "text-center", targets: [0, 5, 6, 7] }
-        ],
-        language: {
-            emptyTable: "No sponsors found",
-            zeroRecords: "No matching sponsors found",
-            info: "Showing _START_ to _END_ of _TOTAL_ sponsors",
-            infoEmpty: "Showing 0 to 0 of 0 sponsors",
-            infoFiltered: "(filtered from _MAX_ total sponsors)"
+    <?php if(!empty($sponsors)): ?>
+    // Set the counts from PHP
+    <?php 
+        $active_sponsoring_count = 0;
+        $active_no_students_count = 0;
+        $inactive_count = 0;
+        foreach($sponsors as $sponsor) {
+            $total_students = ((int)($sponsor['school_students_count'] ?? 0)) + ((int)($sponsor['university_students_count'] ?? 0));
+            $active = (int)($sponsor['active'] ?? 0);
+            
+            if ($active == 1) {
+                if ($total_students > 0) {
+                    $active_sponsoring_count++;
+                } else {
+                    $active_no_students_count++;
+                }
+            } else {
+                $inactive_count++;
+            }
         }
-    });
-    
-    // Row hover effects
-    $(document).on('mouseenter', '.sponsor-row', function(){ 
-        $(this).find('.row-options').show(); 
-    }).on('mouseleave', '.sponsor-row', function(){ 
-        $(this).find('.row-options').hide(); 
-    });
-    
-    // Custom search functionality
-    $('#search_sponsors').on('keyup', debounce(function() {
-        table.search(this.value).draw();
-    }, 250));
-    
-    // Filter functionality using custom filter for access status
-    $.fn.dataTable.ext.search.push(function(settings, data, dataIndex) {
-        if (settings.nTable !== table.table().node()) return true;
-
-        var selectedAccessStatus = $('#filter_status').val();
-        if (!selectedAccessStatus) return true;
-
-        var node = table.row(dataIndex).node();
-        if (!node) return true;
-
-        var rowAccessStatus = node.getAttribute('data-access-status');
-        return rowAccessStatus === selectedAccessStatus;
-    });
-
-    // Access status filter
-    $('#filter_status').on('change', function() {
-        table.draw();
-    });
-    
-    // Type filter
-    $('#filter_type').on('change', function() {
-        var typeFilter = $(this).val();
-        if (typeFilter) {
-            table.column(2).search(typeFilter).draw();
-        } else {
-            table.column(2).search('').draw();
-        }
-    });
-    
-    // Frequency filter
-    $('#filter_frequency').on('change', function() {
-        var frequencyFilter = $(this).val();
-        if (frequencyFilter) {
-            table.column(6).search(frequencyFilter).draw();
-        } else {
-            table.column(6).search('').draw();
-        }
-    });
-    
-    // Initialize selectpicker
-    if ($.fn.selectpicker) {
-        $('.selectpicker').selectpicker();
-    }
+    ?>
+    $('#active-sponsoring-count').text(<?php echo $active_sponsoring_count; ?>);
+    $('#active-no-students-count').text(<?php echo $active_no_students_count; ?>);
+    $('#inactive-count').text(<?php echo $inactive_count; ?>);
+    <?php endif; ?>
 });
 </script>
 

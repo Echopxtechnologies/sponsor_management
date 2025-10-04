@@ -6,51 +6,308 @@
             <div class="col-md-12">
                 <div class="panel_s">
                     <div class="panel-body">
+                        <!-- Header Section -->
                         <div class="row">
                             <div class="col-md-8">
-                                <h4 class="customer-profile-group-heading"><?php echo $title; ?></h4>
+                                <h4 class="customer-profile-group-heading" style="margin-top:20px;">
+                                    <i class="fa fa-dashboard"></i> <?php echo isset($title) ? $title : 'Student Sponsor Portal Dashboard'; ?>
+                                </h4>
+                                <p class="text-muted">Real-time overview of sponsorship activities and performance metrics</p>
                             </div>
-                            <div class="col-md-4 text-right">
-                                <div class="btn-group">
-                                    <button type="button" class="btn btn-info dropdown-toggle" data-toggle="dropdown">
-                                        <i class="fa fa-download"></i> Export <span class="caret"></span>
+                            <div class="col-md-4">
+                                <div class="text-right" style="margin-top:15px;">
+                                    <div class="btn-group" role="group" style="margin-right: 5px;">
+                                        <button type="button" class="btn btn-success btn-sm dropdown-toggle" 
+                                                data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
+                                            <i class="fa fa-download"></i> Export <span class="caret"></span>
+                                        </button>
+                                        <ul class="dropdown-menu dropdown-menu-right">
+                                            <li><a href="<?php echo admin_url('student_sponsor_portal/export_dashboard_pdf'); ?>"><i class="fa fa-file-pdf-o text-danger"></i> Dashboard PDF</a></li>
+                                            <li><a href="<?php echo admin_url('student_sponsor_portal/export_dashboard_excel'); ?>"><i class="fa fa-file-excel-o text-success"></i> Summary Excel</a></li>
+                                            <li><a href="<?php echo admin_url('student_sponsor_portal/export_all_data'); ?>"><i class="fa fa-file-text-o"></i> All Data CSV</a></li>
+                                        </ul>
+                                    </div>
+                                    <button type="button" onclick="refreshDashboard()" class="btn btn-info btn-sm">
+                                        <i class="fa fa-refresh"></i> Refresh
                                     </button>
-                                    <ul class="dropdown-menu" role="menu">
-                                        <li><a href="#" onclick="exportData('pdf')"><i class="fa fa-file-pdf-o"></i> Export PDF</a></li>
-                                        <li><a href="#" onclick="exportData('excel')"><i class="fa fa-file-excel-o"></i> Export Excel</a></li>
-                                        <li><a href="#" onclick="exportData('csv')"><i class="fa fa-file-text-o"></i> Export CSV</a></li>
-                                    </ul>
                                 </div>
-                                <button type="button" onclick="refreshStats()" class="btn btn-warning">
-                                    <i class="fa fa-refresh"></i> Refresh
-                                </button>
                             </div>
                         </div>
+
                         <hr class="hr-panel-heading">
 
-                        <!-- Enhanced Summary Cards with Progress -->
+                        <!-- Summary Cards -->
                         <div class="row">
+                            <!-- School Students Card -->
                             <div class="col-md-3">
-                                <div class="panel panel-primary">
-                                    <div class="panel-heading">
-                                        <div class="row">
-                                            <div class="col-xs-3">
-                                                <i class="fa fa-child fa-3x"></i>
-                                            </div>
-                                            <div class="col-xs-9 text-right">
-                                                <h2 class="mtop5"><?php echo $school_count; ?></h2>
-                                                <div>School Students</div>
-                                            </div>
+                                <div class="dashboard-card school-students-card">
+                                    <div class="card-header">
+                                        <div class="card-icon">
+                                            <i class="fa fa-child"></i>
+                                        </div>
+                                        <div class="card-title">
+                                            <h3><?php echo number_format($dashboard_stats['school_students']['total'] ?? 0); ?></h3>
+                                            <span>School Students</span>
                                         </div>
                                     </div>
-                                    <div class="panel-footer">
-                                        <div class="row">
-                                            <div class="col-xs-6">
-                                                <span class="text-muted">Active: <?php echo isset($active_school_count) ? $active_school_count : 0; ?></span>
+                                    <div class="card-body">
+                                        <div class="progress progress-sm">
+                                            <?php 
+                                                $school_total = $dashboard_stats['school_students']['total'] ?? 0;
+                                                $school_active = $dashboard_stats['school_students']['active'] ?? 0;
+                                                $school_active_percentage = ($school_total > 0) ? round(($school_active / $school_total) * 100, 1) : 0;
+                                            ?>
+                                            <div class="progress-bar progress-bar-primary" 
+                                                 style="width: <?php echo $school_active_percentage; ?>%"></div>
+                                        </div>
+                                        <div class="card-stats">
+                                            <span class="text-success">
+                                                <i class="fa fa-check-circle"></i> 
+                                                <?php echo $school_active; ?> Active
+                                            </span>
+                                            <span class="text-warning">
+                                                <i class="fa fa-heart"></i> 
+                                                <?php echo $dashboard_stats['school_students']['sponsored'] ?? 0; ?> Sponsored
+                                            </span>
+                                        </div>
+                                    </div>
+                                    <div class="card-footer">
+                                        <div class="card-actions">
+                                            <a href="<?php echo admin_url('student_sponsor_portal/school_students'); ?>" 
+                                               class="btn btn-xs btn-primary">
+                                                <i class="fa fa-list"></i> View All
+                                            </a>
+                                            <a href="<?php echo admin_url('student_sponsor_portal/school_student_form'); ?>" 
+                                               class="btn btn-xs btn-success">
+                                                <i class="fa fa-plus"></i> Add New
+                                            </a>
+                                        </div>
+                                        <?php if(isset($dashboard_stats['school_students']['trend']) && $dashboard_stats['school_students']['trend'] != 0): ?>
+                                            <div class="card-trend">
+                                                <span class="trend <?php echo $dashboard_stats['school_students']['trend'] > 0 ? 'trend-up' : 'trend-down'; ?>">
+                                                    <i class="fa fa-arrow-<?php echo $dashboard_stats['school_students']['trend'] > 0 ? 'up' : 'down'; ?>"></i>
+                                                    <?php echo abs($dashboard_stats['school_students']['trend']); ?>%
+                                                </span>
                                             </div>
-                                            <div class="col-xs-6 text-right">
-                                                <a href="<?php echo admin_url('student_sponsor_portal/school_student_form'); ?>" class="btn btn-xs btn-primary">
-                                                    <i class="fa fa-plus"></i> Add New
+                                        <?php endif; ?>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- University Students Card -->
+                            <div class="col-md-3">
+                                <div class="dashboard-card university-students-card">
+                                    <div class="card-header">
+                                        <div class="card-icon">
+                                            <i class="fa fa-graduation-cap"></i>
+                                        </div>
+                                        <div class="card-title">
+                                            <h3><?php echo number_format($dashboard_stats['university_students']['total'] ?? 0); ?></h3>
+                                            <span>University Students</span>
+                                        </div>
+                                    </div>
+                                    <div class="card-body">
+                                        <div class="progress progress-sm">
+                                            <?php 
+                                                $university_total = $dashboard_stats['university_students']['total'] ?? 0;
+                                                $university_active = $dashboard_stats['university_students']['active'] ?? 0;
+                                                $university_active_percentage = ($university_total > 0) ? round(($university_active / $university_total) * 100, 1) : 0;
+                                            ?>
+                                            <div class="progress-bar progress-bar-success" 
+                                                 style="width: <?php echo $university_active_percentage; ?>%"></div>
+                                        </div>
+                                        <div class="card-stats">
+                                            <span class="text-success">
+                                                <i class="fa fa-check-circle"></i> 
+                                                <?php echo $university_active; ?> Active
+                                            </span>
+                                            <span class="text-warning">
+                                                <i class="fa fa-heart"></i> 
+                                                <?php echo $dashboard_stats['university_students']['sponsored'] ?? 0; ?> Sponsored
+                                            </span>
+                                        </div>
+                                    </div>
+                                    <div class="card-footer">
+                                        <div class="card-actions">
+                                            <a href="<?php echo admin_url('student_sponsor_portal/university_students'); ?>" 
+                                               class="btn btn-xs btn-success">
+                                                <i class="fa fa-list"></i> View All
+                                            </a>
+                                            <a href="<?php echo admin_url('student_sponsor_portal/university_student_form'); ?>" 
+                                               class="btn btn-xs btn-primary">
+                                                <i class="fa fa-plus"></i> Add New
+                                            </a>
+                                        </div>
+                                        <?php if(isset($dashboard_stats['university_students']['trend']) && $dashboard_stats['university_students']['trend'] != 0): ?>
+                                            <div class="card-trend">
+                                                <span class="trend <?php echo $dashboard_stats['university_students']['trend'] > 0 ? 'trend-up' : 'trend-down'; ?>">
+                                                    <i class="fa fa-arrow-<?php echo $dashboard_stats['university_students']['trend'] > 0 ? 'up' : 'down'; ?>"></i>
+                                                    <?php echo abs($dashboard_stats['university_students']['trend']); ?>%
+                                                </span>
+                                            </div>
+                                        <?php endif; ?>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Sponsors Card -->
+                            <div class="col-md-3">
+                                <div class="dashboard-card sponsors-card">
+                                    <div class="card-header">
+                                        <div class="card-icon">
+                                            <i class="fa fa-handshake-o"></i>
+                                        </div>
+                                        <div class="card-title">
+                                            <h3><?php echo number_format($dashboard_stats['sponsors']['total'] ?? 0); ?></h3>
+                                            <span>Sponsors</span>
+                                        </div>
+                                    </div>
+                                    <div class="card-body">
+                                        <div class="progress progress-sm">
+                                            <?php 
+                                                $sponsor_total = $dashboard_stats['sponsors']['total'] ?? 0;
+                                                $sponsor_active = $dashboard_stats['sponsors']['active'] ?? 0;
+                                                $sponsor_active_percentage = ($sponsor_total > 0) ? round(($sponsor_active / $sponsor_total) * 100, 1) : 0;
+                                            ?>
+                                            <div class="progress-bar progress-bar-info" 
+                                                 style="width: <?php echo $sponsor_active_percentage; ?>%"></div>
+                                        </div>
+                                        <div class="card-stats">
+                                            <span class="text-success">
+                                                <i class="fa fa-check-circle"></i> 
+                                                <?php echo $sponsor_active; ?> Active
+                                            </span>
+                                            <span class="text-info">
+                                                <i class="fa fa-users"></i> 
+                                                <?php echo $dashboard_stats['sponsors']['actively_sponsoring'] ?? 0; ?> Sponsoring
+                                            </span>
+                                        </div>
+                                    </div>
+                                    <div class="card-footer">
+                                        <div class="card-actions">
+                                            <a href="<?php echo admin_url('student_sponsor_portal/sponsors'); ?>" 
+                                               class="btn btn-xs btn-info">
+                                                <i class="fa fa-list"></i> View All
+                                            </a>
+                                            <a href="<?php echo admin_url('student_sponsor_portal/sponsor_form'); ?>" 
+                                               class="btn btn-xs btn-success">
+                                                <i class="fa fa-plus"></i> Add New
+                                            </a>
+                                        </div>
+                                        <?php if(isset($dashboard_stats['sponsors']['trend']) && $dashboard_stats['sponsors']['trend'] != 0): ?>
+                                            <div class="card-trend">
+                                                <span class="trend <?php echo $dashboard_stats['sponsors']['trend'] > 0 ? 'trend-up' : 'trend-down'; ?>">
+                                                    <i class="fa fa-arrow-<?php echo $dashboard_stats['sponsors']['trend'] > 0 ? 'up' : 'down'; ?>"></i>
+                                                    <?php echo abs($dashboard_stats['sponsors']['trend']); ?>%
+                                                </span>
+                                            </div>
+                                        <?php endif; ?>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Financial Card -->
+                            <div class="col-md-3">
+                                <div class="dashboard-card financial-card">
+                                    <div class="card-header">
+                                        <div class="card-icon">
+                                            <i class="fa fa-money"></i>
+                                        </div>
+                                        <div class="card-title">
+                                            <h3>₹<?php echo number_format($dashboard_stats['financial']['total_committed'] ?? 0, 0); ?></h3>
+                                            <span>Total Committed</span>
+                                        </div>
+                                    </div>
+                                    <div class="card-body">
+                                        <div class="progress progress-sm">
+                                            <?php 
+                                                $total_committed = $dashboard_stats['financial']['total_committed'] ?? 0;
+                                                $total_paid = $dashboard_stats['financial']['total_paid'] ?? 0;
+                                                $payment_percentage = ($total_committed > 0) ? round(($total_paid / $total_committed) * 100, 1) : 0;
+                                            ?>
+                                            <div class="progress-bar progress-bar-warning" 
+                                                 style="width: <?php echo $payment_percentage; ?>%"></div>
+                                        </div>
+                                        <div class="card-stats">
+                                            <span class="text-success">
+                                                <i class="fa fa-check"></i> 
+                                                ₹<?php echo number_format($total_paid, 0); ?> Paid
+                                            </span>
+                                            <span class="text-warning">
+                                                <i class="fa fa-clock-o"></i> 
+                                                ₹<?php echo number_format($total_committed - $total_paid, 0); ?> Pending
+                                            </span>
+                                        </div>
+                                    </div>
+                                    <div class="card-footer">
+                                        <div class="card-actions">
+                                            <a href="<?php echo admin_url('student_sponsor_portal/transactions'); ?>" 
+                                               class="btn btn-xs btn-warning">
+                                                <i class="fa fa-list"></i> Transactions
+                                            </a>
+                                            <a href="<?php echo admin_url('student_sponsor_portal/transaction'); ?>" 
+                                               class="btn btn-xs btn-success">
+                                                <i class="fa fa-plus"></i> Add Payment
+                                            </a>
+                                        </div>
+                                        <?php if(isset($dashboard_stats['financial']['trend']) && $dashboard_stats['financial']['trend'] != 0): ?>
+                                            <div class="card-trend">
+                                                <span class="trend <?php echo $dashboard_stats['financial']['trend'] > 0 ? 'trend-up' : 'trend-down'; ?>">
+                                                    <i class="fa fa-arrow-<?php echo $dashboard_stats['financial']['trend'] > 0 ? 'up' : 'down'; ?>"></i>
+                                                    <?php echo abs($dashboard_stats['financial']['trend']); ?>%
+                                                </span>
+                                            </div>
+                                        <?php endif; ?>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Quick Actions & Recent Activity Row -->
+                        <div class="row" style="margin-top: 25px;">
+                            <!-- Quick Actions Panel -->
+                            <div class="col-md-4">
+                                <div class="panel panel-default">
+                                    <div class="panel-heading">
+                                        <h3 class="panel-title">
+                                            <i class="fa fa-bolt text-warning"></i> Quick Actions
+                                        </h3>
+                                    </div>
+                                    <div class="panel-body">
+                                        <div class="quick-actions">
+                                            <div class="action-group">
+                                                <h6>Students</h6>
+                                                <a href="<?php echo admin_url('student_sponsor_portal/school_student_form'); ?>" 
+                                                   class="btn btn-sm btn-primary btn-block">
+                                                    <i class="fa fa-plus"></i> Add School Student
+                                                </a>
+                                                <a href="<?php echo admin_url('student_sponsor_portal/university_student_form'); ?>" 
+                                                   class="btn btn-sm btn-success btn-block">
+                                                    <i class="fa fa-plus"></i> Add University Student
+                                                </a>
+                                            </div>
+                                            
+                                            <div class="action-group">
+                                                <h6>Sponsors & Payments</h6>
+                                                <a href="<?php echo admin_url('student_sponsor_portal/sponsor_form'); ?>" 
+                                                   class="btn btn-sm btn-info btn-block">
+                                                    <i class="fa fa-user-plus"></i> Add Sponsor
+                                                </a>
+                                                <a href="<?php echo admin_url('student_sponsor_portal/transaction'); ?>" 
+                                                   class="btn btn-sm btn-warning btn-block">
+                                                    <i class="fa fa-money"></i> Record Payment
+                                                </a>
+                                            </div>
+                                            
+                                            <div class="action-group">
+                                                <h6>Data Management</h6>
+                                                <a href="<?php echo admin_url('student_sponsor_portal/bulk_import_school_students'); ?>" 
+                                                   class="btn btn-sm btn-default btn-block">
+                                                    <i class="fa fa-upload"></i> Import Students
+                                                </a>
+                                                <a href="<?php echo admin_url('student_sponsor_portal/export_all_data'); ?>" 
+                                                   class="btn btn-sm btn-default btn-block">
+                                                    <i class="fa fa-download"></i> Export All Data
                                                 </a>
                                             </div>
                                         </div>
@@ -58,728 +315,283 @@
                                 </div>
                             </div>
 
-                            <div class="col-md-3">
-                                <div class="panel panel-success">
+                            <!-- Recent Activity Panel -->
+                            <div class="col-md-8">
+                                <div class="panel panel-default">
                                     <div class="panel-heading">
                                         <div class="row">
-                                            <div class="col-xs-3">
-                                                <i class="fa fa-graduation-cap fa-3x"></i>
+                                            <div class="col-md-8">
+                                                <h3 class="panel-title">
+                                                    <i class="fa fa-clock-o text-info"></i> Recent Activity
+                                                </h3>
                                             </div>
-                                            <div class="col-xs-9 text-right">
-                                                <h2 class="mtop5"><?php echo $university_count; ?></h2>
-                                                <div>University Students</div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <div class="panel-footer">
-                                        <div class="row">
-                                            <div class="col-xs-6">
-                                                <span class="text-muted">Active: <?php echo isset($active_university_count) ? $active_university_count : 0; ?></span>
-                                            </div>
-                                            <div class="col-xs-6 text-right">
-                                                <a href="<?php echo admin_url('student_sponsor_portal/university_form'); ?>" class="btn btn-xs btn-success">
-                                                    <i class="fa fa-plus"></i> Add New
-                                                </a>
+                                            <div class="col-md-4 text-right">
+                                                <div class="btn-group btn-group-xs">
+                                                    <button type="button" class="btn btn-default active" onclick="filterActivity('all')">All</button>
+                                                    <button type="button" class="btn btn-default" onclick="filterActivity('students')">Students</button>
+                                                    <button type="button" class="btn btn-default" onclick="filterActivity('sponsors')">Sponsors</button>
+                                                    <button type="button" class="btn btn-default" onclick="filterActivity('payments')">Payments</button>
+                                                </div>
                                             </div>
                                         </div>
                                     </div>
-                                </div>
-                            </div>
-
-                            <div class="col-md-3">
-                                <div class="panel panel-info">
-                                    <div class="panel-heading">
-                                        <div class="row">
-                                            <div class="col-xs-3">
-                                                <i class="fa fa-handshake-o fa-3x"></i>
-                                            </div>
-                                            <div class="col-xs-9 text-right">
-                                                <h2 class="mtop5"><?php echo $sponsor_count; ?></h2>
-                                                <div>Sponsors</div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <div class="panel-footer">
-                                        <div class="row">
-                                            <div class="col-xs-6">
-                                                <span class="text-muted">Active: <?php echo isset($active_sponsor_count) ? $active_sponsor_count : 0; ?></span>
-                                            </div>
-                                            <div class="col-xs-6 text-right">
-                                                <a href="<?php echo admin_url('student_sponsor_portal/sponsor_form'); ?>" class="btn btn-xs btn-info">
-                                                    <i class="fa fa-plus"></i> Add New
-                                                </a>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div class="col-md-3">
-                                <div class="panel panel-warning">
-                                    <div class="panel-heading">
-                                        <div class="row">
-                                            <div class="col-xs-3">
-                                                <i class="fa fa-link fa-3x"></i>
-                                            </div>
-                                            <div class="col-xs-9 text-right">
-                                                <h2 class="mtop5"><?php echo isset($sponsorship_count) ? $sponsorship_count : 0; ?></h2>
-                                                <div>Sponsorships</div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <div class="panel-footer">
-                                        <div class="row">
-                                            <div class="col-xs-6">
-                                                <span class="text-muted">Active: <?php echo isset($active_sponsorship_count) ? $active_sponsorship_count : 0; ?></span>
-                                            </div>
-                                            <div class="col-xs-6 text-right">
-                                                <a href="<?php echo admin_url('student_sponsor_portal/sponsor_form'); ?>" class="btn btn-xs btn-warning">
-                                                    <i class="fa fa-plus"></i> Create
-                                                </a>
-                                            </div>
+                                    <div class="panel-body">
+                                        <div class="activity-timeline" id="activity-timeline">
+                                            <?php if(!empty($recent_activities)): ?>
+                                                <?php foreach($recent_activities as $activity): ?>
+                                                    <div class="activity-item" data-type="<?php echo $activity['type']; ?>">
+                                                        <div class="activity-icon" style="background-color: <?php echo $activity['color']; ?>">
+                                                            <i class="fa <?php echo $activity['icon']; ?>"></i>
+                                                        </div>
+                                                        <div class="activity-content">
+                                                            <div class="activity-title"><?php echo html_escape($activity['title']); ?></div>
+                                                            <div class="activity-description"><?php echo html_escape($activity['description']); ?></div>
+                                                        </div>
+                                                        <div class="activity-time">
+                                                            <?php echo time_ago($activity['created_at']); ?>
+                                                        </div>
+                                                    </div>
+                                                <?php endforeach; ?>
+                                            <?php else: ?>
+                                                <div class="empty-state">
+                                                    <i class="fa fa-clock-o"></i>
+                                                    <p>No recent activity found</p>
+                                                </div>
+                                            <?php endif; ?>
                                         </div>
                                     </div>
                                 </div>
                             </div>
                         </div>
 
-                        <!-- Charts and Analytics Row -->
-                        <div class="row mtop20">
-                            <div class="col-md-6">
-                                <div class="panel panel-default">
-                                    <div class="panel-heading">
-                                        <h3 class="panel-title"><i class="fa fa-bar-chart"></i> Student Distribution</h3>
-                                    </div>
-                                    <div class="panel-body">
-                                        <canvas id="studentChart" width="400" height="200"></canvas>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="col-md-6">
-                                <div class="panel panel-default">
-                                    <div class="panel-heading">
-                                        <h3 class="panel-title"><i class="fa fa-pie-chart"></i> Sponsorship Status</h3>
-                                    </div>
-                                    <div class="panel-body">
-                                        <canvas id="sponsorshipChart" width="400" height="200"></canvas>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Enhanced Filters -->
-                        <div class="row mtop20">
+                        <!-- Recent Records Tabs -->
+                        <div class="row" style="margin-top: 25px;">
                             <div class="col-md-12">
                                 <div class="panel panel-default">
                                     <div class="panel-heading">
-                                        <h3 class="panel-title"><i class="fa fa-filter"></i> Advanced Filters</h3>
+                                        <h3 class="panel-title">
+                                            <i class="fa fa-table"></i> Recent Records
+                                        </h3>
                                     </div>
                                     <div class="panel-body">
-                                        <div class="row">
-                                            <div class="col-md-3">
-                                                <label>Date Range</label>
-                                                <div class="input-group">
-                                                    <input type="text" class="form-control datepicker" id="date_from" placeholder="From Date">
-                                                    <span class="input-group-addon">to</span>
-                                                    <input type="text" class="form-control datepicker" id="date_to" placeholder="To Date">
+                                        <ul class="nav nav-tabs dashboard-tabs" role="tablist">
+                                            <li class="active">
+                                                <a href="#recent-students" role="tab" data-toggle="tab">
+                                                    <i class="fa fa-graduation-cap"></i> Recent Students 
+                                                    <span class="badge"><?php echo count($recent_students ?? []); ?></span>
+                                                </a>
+                                            </li>
+                                            <li>
+                                                <a href="#recent-sponsors" role="tab" data-toggle="tab">
+                                                    <i class="fa fa-handshake-o"></i> Recent Sponsors 
+                                                    <span class="badge"><?php echo count($recent_sponsors ?? []); ?></span>
+                                                </a>
+                                            </li>
+                                            <li>
+                                                <a href="#recent-transactions" role="tab" data-toggle="tab">
+                                                    <i class="fa fa-money text-success"></i> Recent Transactions 
+                                                    <span class="badge"><?php echo count($recent_transactions ?? []); ?></span>
+                                                </a>
+                                            </li>
+                                        </ul>
+
+                                        <div class="tab-content dashboard-tab-content">
+                                            <!-- Recent Students Tab -->
+                                            <div role="tabpanel" class="tab-pane active" id="recent-students">
+                                                <div class="table-responsive" style="margin-top: 15px;">
+                                                    <table class="table table-hover recent-students-table">
+                                                        <thead>
+                                                            <tr>
+                                                                <th width="5%">#</th>
+                                                                <th width="30%">Student Name</th>
+                                                                <th width="15%">Type</th>
+                                                                <th width="15%">Grade/Year</th>
+                                                                <th width="15%">Status</th>
+                                                                <th width="20%">Sponsored</th>
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody>
+                                                            <?php if(!empty($recent_students)): ?>
+                                                                <?php foreach($recent_students as $index => $student): ?>
+                                                                    <?php 
+                                                                        $form_url = ($student['student_type'] === 'university') ? 'university_student_form' : 'school_student_form';
+                                                                        $student_url = admin_url('student_sponsor_portal/' . $form_url . '/' . $student['id']);
+                                                                    ?>
+                                                                    <tr class="clickable-row" data-href="<?php echo $student_url; ?>" style="cursor: pointer;">
+                                                                        <td><?php echo $index + 1; ?></td>
+                                                                        <td>
+                                                                            <strong><?php echo html_escape($student['name']); ?></strong>
+                                                                            <br><small class="text-muted">
+                                                                                Added: <?php echo date('M d, Y', strtotime($student['created_at'])); ?>
+                                                                            </small>
+                                                                        </td>
+                                                                        <td>
+                                                                            <?php if($student['student_type'] === 'university'): ?>
+                                                                                <span class="label label-success">
+                                                                                    <i class="fa fa-graduation-cap"></i> University
+                                                                                </span>
+                                                                            <?php else: ?>
+                                                                                <span class="label label-primary">
+                                                                                    <i class="fa fa-child"></i> School
+                                                                                </span>
+                                                                            <?php endif; ?>
+                                                                        </td>
+                                                                        <td>
+                                                                            <span class="badge badge-<?php echo $student['student_type'] === 'university' ? 'success' : 'primary'; ?>">
+                                                                                <?php echo $student['school_grade'] ?? $student['university_year_of_study'] ?? 'N/A'; ?>
+                                                                            </span>
+                                                                        </td>
+                                                                        <td>
+                                                                            <?php
+                                                                                $status = $student['staff_active'] ?? 1;
+                                                                                $status_class = $status ? 'success' : 'warning';
+                                                                                $status_text = $status ? 'Active' : 'Inactive';
+                                                                            ?>
+                                                                            <span class="label label-<?php echo $status_class; ?>">
+                                                                                <i class="fa fa-<?php echo $status ? 'check-circle' : 'pause-circle'; ?>"></i>
+                                                                                <?php echo $status_text; ?>
+                                                                            </span>
+                                                                        </td>
+                                                                        <td>
+                                                                            <?php if(!empty($student['sponsor_count']) && $student['sponsor_count'] > 0): ?>
+                                                                                <span class="label label-info">
+                                                                                    <i class="fa fa-heart"></i> Yes
+                                                                                </span>
+                                                                            <?php else: ?>
+                                                                                <span class="label label-default">
+                                                                                    <i class="fa fa-heart-o"></i> No
+                                                                                </span>
+                                                                            <?php endif; ?>
+                                                                        </td>
+                                                                    </tr>
+                                                                <?php endforeach; ?>
+                                                            <?php else: ?>
+                                                                <tr>
+                                                                    <td colspan="6" class="text-center text-muted">No recent students found</td>
+                                                                </tr>
+                                                            <?php endif; ?>
+                                                        </tbody>
+                                                    </table>
                                                 </div>
                                             </div>
-                                            <div class="col-md-2">
-                                                <label>Status</label>
-                                                <select class="form-control" id="status_filter">
-                                                    <option value="">All Status</option>
-                                                    <option value="active">Active</option>
-                                                    <option value="inactive">Inactive</option>
-                                                    <option value="pending">Pending</option>
-                                                </select>
-                                            </div>
-                                            <div class="col-md-2">
-                                                <label>Type</label>
-                                                <select class="form-control" id="type_filter">
-                                                    <option value="">All Types</option>
-                                                    <option value="school">School</option>
-                                                    <option value="university">University</option>
-                                                    <option value="sponsor">Sponsor</option>
-                                                </select>
-                                            </div>
-                                            <div class="col-md-3">
-                                                <label>Search</label>
-                                                <input type="text" class="form-control" id="global_search" placeholder="Search by name, email, phone...">
-                                            </div>
-                                            <div class="col-md-2">
-                                                <label>&nbsp;</label>
-                                                <div>
-                                                    <button type="button" class="btn btn-info btn-block" onclick="applyFilters()">
-                                                        <i class="fa fa-search"></i> Apply
-                                                    </button>
+
+                                            <!-- Recent Sponsors Tab -->
+                                            <div role="tabpanel" class="tab-pane" id="recent-sponsors">
+                                                <div class="table-responsive" style="margin-top: 15px;">
+                                                    <table class="table table-hover recent-sponsors-table">
+                                                        <thead>
+                                                            <tr>
+                                                                <th width="5%">#</th>
+                                                                <th width="30%">Sponsor Name</th>
+                                                                <th width="15%">Type</th>
+                                                                <th width="25%">Contact</th>
+                                                                <th width="12%">Students</th>
+                                                                <th width="13%">Status</th>
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody>
+                                                            <?php if(!empty($recent_sponsors)): ?>
+                                                                <?php foreach($recent_sponsors as $index => $sponsor): ?>
+                                                                    <tr class="clickable-row" data-href="<?php echo admin_url('student_sponsor_portal/sponsor_form/' . $sponsor['id']); ?>" style="cursor: pointer;">
+                                                                        <td><?php echo $index + 1; ?></td>
+                                                                        <td>
+                                                                            <strong><?php echo html_escape($sponsor['name']); ?></strong>
+                                                                            <br><small class="text-muted">
+                                                                                Added: <?php echo date('M d, Y', strtotime($sponsor['created_at'])); ?>
+                                                                            </small>
+                                                                        </td>
+                                                                        <td>
+                                                                            <span class="label label-info">
+                                                                                <i class="fa fa-<?php echo ($sponsor['sponsor_type'] === 'company') ? 'building' : 'user'; ?>"></i>
+                                                                                <?php echo ucfirst($sponsor['sponsor_type'] ?? 'Individual'); ?>
+                                                                            </span>
+                                                                        </td>
+                                                                        <td>
+                                                                            <?php if(!empty($sponsor['email'])): ?>
+                                                                                <small><i class="fa fa-envelope"></i> <?php echo html_escape($sponsor['email']); ?></small><br>
+                                                                            <?php endif; ?>
+                                                                            <?php if(!empty($sponsor['contact_no'])): ?>
+                                                                                <small><i class="fa fa-phone"></i> <?php echo html_escape($sponsor['contact_no']); ?></small>
+                                                                            <?php endif; ?>
+                                                                        </td>
+                                                                        <td>
+                                                                            <span class="badge badge-primary">
+                                                                                <?php echo (int)($sponsor['school_students_count'] ?? 0) + (int)($sponsor['university_students_count'] ?? 0); ?>
+                                                                            </span>
+                                                                        </td>
+                                                                        <td>
+                                                                            <?php
+                                                                                $status = $sponsor['active'] ?? 1;
+                                                                                $status_class = $status ? 'success' : 'warning';
+                                                                                $status_text = $status ? 'Active' : 'Inactive';
+                                                                            ?>
+                                                                            <span class="label label-<?php echo $status_class; ?>">
+                                                                                <i class="fa fa-<?php echo $status ? 'check-circle' : 'pause-circle'; ?>"></i>
+                                                                                <?php echo $status_text; ?>
+                                                                            </span>
+                                                                        </td>
+                                                                    </tr>
+                                                                <?php endforeach; ?>
+                                                            <?php else: ?>
+                                                                <tr>
+                                                                    <td colspan="6" class="text-center text-muted">No recent sponsors found</td>
+                                                                </tr>
+                                                            <?php endif; ?>
+                                                        </tbody>
+                                                    </table>
                                                 </div>
                                             </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
 
-                        <!-- Enhanced Tabbed Data View -->
-                        <ul class="nav nav-tabs mtop20" role="tablist">
-                            <li class="active">
-                                <a href="#school_tab" role="tab" data-toggle="tab">
-                                    <i class="fa fa-child"></i> School Students 
-                                    <span class="badge"><?php echo $school_count; ?></span>
-                                </a>
-                            </li>
-                            <li>
-                                <a href="#university_tab" role="tab" data-toggle="tab">
-                                    <i class="fa fa-graduation-cap"></i> University Students 
-                                    <span class="badge"><?php echo $university_count; ?></span>
-                                </a>
-                            </li>
-                            <li>
-                                <a href="#sponsor_tab" role="tab" data-toggle="tab">
-                                    <i class="fa fa-handshake-o"></i> Sponsors 
-                                    <span class="badge"><?php echo $sponsor_count; ?></span>
-                                </a>
-                            </li>
-                            <li>
-                                <a href="#sponsorship_tab" role="tab" data-toggle="tab">
-                                    <i class="fa fa-link"></i> Sponsorships 
-                                    <span class="badge"><?php echo isset($sponsorship_count) ? $sponsorship_count : 0; ?></span>
-                                </a>
-                            </li>
-                            <li>
-                                <a href="#reports_tab" role="tab" data-toggle="tab">
-                                    <i class="fa fa-bar-chart"></i> Reports
-                                </a>
-                            </li>
-                        </ul>
-
-                        <div class="tab-content">
-                            <!-- School Students Tab -->
-                            <div role="tabpanel" class="tab-pane active" id="school_tab">
-                                <div class="row mtop10">
-                                    <div class="col-md-6">
-                                        <input type="text" class="form-control search-input" placeholder="Search School Students..." data-target="#school_table">
-                                    </div>
-                                    <div class="col-md-3">
-                                        <select class="form-control grade-filter" data-target="#school_table">
-                                            <option value="">All Grades</option>
-                                            <?php for($i = 1; $i <= 12; $i++): ?>
-                                                <option value="Grade <?php echo $i; ?>">Grade <?php echo $i; ?></option>
-                                            <?php endfor; ?>
-                                        </select>
-                                    </div>
-                                    <div class="col-md-3">
-                                        <div class="pull-right">
-                                            <span class="text-muted">Show: </span>
-                                            <select class="form-control" id="school_per_page" style="width: auto; display: inline-block;">
-                                                <option value="10">10</option>
-                                                <option value="25">25</option>
-                                                <option value="50">50</option>
-                                                <option value="100">100</option>
-                                            </select>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div class="table-responsive mtop10">
-                                    <table class="table table-bordered table-hover" id="school_table">
-                                        <thead>
-                                            <tr>
-                                                <th>
-                                                    <input type="checkbox" id="select_all_school" onclick="toggleSelectAll('school')">
-                                                </th>
-                                                <th>Name <i class="fa fa-sort sort-icon" data-column="name"></i></th>
-                                                <th>Email <i class="fa fa-sort sort-icon" data-column="email"></i></th>
-                                                <th>Phone <i class="fa fa-sort sort-icon" data-column="phone"></i></th>
-                                                <th>Grade <i class="fa fa-sort sort-icon" data-column="grade"></i></th>
-                                                <th>Status</th>
-                                                <th>Sponsored</th>
-                                                <th>Actions</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            <?php foreach ($school_students as $student): ?>
-                                            <tr>
-                                                <td><input type="checkbox" name="selected_students[]" value="<?php echo $student['id']; ?>"></td>
-                                                <td><?php echo $student['name']; ?></td>
-                                                <td><a href="mailto:<?php echo $student['email']; ?>"><?php echo $student['email']; ?></a></td>
-                                                <td><?php echo $student['phone']; ?></td>
-                                                <td><span class="badge badge-info"><?php echo $student['grade']; ?></span></td>
-                                                <td>
-                                                    <span class="label label-<?php echo ($student['status'] == 'active') ? 'success' : 'warning'; ?>">
-                                                        <?php echo ucfirst($student['status']); ?>
-                                                    </span>
-                                                </td>
-                                                <td>
-                                                    <?php if(isset($student['sponsored']) && $student['sponsored']): ?>
-                                                        <span class="label label-success"><i class="fa fa-check"></i> Yes</span>
-                                                    <?php else: ?>
-                                                        <span class="label label-default"><i class="fa fa-times"></i> No</span>
-                                                    <?php endif; ?>
-                                                </td>
-                                                <td>
-                                                    <div class="btn-group">
-                                                        <a href="<?php echo admin_url('student_sponsor_portal/view_student/'.$student['id']); ?>" class="btn btn-xs btn-info" title="View">
-                                                            <i class="fa fa-eye"></i>
-                                                        </a>
-                                                        <a href="<?php echo admin_url('student_sponsor_portal/edit_student/'.$student['id']); ?>" class="btn btn-xs btn-primary" title="Edit">
-                                                            <i class="fa fa-edit"></i>
-                                                        </a>
-                                                        <a href="#" onclick="deleteRecord('student', <?php echo $student['id']; ?>)" class="btn btn-xs btn-danger" title="Delete">
-                                                            <i class="fa fa-trash"></i>
-                                                        </a>
-                                                    </div>
-                                                </td>
-                                            </tr>
-                                            <?php endforeach; ?>
-                                        </tbody>
-                                    </table>
-                                </div>
-                                <div class="row">
-                                    <div class="col-md-6">
-                                        <div class="bulk-actions" style="display: none;">
-                                            <select class="form-control" id="bulk_action_school" style="width: auto; display: inline-block;">
-                                                <option value="">Bulk Actions</option>
-                                                <option value="activate">Activate</option>
-                                                <option value="deactivate">Deactivate</option>
-                                                <option value="delete">Delete</option>
-                                                <option value="export">Export Selected</option>
-                                            </select>
-                                            <button type="button" class="btn btn-info" onclick="executeBulkAction('school')">Apply</button>
-                                        </div>
-                                    </div>
-                                    <div class="col-md-6">
-                                        <div id="school_pagination" class="pull-right"></div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <!-- University Students Tab -->
-                            <div role="tabpanel" class="tab-pane" id="university_tab">
-                                <div class="row mtop10">
-                                    <div class="col-md-6">
-                                        <input type="text" class="form-control search-input" placeholder="Search University Students..." data-target="#university_table">
-                                    </div>
-                                    <div class="col-md-3">
-                                        <select class="form-control program-filter" data-target="#university_table">
-                                            <option value="">All Programs</option>
-                                            <option value="Engineering">Engineering</option>
-                                            <option value="Medicine">Medicine</option>
-                                            <option value="Business">Business</option>
-                                            <option value="Arts">Arts</option>
-                                            <option value="Science">Science</option>
-                                        </select>
-                                    </div>
-                                    <div class="col-md-3">
-                                        <div class="pull-right">
-                                            <span class="text-muted">Show: </span>
-                                            <select class="form-control" id="university_per_page" style="width: auto; display: inline-block;">
-                                                <option value="10">10</option>
-                                                <option value="25">25</option>
-                                                <option value="50">50</option>
-                                                <option value="100">100</option>
-                                            </select>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div class="table-responsive mtop10">
-                                    <table class="table table-bordered table-hover" id="university_table">
-                                        <thead>
-                                            <tr>
-                                                <th>
-                                                    <input type="checkbox" id="select_all_university" onclick="toggleSelectAll('university')">
-                                                </th>
-                                                <th>Name <i class="fa fa-sort sort-icon" data-column="name"></i></th>
-                                                <th>Email <i class="fa fa-sort sort-icon" data-column="email"></i></th>
-                                                <th>Phone <i class="fa fa-sort sort-icon" data-column="phone"></i></th>
-                                                <th>Program <i class="fa fa-sort sort-icon" data-column="program"></i></th>
-                                                <th>Year</th>
-                                                <th>Status</th>
-                                                <th>Sponsored</th>
-                                                <th>Actions</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            <?php foreach ($university_students as $student): ?>
-                                            <tr>
-                                                <td><input type="checkbox" name="selected_students[]" value="<?php echo $student['id']; ?>"></td>
-                                                <td><?php echo $student['name']; ?></td>
-                                                <td><a href="mailto:<?php echo $student['email']; ?>"><?php echo $student['email']; ?></a></td>
-                                                <td><?php echo $student['phone']; ?></td>
-                                                <td><span class="badge badge-primary"><?php echo $student['program']; ?></span></td>
-                                                <td><?php echo isset($student['year']) ? $student['year'] : 'N/A'; ?></td>
-                                                <td>
-                                                    <span class="label label-<?php echo ($student['status'] == 'active') ? 'success' : 'warning'; ?>">
-                                                        <?php echo ucfirst($student['status']); ?>
-                                                    </span>
-                                                </td>
-                                                <td>
-                                                    <?php if(isset($student['sponsored']) && $student['sponsored']): ?>
-                                                        <span class="label label-success"><i class="fa fa-check"></i> Yes</span>
-                                                    <?php else: ?>
-                                                        <span class="label label-default"><i class="fa fa-times"></i> No</span>
-                                                    <?php endif; ?>
-                                                </td>
-                                                <td>
-                                                    <div class="btn-group">
-                                                        <a href="<?php echo admin_url('student_sponsor_portal/view_student/'.$student['id']); ?>" class="btn btn-xs btn-info" title="View">
-                                                            <i class="fa fa-eye"></i>
-                                                        </a>
-                                                        <a href="<?php echo admin_url('student_sponsor_portal/edit_student/'.$student['id']); ?>" class="btn btn-xs btn-primary" title="Edit">
-                                                            <i class="fa fa-edit"></i>
-                                                        </a>
-                                                        <a href="#" onclick="deleteRecord('student', <?php echo $student['id']; ?>)" class="btn btn-xs btn-danger" title="Delete">
-                                                            <i class="fa fa-trash"></i>
-                                                        </a>
-                                                    </div>
-                                                </td>
-                                            </tr>
-                                            <?php endforeach; ?>
-                                        </tbody>
-                                    </table>
-                                </div>
-                                <div class="row">
-                                    <div class="col-md-6">
-                                        <div class="bulk-actions" style="display: none;">
-                                            <select class="form-control" id="bulk_action_university" style="width: auto; display: inline-block;">
-                                                <option value="">Bulk Actions</option>
-                                                <option value="activate">Activate</option>
-                                                <option value="deactivate">Deactivate</option>
-                                                <option value="delete">Delete</option>
-                                                <option value="export">Export Selected</option>
-                                            </select>
-                                            <button type="button" class="btn btn-info" onclick="executeBulkAction('university')">Apply</button>
-                                        </div>
-                                    </div>
-                                    <div class="col-md-6">
-                                        <div id="university_pagination" class="pull-right"></div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <!-- Sponsors Tab -->
-                            <div role="tabpanel" class="tab-pane" id="sponsor_tab">
-                                <div class="row mtop10">
-                                    <div class="col-md-6">
-                                        <input type="text" class="form-control search-input" placeholder="Search Sponsors..." data-target="#sponsor_table">
-                                    </div>
-                                    <div class="col-md-3">
-                                        <select class="form-control type-filter" data-target="#sponsor_table">
-                                            <option value="">All Types</option>
-                                            <option value="Individual">Individual</option>
-                                            <option value="Corporate">Corporate</option>
-                                            <option value="Foundation">Foundation</option>
-                                            <option value="NGO">NGO</option>
-                                        </select>
-                                    </div>
-                                    <div class="col-md-3">
-                                        <div class="pull-right">
-                                            <span class="text-muted">Show: </span>
-                                            <select class="form-control" id="sponsor_per_page" style="width: auto; display: inline-block;">
-                                                <option value="10">10</option>
-                                                <option value="25">25</option>
-                                                <option value="50">50</option>
-                                                <option value="100">100</option>
-                                            </select>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div class="table-responsive mtop10">
-                                    <table class="table table-bordered table-hover" id="sponsor_table">
-                                        <thead>
-                                            <tr>
-                                                <th>
-                                                    <input type="checkbox" id="select_all_sponsor" onclick="toggleSelectAll('sponsor')">
-                                                </th>
-                                                <th>Name <i class="fa fa-sort sort-icon" data-column="name"></i></th>
-                                                <th>Email <i class="fa fa-sort sort-icon" data-column="email"></i></th>
-                                                <th>Phone <i class="fa fa-sort sort-icon" data-column="phone"></i></th>
-                                                <th>Type <i class="fa fa-sort sort-icon" data-column="sponsor_type"></i></th>
-                                                <th>Sponsorships</th>
-                                                <th>Status</th>
-                                                <th>Actions</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            <?php foreach ($sponsors as $sponsor): ?>
-                                            <tr>
-                                                <td><input type="checkbox" name="selected_sponsors[]" value="<?php echo $sponsor['id']; ?>"></td>
-                                                <td><?php echo $sponsor['name']; ?></td>
-                                                <td><a href="mailto:<?php echo $sponsor['email']; ?>"><?php echo $sponsor['email']; ?></a></td>
-                                                <td><?php echo $sponsor['phone']; ?></td>
-                                                <td><span class="badge badge-info"><?php echo $sponsor['sponsor_type']; ?></span></td>
-                                                <td>
-                                                    <span class="badge badge-success">
-                                                        <?php echo isset($sponsor['sponsorship_count']) ? $sponsor['sponsorship_count'] : 0; ?>
-                                                    </span>
-                                                </td>
-                                                <td>
-                                                    <span class="label label-<?php echo ($sponsor['status'] == 'active') ? 'success' : 'warning'; ?>">
-                                                        <?php echo ucfirst($sponsor['status']); ?>
-                                                    </span>
-                                                </td>
-                                                <td>
-                                                    <div class="btn-group">
-                                                        <a href="<?php echo admin_url('student_sponsor_portal/view_sponsor/'.$sponsor['id']); ?>" class="btn btn-xs btn-info" title="View">
-                                                            <i class="fa fa-eye"></i>
-                                                        </a>
-                                                        <a href="<?php echo admin_url('student_sponsor_portal/edit_sponsor/'.$sponsor['id']); ?>" class="btn btn-xs btn-primary" title="Edit">
-                                                            <i class="fa fa-edit"></i>
-                                                        </a>
-                                                        <a href="<?php echo admin_url('student_sponsor_portal/create_sponsorship/'.$sponsor['id']); ?>" class="btn btn-xs btn-success" title="Create Sponsorship">
-                                                            <i class="fa fa-link"></i>
-                                                        </a>
-                                                        <a href="#" onclick="deleteRecord('sponsor', <?php echo $sponsor['id']; ?>)" class="btn btn-xs btn-danger" title="Delete">
-                                                            <i class="fa fa-trash"></i>
-                                                        </a>
-                                                    </div>
-                                                </td>
-                                            </tr>
-                                            <?php endforeach; ?>
-                                        </tbody>
-                                    </table>
-                                </div>
-                                <div class="row">
-                                    <div class="col-md-6">
-                                        <div class="bulk-actions" style="display: none;">
-                                            <select class="form-control" id="bulk_action_sponsor" style="width: auto; display: inline-block;">
-                                                <option value="">Bulk Actions</option>
-                                                <option value="activate">Activate</option>
-                                                <option value="deactivate">Deactivate</option>
-                                                <option value="delete">Delete</option>
-                                                <option value="export">Export Selected</option>
-                                            </select>
-                                            <button type="button" class="btn btn-info" onclick="executeBulkAction('sponsor')">Apply</button>
-                                        </div>
-                                    </div>
-                                    <div class="col-md-6">
-                                        <div id="sponsor_pagination" class="pull-right"></div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <!-- Sponsorships Tab -->
-                            <div role="tabpanel" class="tab-pane" id="sponsorship_tab">
-                                <div class="row mtop10">
-                                    <div class="col-md-4">
-                                        <input type="text" class="form-control search-input" placeholder="Search Sponsorships..." data-target="#sponsorship_table">
-                                    </div>
-                                    <div class="col-md-2">
-                                        <select class="form-control status-filter" data-target="#sponsorship_table">
-                                            <option value="">All Status</option>
-                                            <option value="active">Active</option>
-                                            <option value="pending">Pending</option>
-                                            <option value="completed">Completed</option>
-                                            <option value="cancelled">Cancelled</option>
-                                        </select>
-                                    </div>
-                                    <div class="col-md-2">
-                                        <select class="form-control amount-filter" data-target="#sponsorship_table">
-                                            <option value="">All Amounts</option>
-                                            <option value="0-1000">$0 - $1,000</option>
-                                            <option value="1000-5000">$1,000 - $5,000</option>
-                                            <option value="5000-10000">$5,000 - $10,000</option>
-                                            <option value="10000+">$10,000+</option>
-                                        </select>
-                                    </div>
-                                    <div class="col-md-2">
-                                        <a href="<?php echo admin_url('student_sponsor_portal/sponsor_form'); ?>" class="btn btn-success btn-block">
-                                            <i class="fa fa-plus"></i> New Sponsorship
-                                        </a>
-                                    </div>
-                                    <div class="col-md-2">
-                                        <div class="pull-right">
-                                            <span class="text-muted">Show: </span>
-                                            <select class="form-control" id="sponsorship_per_page" style="width: auto; display: inline-block;">
-                                                <option value="10">10</option>
-                                                <option value="25">25</option>
-                                                <option value="50">50</option>
-                                                <option value="100">100</option>
-                                            </select>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div class="table-responsive mtop10">
-                                    <table class="table table-bordered table-hover" id="sponsorship_table">
-                                        <thead>
-                                            <tr>
-                                                <th>
-                                                    <input type="checkbox" id="select_all_sponsorship" onclick="toggleSelectAll('sponsorship')">
-                                                </th>
-                                                <th>ID</th>
-                                                <th>Student</th>
-                                                <th>Sponsor</th>
-                                                <th>Amount</th>
-                                                <th>Duration</th>
-                                                <th>Start Date</th>
-                                                <th>Status</th>
-                                                <th>Actions</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            <?php if(isset($sponsorships)): ?>
-                                                <?php foreach ($sponsorships as $sponsorship): ?>
-                                                <tr>
-                                                    <td><input type="checkbox" name="selected_sponsorships[]" value="<?php echo $sponsorship['id']; ?>"></td>
-                                                    <td>#SP<?php echo str_pad($sponsorship['id'], 4, '0', STR_PAD_LEFT); ?></td>
-                                                    <td><?php echo $sponsorship['student_name']; ?></td>
-                                                    <td><?php echo $sponsorship['sponsor_name']; ?></td>
-                                                    <td><strong>$<?php echo number_format($sponsorship['amount'], 2); ?></strong></td>
-                                                    <td><?php echo $sponsorship['duration']; ?> months</td>
-                                                    <td><?php echo date('M d, Y', strtotime($sponsorship['start_date'])); ?></td>
-                                                    <td>
-                                                        <span class="label label-<?php 
-                                                            switch($sponsorship['status']) {
-                                                                case 'active': echo 'success'; break;
-                                                                case 'pending': echo 'warning'; break;
-                                                                case 'completed': echo 'info'; break;
-                                                                case 'cancelled': echo 'danger'; break;
-                                                                default: echo 'default';
-                                                            }
-                                                        ?>">
-                                                            <?php echo ucfirst($sponsorship['status']); ?>
-                                                        </span>
-                                                    </td>
-                                                    <td>
-                                                        <div class="btn-group">
-                                                            <a href="<?php echo admin_url('student_sponsor_portal/view_sponsorship/'.$sponsorship['id']); ?>" class="btn btn-xs btn-info" title="View">
-                                                                <i class="fa fa-eye"></i>
-                                                            </a>
-                                                            <a href="<?php echo admin_url('student_sponsor_portal/edit_sponsorship/'.$sponsorship['id']); ?>" class="btn btn-xs btn-primary" title="Edit">
-                                                                <i class="fa fa-edit"></i>
-                                                            </a>
-                                                            <a href="<?php echo admin_url('student_sponsor_portal/sponsorship_invoice/'.$sponsorship['id']); ?>" class="btn btn-xs btn-warning" title="Invoice">
-                                                                <i class="fa fa-file-text-o"></i>
-                                                            </a>
-                                                            <a href="#" onclick="deleteRecord('sponsorship', <?php echo $sponsorship['id']; ?>)" class="btn btn-xs btn-danger" title="Delete">
-                                                                <i class="fa fa-trash"></i>
-                                                            </a>
-                                                        </div>
-                                                    </td>
-                                                </tr>
-                                                <?php endforeach; ?>
-                                            <?php endif; ?>
-                                        </tbody>
-                                    </table>
-                                </div>
-                                <div class="row">
-                                    <div class="col-md-6">
-                                        <div class="bulk-actions" style="display: none;">
-                                            <select class="form-control" id="bulk_action_sponsorship" style="width: auto; display: inline-block;">
-                                                <option value="">Bulk Actions</option>
-                                                <option value="activate">Activate</option>
-                                                <option value="suspend">Suspend</option>
-                                                <option value="complete">Mark Complete</option>
-                                                <option value="export">Export Selected</option>
-                                            </select>
-                                            <button type="button" class="btn btn-info" onclick="executeBulkAction('sponsorship')">Apply</button>
-                                        </div>
-                                    </div>
-                                    <div class="col-md-6">
-                                        <div id="sponsorship_pagination" class="pull-right"></div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <!-- Reports Tab -->
-                            <div role="tabpanel" class="tab-pane" id="reports_tab">
-                                <div class="row mtop20">
-                                    <div class="col-md-12">
-                                        <div class="row">
-                                            <div class="col-md-4">
-                                                <div class="panel panel-default">
-                                                    <div class="panel-heading">
-                                                        <h3 class="panel-title"><i class="fa fa-calendar"></i> Monthly Reports</h3>
-                                                    </div>
-                                                    <div class="panel-body">
-                                                        <div class="form-group">
-                                                            <label>Select Month/Year</label>
-                                                            <input type="month" class="form-control" id="report_month" value="<?php echo date('Y-m'); ?>">
-                                                        </div>
-                                                        <button type="button" class="btn btn-info btn-block" onclick="generateMonthlyReport()">
-                                                            <i class="fa fa-bar-chart"></i> Generate Report
-                                                        </button>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                            <div class="col-md-4">
-                                                <div class="panel panel-default">
-                                                    <div class="panel-heading">
-                                                        <h3 class="panel-title"><i class="fa fa-users"></i> Custom Reports</h3>
-                                                    </div>
-                                                    <div class="panel-body">
-                                                        <div class="form-group">
-                                                            <label>Report Type</label>
-                                                            <select class="form-control" id="custom_report_type">
-                                                                <option value="student_performance">Student Performance</option>
-                                                                <option value="sponsor_analysis">Sponsor Analysis</option>
-                                                                <option value="financial_summary">Financial Summary</option>
-                                                                <option value="sponsorship_trends">Sponsorship Trends</option>
-                                                            </select>
-                                                        </div>
-                                                        <button type="button" class="btn btn-success btn-block" onclick="generateCustomReport()">
-                                                            <i class="fa fa-file-text-o"></i> Generate Report
-                                                        </button>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                            <div class="col-md-4">
-                                                <div class="panel panel-default">
-                                                    <div class="panel-heading">
-                                                        <h3 class="panel-title"><i class="fa fa-download"></i> Export Options</h3>
-                                                    </div>
-                                                    <div class="panel-body">
-                                                        <div class="form-group">
-                                                            <label>Export Format</label>
-                                                            <select class="form-control" id="export_format">
-                                                                <option value="pdf">PDF Report</option>
-                                                                <option value="excel">Excel Spreadsheet</option>
-                                                                <option value="csv">CSV Data</option>
-                                                                <option value="json">JSON Data</option>
-                                                            </select>
-                                                        </div>
-                                                        <button type="button" class="btn btn-warning btn-block" onclick="exportAllData()">
-                                                            <i class="fa fa-download"></i> Export All Data
-                                                        </button>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        </div>
-
-                                        <!-- Quick Stats Summary -->
-                                        <div class="row mtop20">
-                                            <div class="col-md-12">
-                                                <div class="panel panel-default">
-                                                    <div class="panel-heading">
-                                                        <h3 class="panel-title"><i class="fa fa-dashboard"></i> Quick Statistics</h3>
-                                                    </div>
-                                                    <div class="panel-body">
-                                                        <div class="row">
-                                                            <div class="col-md-3">
-                                                                <div class="stats-box">
-                                                                    <h3><?php echo number_format(isset($total_sponsorship_amount) ? $total_sponsorship_amount : 0, 2); ?>$</h3>
-                                                                    <p>Total Sponsorship Amount</p>
-                                                                </div>
-                                                            </div>
-                                                            <div class="col-md-3">
-                                                                <div class="stats-box">
-                                                                    <h3><?php echo number_format(isset($avg_sponsorship_amount) ? $avg_sponsorship_amount : 0, 2); ?>$</h3>
-                                                                    <p>Average Sponsorship</p>
-                                                                </div>
-                                                            </div>
-                                                            <div class="col-md-3">
-                                                                <div class="stats-box">
-                                                                    <h3><?php echo isset($sponsored_students_percentage) ? $sponsored_students_percentage : 0; ?>%</h3>
-                                                                    <p>Students Sponsored</p>
-                                                                </div>
-                                                            </div>
-                                                            <div class="col-md-3">
-                                                                <div class="stats-box">
-                                                                    <h3><?php echo isset($active_sponsors_percentage) ? $active_sponsors_percentage : 0; ?>%</h3>
-                                                                    <p>Active Sponsors</p>
-                                                                </div>
-                                                            </div>
-                                                        </div>
-                                                    </div>
+                                            <!-- Recent Transactions Tab -->
+                                            <div role="tabpanel" class="tab-pane" id="recent-transactions">
+                                                <div class="table-responsive" style="margin-top: 15px;">
+                                                    <table class="table table-hover recent-transactions-table">
+                                                        <thead>
+                                                            <tr>
+                                                                <th width="5%">#</th>
+                                                                <th width="22%">Sponsor</th>
+                                                                <th width="22%">Student</th>
+                                                                <th width="15%">Amount</th>
+                                                                <th width="18%">Type</th>
+                                                                <th width="18%">Date</th>
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody>
+                                                            <?php if(!empty($recent_transactions)): ?>
+                                                                <?php foreach($recent_transactions as $index => $transaction): ?>
+                                                                    <tr class="clickable-row" data-href="<?php echo admin_url('student_sponsor_portal/transaction/' . $transaction['id']); ?>" style="cursor: pointer;">
+                                                                        <td><?php echo $index + 1; ?></td>
+                                                                        <td>
+                                                                            <strong><?php echo html_escape($transaction['sponsor_name']); ?></strong>
+                                                                        </td>
+                                                                        <td>
+                                                                            <strong><?php echo html_escape($transaction['student_name']); ?></strong>
+                                                                            <br><small class="text-muted">
+                                                                                <?php echo ucfirst($transaction['student_type'] ?? ''); ?>
+                                                                            </small>
+                                                                        </td>
+                                                                        <td>
+                                                                            <strong class="text-success">₹<?php echo number_format($transaction['amount'], 2); ?></strong>
+                                                                        </td>
+                                                                        <td>
+                                                                            <span class="label label-info">
+                                                                                <?php echo ucfirst(str_replace('_', ' ', $transaction['payment_type'] ?? 'One-time')); ?>
+                                                                            </span>
+                                                                        </td>
+                                                                        <td>
+                                                                            <small>
+                                                                                <?php echo date('M d, Y', strtotime($transaction['created_at'])); ?>
+                                                                            </small>
+                                                                        </td>
+                                                                    </tr>
+                                                                <?php endforeach; ?>
+                                                            <?php else: ?>
+                                                                <tr>
+                                                                    <td colspan="6" class="text-center text-muted">No recent transactions found</td>
+                                                                </tr>
+                                                            <?php endif; ?>
+                                                        </tbody>
+                                                    </table>
                                                 </div>
                                             </div>
                                         </div>
@@ -787,558 +599,350 @@
                                 </div>
                             </div>
                         </div>
-
-                    </div> <!-- /.panel-body -->
-                </div> <!-- /.panel_s -->
+                    </div>
+                </div>
             </div>
         </div>
     </div>
 </div>
 
-<!-- Include Chart.js for charts -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
-
-<script>
-$(document).ready(function() {
-    // Initialize date pickers
-    $('.datepicker').datepicker({
-        dateFormat: 'yy-mm-dd',
-        changeMonth: true,
-        changeYear: true
-    });
-
-    // Initialize charts
-    initializeCharts();
-    
-    // Initialize advanced filtering
-    initializeAdvancedFiltering();
-    
-    // Initialize sorting
-    initializeSorting();
-    
-    // Initialize pagination
-    initializePagination();
-});
-
-// Refresh Stats
-function refreshStats() {
-    $.ajax({
-        url: '<?php echo admin_url('student_sponsor_portal/get_stats'); ?>',
-        type: 'GET',
-        dataType: 'json',
-        beforeSend: function() {
-            $('button[onclick="refreshStats()"]').html('<i class="fa fa-spinner fa-spin"></i> Refreshing...');
-        },
-        success: function(response) {
-            if(response.success) {
-                location.reload();
-            } else {
-                alert('Failed to refresh stats');
-            }
-        },
-        error: function() {
-            alert('Failed to refresh stats');
-        },
-        complete: function() {
-            $('button[onclick="refreshStats()"]').html('<i class="fa fa-refresh"></i> Refresh');
-        }
-    });
-}
-
-// Enhanced Client-side Filtering
-function initializeAdvancedFiltering() {
-    $(document).on('keyup', '.search-input', function () {
-        var searchTerm = $(this).val().toLowerCase();
-        var targetTable = $($(this).data('target'));
-
-        targetTable.find("tbody tr").each(function () {
-            var found = false;
-            $(this).find("td").each(function () {
-                if ($(this).text().toLowerCase().includes(searchTerm)) {
-                    found = true;
-                }
-            });
-            $(this).toggle(found);
-        });
-        updatePagination(targetTable.attr('id'));
-    });
-
-    // Grade filter for school students
-    $(document).on('change', '.grade-filter', function() {
-        var filterValue = $(this).val().toLowerCase();
-        var targetTable = $($(this).data('target'));
-        
-        targetTable.find("tbody tr").each(function () {
-            if(filterValue === '') {
-                $(this).show();
-            } else {
-                var gradeText = $(this).find("td:eq(4)").text().toLowerCase();
-                $(this).toggle(gradeText.includes(filterValue));
-            }
-        });
-        updatePagination(targetTable.attr('id'));
-    });
-
-    // Program filter for university students
-    $(document).on('change', '.program-filter', function() {
-        var filterValue = $(this).val().toLowerCase();
-        var targetTable = $($(this).data('target'));
-        
-        targetTable.find("tbody tr").each(function () {
-            if(filterValue === '') {
-                $(this).show();
-            } else {
-                var programText = $(this).find("td:eq(4)").text().toLowerCase();
-                $(this).toggle(programText.includes(filterValue));
-            }
-        });
-        updatePagination(targetTable.attr('id'));
-    });
-
-    // Type filter for sponsors
-    $(document).on('change', '.type-filter', function() {
-        var filterValue = $(this).val().toLowerCase();
-        var targetTable = $($(this).data('target'));
-        
-        targetTable.find("tbody tr").each(function () {
-            if(filterValue === '') {
-                $(this).show();
-            } else {
-                var typeText = $(this).find("td:eq(4)").text().toLowerCase();
-                $(this).toggle(typeText.includes(filterValue));
-            }
-        });
-        updatePagination(targetTable.attr('id'));
-    });
-}
-
-// Apply Global Filters
-function applyFilters() {
-    var dateFrom = $('#date_from').val();
-    var dateTo = $('#date_to').val();
-    var status = $('#status_filter').val();
-    var type = $('#type_filter').val();
-    var search = $('#global_search').val();
-
-    // Apply filters via AJAX
-    $.ajax({
-        url: '<?php echo admin_url('student_sponsor_portal/apply_filters'); ?>',
-        type: 'POST',
-        data: {
-            date_from: dateFrom,
-            date_to: dateTo,
-            status: status,
-            type: type,
-            search: search
-        },
-        dataType: 'json',
-        success: function(response) {
-            if(response.success) {
-                // Update tables with filtered data
-                updateTablesWithFilteredData(response.data);
-            }
-        },
-        error: function() {
-            alert('Failed to apply filters');
-        }
-    });
-}
-
-// Initialize Charts
-function initializeCharts() {
-    // Student Distribution Chart
-    var ctx1 = document.getElementById('studentChart').getContext('2d');
-    var studentChart = new Chart(ctx1, {
-        type: 'doughnut',
-        data: {
-            labels: ['School Students', 'University Students'],
-            datasets: [{
-                data: [<?php echo $school_count; ?>, <?php echo $university_count; ?>],
-                backgroundColor: ['#337ab7', '#5cb85c'],
-                borderWidth: 2
-            }]
-        },
-        options: {
-            responsive: true,
-            plugins: {
-                legend: {
-                    position: 'bottom'
-                }
-            }
-        }
-    });
-
-    // Sponsorship Status Chart
-    var ctx2 = document.getElementById('sponsorshipChart').getContext('2d');
-    var sponsorshipChart = new Chart(ctx2, {
-        type: 'bar',
-        data: {
-            labels: ['Active', 'Pending', 'Completed', 'Cancelled'],
-            datasets: [{
-                label: 'Sponsorships',
-                data: [
-                    <?php echo isset($active_sponsorship_count) ? $active_sponsorship_count : 0; ?>,
-                    <?php echo isset($pending_sponsorship_count) ? $pending_sponsorship_count : 0; ?>,
-                    <?php echo isset($completed_sponsorship_count) ? $completed_sponsorship_count : 0; ?>,
-                    <?php echo isset($cancelled_sponsorship_count) ? $cancelled_sponsorship_count : 0; ?>
-                ],
-                backgroundColor: ['#5cb85c', '#f0ad4e', '#5bc0de', '#d9534f'],
-                borderWidth: 1
-            }]
-        },
-        options: {
-            responsive: true,
-            scales: {
-                y: {
-                    beginAtZero: true
-                }
-            }
-        }
-    });
-}
-
-// Toggle Select All
-function toggleSelectAll(type) {
-    var isChecked = $('#select_all_' + type).is(':checked');
-    $('input[name="selected_' + type + 's[]"]').prop('checked', isChecked);
-    
-    if(isChecked) {
-        $('.bulk-actions').show();
-    } else {
-        $('.bulk-actions').hide();
-    }
-}
-
-// Execute Bulk Actions
-function executeBulkAction(type) {
-    var action = $('#bulk_action_' + type).val();
-    var selected = $('input[name="selected_' + type + 's[]"]:checked').map(function() {
-        return this.value;
-    }).get();
-
-    if(action === '' || selected.length === 0) {
-        alert('Please select an action and at least one item.');
-        return;
-    }
-
-    if(confirm('Are you sure you want to ' + action + ' ' + selected.length + ' item(s)?')) {
-        $.ajax({
-            url: '<?php echo admin_url('student_sponsor_portal/bulk_action'); ?>',
-            type: 'POST',
-            data: {
-                action: action,
-                type: type,
-                selected: selected
-            },
-            dataType: 'json',
-            success: function(response) {
-                if(response.success) {
-                    location.reload();
-                } else {
-                    alert('Action failed: ' + response.message);
-                }
-            },
-            error: function() {
-                alert('Failed to execute bulk action');
-            }
-        });
-    }
-}
-
-// Delete Record
-function deleteRecord(type, id) {
-    if(confirm('Are you sure you want to delete this ' + type + '?')) {
-        $.ajax({
-            url: '<?php echo admin_url('student_sponsor_portal/delete'); ?>',
-            type: 'POST',
-            data: {
-                type: type,
-                id: id
-            },
-            dataType: 'json',
-            success: function(response) {
-                if(response.success) {
-                    location.reload();
-                } else {
-                    alert('Delete failed: ' + response.message);
-                }
-            },
-            error: function() {
-                alert('Failed to delete record');
-            }
-        });
-    }
-}
-
-// Export Data
-function exportData(format) {
-    var activeTab = $('.nav-tabs li.active a').attr('href').replace('#', '').replace('_tab', '');
-    
-    window.open('<?php echo admin_url('student_sponsor_portal/export'); ?>?format=' + format + '&type=' + activeTab, '_blank');
-}
-
-// Initialize Sorting
-function initializeSorting() {
-    $('.sort-icon').click(function() {
-        var column = $(this).data('column');
-        var table = $(this).closest('table');
-        var tbody = table.find('tbody');
-        var rows = tbody.find('tr').toArray();
-        var columnIndex = $(this).closest('th').index();
-        
-        // Toggle sort direction
-        var isAsc = $(this).hasClass('fa-sort-asc');
-        $('.sort-icon').removeClass('fa-sort-asc fa-sort-desc').addClass('fa-sort');
-        
-        if(isAsc) {
-            $(this).removeClass('fa-sort fa-sort-asc').addClass('fa-sort-desc');
-        } else {
-            $(this).removeClass('fa-sort fa-sort-desc').addClass('fa-sort-asc');
-        }
-        
-        // Sort rows
-        rows.sort(function(a, b) {
-            var aValue = $(a).find('td').eq(columnIndex).text().trim();
-            var bValue = $(b).find('td').eq(columnIndex).text().trim();
-            
-            if(isAsc) {
-                return bValue.localeCompare(aValue);
-            } else {
-                return aValue.localeCompare(bValue);
-            }
-        });
-        
-        // Rebuild tbody
-        tbody.empty().append(rows);
-    });
-}
-
-// Initialize Pagination
-function initializePagination() {
-    $('[id$="_per_page"]').change(function() {
-        var tableId = $(this).attr('id').replace('_per_page', '_table');
-        updatePagination(tableId);
-    });
-}
-
-// Update Pagination
-function updatePagination(tableId) {
-    var table = $('#' + tableId);
-    var perPage = parseInt($('#' + tableId.replace('_table', '_per_page')).val());
-    var rows = table.find('tbody tr:visible');
-    var totalRows = rows.length;
-    var totalPages = Math.ceil(totalRows / perPage);
-    
-    // Hide all rows
-    rows.hide();
-    
-    // Show first page rows
-    rows.slice(0, perPage).show();
-    
-    // Update pagination controls
-    var paginationId = tableId.replace('_table', '_pagination');
-    var paginationHtml = '';
-    
-    if(totalPages > 1) {
-        paginationHtml += '<ul class="pagination pagination-sm">';
-        for(var i = 1; i <= totalPages; i++) {
-            paginationHtml += '<li class="' + (i === 1 ? 'active' : '') + '">';
-            paginationHtml += '<a href="#" onclick="showPage(\'' + tableId + '\', ' + i + ', ' + perPage + ')">' + i + '</a>';
-            paginationHtml += '</li>';
-        }
-        paginationHtml += '</ul>';
-    }
-    
-    $('#' + paginationId).html(paginationHtml);
-}
-
-// Show Page
-function showPage(tableId, page, perPage) {
-    var table = $('#' + tableId);
-    var rows = table.find('tbody tr:visible');
-    var start = (page - 1) * perPage;
-    var end = start + perPage;
-    
-    rows.hide();
-    rows.slice(start, end).show();
-    
-    // Update active pagination button
-    var paginationId = tableId.replace('_table', '_pagination');
-    $('#' + paginationId + ' li').removeClass('active');
-    $('#' + paginationId + ' li:eq(' + (page - 1) + ')').addClass('active');
-}
-
-// Generate Reports
-function generateMonthlyReport() {
-    var month = $('#report_month').val();
-    window.open('<?php echo admin_url('student_sponsor_portal/monthly_report'); ?>?month=' + month, '_blank');
-}
-
-function generateCustomReport() {
-    var reportType = $('#custom_report_type').val();
-    window.open('<?php echo admin_url('student_sponsor_portal/custom_report'); ?>?type=' + reportType, '_blank');
-}
-
-function exportAllData() {
-    var format = $('#export_format').val();
-    window.open('<?php echo admin_url('student_sponsor_portal/export_all'); ?>?format=' + format, '_blank');
-}
-
-// Show selected count when checkboxes are checked
-$(document).on('change', 'input[type="checkbox"][name^="selected_"]', function() {
-    var type = $(this).attr('name').replace('selected_', '').replace('[]', '');
-    var checkedCount = $('input[name="selected_' + type + '[]"]:checked').length;
-    
-    if(checkedCount > 0) {
-        $('.bulk-actions').show();
-    } else {
-        $('.bulk-actions').hide();
-    }
-});
-
-function initializeCharts() {
-  if (typeof Chart === 'undefined') {
-    console.error('Chart.js not loaded'); 
-    return;
-  }
-
-  // Student Distribution
-  var el1 = document.getElementById('studentChart');
-  if (el1) {
-    var ctx1 = el1.getContext('2d');
-    new Chart(ctx1, {
-      type: 'doughnut',
-      data: {
-        labels: ['School Students', 'University Students'],
-        datasets: [{
-          data: [<?php echo (int)$school_count; ?>, <?php echo (int)$university_count; ?>],
-          backgroundColor: ['#337ab7', '#5cb85c'],
-          borderWidth: 2
-        }]
-      },
-      options: { responsive: true, plugins: { legend: { position: 'bottom' } } }
-    });
-  }
-
-  // Sponsorship Status
-  var el2 = document.getElementById('sponsorshipChart');
-  if (el2) {
-    var ctx2 = el2.getContext('2d');
-    new Chart(ctx2, {
-      type: 'bar',
-      data: {
-        labels: ['Active', 'Pending', 'Completed', 'Cancelled'],
-        datasets: [{
-          label: 'Sponsorships',
-          data: [
-            <?php echo (int)($active_sponsorship_count ?? 0); ?>,
-            <?php echo (int)($pending_sponsorship_count ?? 0); ?>,
-            <?php echo (int)($completed_sponsorship_count ?? 0); ?>,
-            <?php echo (int)($cancelled_sponsorship_count ?? 0); ?>
-          ],
-          backgroundColor: ['#5cb85c', '#f0ad4e', '#5bc0de', '#d9534f'],
-          borderWidth: 1
-        }]
-      },
-      options: { responsive: true, scales: { y: { beginAtZero: true } } }
-    });
-  }
-}
-</script>
-<script>
-$(function () {
-  // Guard datepicker init (page doesn't load jQuery UI here)
-  if ($.fn.datepicker) {
-    $('.datepicker').datepicker({
-      dateFormat: 'yy-mm-dd',
-      changeMonth: true,
-      changeYear: true
-    });
-  } else {
-    // Avoid breaking the rest of the JS
-    console.warn('datepicker not available on this page – skipping init');
-  }
-
-  // Initialize charts (with safety guards)
-  try { initializeCharts(); } catch (e) { console.error('Chart init error:', e); }
-
-  initializeAdvancedFiltering();
-  initializeSorting();
-  initializePagination();
-});
-</script>
-
-
 <style>
-.stats-box {
-    text-align: center;
+.dashboard-card {
+    border: 1px solid #e9ecef;
+    border-radius: 8px;
+    background: #fff;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    transition: all 0.3s ease;
+    margin-bottom: 20px;
+    overflow: hidden;
+}
+
+.dashboard-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+}
+
+.dashboard-card .card-header {
     padding: 20px;
-    background: #f9f9f9;
-    border-radius: 5px;
-    margin-bottom: 10px;
+    border-bottom: 1px solid #f1f3f4;
+    display: flex;
+    align-items: center;
+    background: linear-gradient(135deg, #f8f9fa 0%, #ffffff 100%);
 }
 
-.stats-box h3 {
+.dashboard-card .card-icon {
+    width: 50px;
+    height: 50px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-right: 15px;
+    font-size: 20px;
+    color: #fff;
+}
+
+.school-students-card .card-icon { background: linear-gradient(135deg, #337ab7, #2c5aa0); }
+.university-students-card .card-icon { background: linear-gradient(135deg, #5cb85c, #449d44); }
+.sponsors-card .card-icon { background: linear-gradient(135deg, #5bc0de, #31b0d5); }
+.financial-card .card-icon { background: linear-gradient(135deg, #f0ad4e, #ec971f); }
+
+.dashboard-card .card-title h3 {
     margin: 0;
-    color: #337ab7;
-    font-size: 2em;
+    font-size: 24px;
+    font-weight: 600;
+    color: #2c3e50;
 }
 
-.stats-box p {
-    margin: 5px 0 0 0;
-    color: #666;
+.dashboard-card .card-title span {
+    font-size: 12px;
+    color: #7f8c8d;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
 }
 
-.panel-footer {
-    background: #f5f5f5;
-    border-top: 1px solid #ddd;
-    padding: 10px 15px;
+.dashboard-card .card-body {
+    padding: 15px 20px;
 }
 
-.table-hover tbody tr:hover {
-    background-color: #f5f5f5;
+.dashboard-card .progress {
+    height: 4px;
+    border-radius: 2px;
+    margin-bottom: 15px;
+    background-color: #f8f9fa;
 }
 
-.sort-icon {
-    cursor: pointer;
-    margin-left: 5px;
-}
-
-.sort-icon:hover {
-    color: #337ab7;
-}
-
-.pagination {
-    margin: 0;
-}
-
-.bulk-actions {
-    padding: 10px 0;
-}
-
-.badge {
+.dashboard-card .card-stats {
+    display: flex;
+    justify-content: space-between;
     font-size: 11px;
 }
 
-.btn-group .btn {
-    margin-right: 2px;
+.dashboard-card .card-footer {
+    padding: 12px 20px;
+    background: #f8f9fa;
+    border-top: 1px solid #e9ecef;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
 }
 
-.panel-heading i {
-    margin-right: 5px;
+.dashboard-card .card-actions {
+    display: flex;
+    gap: 5px;
+}
+
+.dashboard-card .card-trend {
+    font-size: 11px;
+    font-weight: 600;
+}
+
+.trend-up { color: #28a745; }
+.trend-down { color: #dc3545; }
+
+.quick-actions .action-group {
+    margin-bottom: 20px;
+    padding-bottom: 15px;
+    border-bottom: 1px solid #f1f3f4;
+}
+
+.quick-actions .action-group:last-child {
+    border-bottom: none;
+    margin-bottom: 0;
+}
+
+.quick-actions .action-group h6 {
+    color: #495057;
+    font-weight: 600;
+    margin-bottom: 10px;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.quick-actions .btn {
+    margin-bottom: 5px;
+    font-size: 12px;
+    padding: 8px 12px;
+}
+
+.activity-timeline {
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+.activity-item {
+    display: flex;
+    padding: 10px 0;
+    border-bottom: 1px solid #f8f9fa;
+    position: relative;
+}
+
+.activity-item:last-child {
+    border-bottom: none;
+}
+
+.activity-icon {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-right: 12px;
+    font-size: 12px;
+    color: #fff;
+    flex-shrink: 0;
+}
+
+.activity-content {
+    flex: 1;
+}
+
+.activity-content .activity-title {
+    font-size: 13px;
+    font-weight: 500;
+    color: #2c3e50;
+    margin-bottom: 3px;
+}
+
+.activity-content .activity-description {
+    font-size: 11px;
+    color: #7f8c8d;
+    line-height: 1.4;
+}
+
+.activity-time {
+    font-size: 10px;
+    color: #95a5a6;
+    white-space: nowrap;
+    margin-left: 10px;
+    flex-shrink: 0;
+}
+
+.dashboard-tabs {
+    border-bottom: 2px solid #f1f3f4;
+    margin-bottom: 0;
+}
+
+.dashboard-tabs > li > a {
+    font-weight: 500;
+    color: #666;
+    border: none;
+    border-radius: 4px 4px 0 0;
+    padding: 12px 16px;
+    font-size: 12px;
+}
+
+.dashboard-tabs > li > a:hover {
+    background-color: #f8f9fa;
+    border-color: transparent;
+}
+
+.dashboard-tabs > li.active > a,
+.dashboard-tabs > li.active > a:hover,
+.dashboard-tabs > li.active > a:focus {
+    color: #337ab7;
+    background-color: #fff;
+    border: none;
+    border-bottom: 2px solid #337ab7;
+}
+
+.dashboard-tab-content {
+    background: #fff;
+    border: 1px solid #e9ecef;
+    border-top: none;
+    border-radius: 0 0 4px 4px;
+}
+
+.table-hover tbody tr:hover {
+    background-color: #f8f9fa;
+}
+
+/* Clickable rows */
+.clickable-row:hover {
+    background-color: #f0f7ff !important;
+    transition: background-color 0.2s ease;
+}
+
+.table th {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: #495057;
+    background-color: #f8f9fa;
+    border-bottom: 2px solid #dee2e6;
+}
+
+.table td {
+    font-size: 12px;
+    vertical-align: middle;
+    border-color: #f1f3f4;
+}
+
+.label {
+    font-size: 9px;
+    padding: 3px 6px;
+    border-radius: 3px;
+    font-weight: 500;
+}
+
+.badge {
+    font-size: 9px;
+    padding: 3px 6px;
+    border-radius: 10px;
+}
+
+.empty-state {
+    text-align: center;
+    padding: 40px 20px;
+    color: #95a5a6;
+}
+
+.empty-state i {
+    font-size: 48px;
+    margin-bottom: 15px;
+    opacity: 0.5;
+}
+
+.panel-default {
+    border: 1px solid #e9ecef;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
+.panel-heading {
+    background: linear-gradient(135deg, #f8f9fa 0%, #ffffff 100%);
+    border-bottom: 1px solid #e9ecef;
+    color: #495057;
+}
+
+.panel-title {
+    font-weight: 600;
+    font-size: 14px;
+}
+
+.panel-title i {
+    margin-right: 8px;
 }
 
 @media (max-width: 768px) {
-    .col-md-3, .col-md-4, .col-md-6 {
-        margin-bottom: 15px;
+    .dashboard-card .card-header {
+        padding: 15px;
+        flex-direction: column;
+        text-align: center;
     }
     
-    .btn-group .btn {
-        display: block;
-        width: 100%;
-        margin-bottom: 2px;
+    .dashboard-card .card-icon {
+        margin-right: 0;
+        margin-bottom: 10px;
+    }
+    
+    .dashboard-card .card-footer {
+        flex-direction: column;
+        gap: 10px;
+    }
+    
+    .dashboard-card .card-actions {
+        justify-content: center;
+    }
+    
+    .quick-actions .btn {
+        font-size: 11px;
+        padding: 6px 10px;
+    }
+    
+    .activity-timeline {
+        max-height: 200px;
     }
 }
 </style>
+
+<script>
+$(document).ready(function() {
+    // Make table rows clickable
+    $('.clickable-row').click(function() {
+        window.location = $(this).data('href');
+    });
+    
+    $('[data-toggle="tooltip"]').tooltip();
+});
+
+function filterActivity(type) {
+    $('.btn-group button').removeClass('active');
+    $(`button[onclick="filterActivity('${type}')"]`).addClass('active');
+    
+    if (type === 'all') {
+        $('.activity-item').show();
+    } else {
+        $('.activity-item').hide();
+        $(`.activity-item[data-type="${type}"]`).show();
+    }
+}
+
+function refreshDashboard() {
+    window.location.reload();
+}
+</script>
 
 <?php init_tail(); ?>

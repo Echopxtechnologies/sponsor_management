@@ -3,7 +3,7 @@
 Module Name: Student Sponsor Portal
 Description: A module for registering school students, university students, and sponsors
 Version: 1.0.0
-Author: Raju
+Author: Echo px
 Requires at least: 2.3.2
 */
 defined('BASEPATH') or exit('No direct script access allowed');

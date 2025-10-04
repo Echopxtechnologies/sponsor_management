@@ -9,43 +9,39 @@
 
             <!-- Header -->
             <div class="row">
-              <div class="col-md-8">
+              <div class="col-md-6">
                 <h4 class="customer-profile-group-heading" style="margin-top:20px;">
                   <i class="fa fa-graduation-cap"></i> <?php echo isset($title) ? $title : 'School Students'; ?>
                 </h4>
               </div>
-              <div class="col-md-4">
-                <div class="pull-right" style="margin-top:15px;">
-                  <div class="btn-toolbar" role="toolbar">
-                    <!-- Import/Export Group -->
-                    <div class="btn-group" role="group">
-                      <a href="<?php echo admin_url('student_sponsor_portal/bulk_import_school_students'); ?>" 
-                         class="btn btn-warning btn-sm" title="Bulk Import Students">
-                        <i class="fa fa-upload"></i> Import
-                      </a>
-                      <div class="btn-group" role="group">
-                        <button type="button" class="btn btn-success btn-sm dropdown-toggle" 
-                                data-toggle="dropdown" title="Export Options">
-                          <i class="fa fa-download"></i> Export <span class="caret"></span>
-                        </button>
-                        <ul class="dropdown-menu dropdown-menu-right">
-                          <li><a href="<?php echo admin_url('student_sponsor_portal/export_school_students'); ?>">
-                            <i class="fa fa-file-excel-o"></i> Export All Students (Excel)</a></li>
-                          <li><a href="#" onclick="exportFilteredStudents(); return false;">
-                            <i class="fa fa-filter"></i> Export Filtered Results (Excel)</a></li>
-                          <li class="divider"></li>
-                          <li><a href="<?php echo admin_url('student_sponsor_portal/download_school_students_template'); ?>">
-                            <i class="fa fa-download"></i> Download Excel Template</a></li>
-                        </ul>
-                      </div>
-                    </div>
-                    <!-- Add Student Button -->
-                    <div class="btn-group" role="group">
-                      <a href="<?php echo admin_url('student_sponsor_portal/school_student_form'); ?>" 
-                         class="btn btn-primary btn-sm">
-                        <i class="fa fa-plus"></i> New Student
-                      </a>
-                    </div>
+              <div class="col-md-6">
+                <div class="text-right" style="margin-top:15px;">
+                  <div class="btn-group" role="group" style="margin-right: 5px;">
+                    <a href="<?php echo admin_url('student_sponsor_portal/bulk_import_school_students'); ?>" 
+                       class="btn btn-warning btn-sm" title="Bulk Import Students">
+                      <i class="fa fa-upload"></i> Import
+                    </a>
+                  </div>
+                  <div class="btn-group" role="group" style="margin-right: 5px;">
+                    <button type="button" class="btn btn-success btn-sm dropdown-toggle" 
+                            data-toggle="dropdown" title="Export Options">
+                      <i class="fa fa-download"></i> Export <span class="caret"></span>
+                    </button>
+                    <ul class="dropdown-menu dropdown-menu-right">
+                      <li><a href="<?php echo admin_url('student_sponsor_portal/export_school_students'); ?>">
+                        <i class="fa fa-file-excel-o"></i> Export All Students (Excel)</a></li>
+                      <li><a href="#" onclick="exportFilteredStudents(); return false;">
+                        <i class="fa fa-filter"></i> Export Filtered Results (Excel)</a></li>
+                      <li class="divider"></li>
+                      <li><a href="<?php echo admin_url('student_sponsor_portal/download_school_students_template'); ?>">
+                        <i class="fa fa-download"></i> Download Excel Template</a></li>
+                    </ul>
+                  </div>
+                  <div class="btn-group" role="group">
+                    <a href="<?php echo admin_url('student_sponsor_portal/school_student_form'); ?>" 
+                       class="btn btn-primary btn-sm">
+                      <i class="fa fa-plus"></i> New Student
+                    </a>
                   </div>
                 </div>
               </div>
@@ -53,100 +49,26 @@
 
             <hr class="hr-panel-heading">
 
-            <!-- Quick Stats -->
-            <div class="row stats-row" style="margin-bottom: 20px;">
-              <div class="col-md-3">
-                <div class="quick-stat">
-                  <div class="quick-stat-number" id="total-students"><?php echo $stats['total'] ?? 0; ?></div>
-                  <div class="quick-stat-label">Total Students</div>
-                </div>
-              </div>
-              <div class="col-md-3">
-                <div class="quick-stat">
-                  <div class="quick-stat-number text-success" id="active-students"><?php echo $stats['active'] ?? 0; ?></div>
-                  <div class="quick-stat-label">Active</div>
-                </div>
-              </div>
-              <div class="col-md-3">
-                <div class="quick-stat">
-                  <div class="quick-stat-number text-warning" id="inactive-students"><?php echo $stats['inactive'] ?? 0; ?></div>
-                  <div class="quick-stat-label">Inactive</div>
-                </div>
-              </div>
-              <div class="col-md-3">
-                <div class="quick-stat">
-                  <div class="quick-stat-number text-info" id="verified-students"><?php echo $stats['verified'] ?? 0; ?></div>
-                  <div class="quick-stat-label">Verified</div>
-                </div>
-              </div>
-            </div>
-
-            <!-- Filters -->
-            <div class="row filters-row">
-              <div class="col-md-2">
-                <div class="form-group">
-                  <label for="filter_grade">Grade</label>
-                  <select id="filter_grade" class="form-control selectpicker" data-none-selected-text="All Grades">
-                    <option value="">All Grades</option>
-                    <?php for($i=1;$i<=10;$i++): ?>
-                      <option value="<?php echo $i; ?>">Grade <?php echo $i; ?></option>
-                    <?php endfor; ?>
-                    <option value="O/L">O/L</option>
-                    <option value="A/L1">A/L1</option>
-                    <option value="A/L2">A/L2</option>
-                  </select>
-                </div>
-              </div>
-              <div class="col-md-2">
-                <div class="form-group">
-                  <label for="filter_status">Status</label>
-                  <select id="filter_status" class="form-control selectpicker" data-none-selected-text="All Status">
-                    <option value="">All Status</option>
-                    <option value="verified">Verified</option>
-                    <option value="active">Active</option>
-                    <option value="inactive">Inactive</option>
-                    <option value="unverified">Unverified</option>
-                  </select>
-                </div>
-              </div>
-              <div class="col-md-3">
-                <div class="form-group">
-                  <label for="filter_school">School</label>
-                  <input type="text" id="filter_school" class="form-control" placeholder="Filter by school">
-                </div>
-              </div>
-              <div class="col-md-4">
-                <div class="form-group">
-                  <label for="search_students">Search</label>
-                  <input type="text" id="search_students" class="form-control" placeholder="Search students (name, email, phone)...">
-                </div>
-              </div>
-              <div class="col-md-1">
-                <div class="form-group">
-                  <label>&nbsp;</label>
-                  <button type="button" class="btn btn-default btn-block" onclick="clearAllFilters()" title="Clear Filters">
-                    <i class="fa fa-refresh"></i>
-                  </button>
-                </div>
-              </div>
-            </div>
-
             <!-- Table -->
             <div class="table-responsive">
               <table class="table table-hover students-table" id="school-students-table">
                 <thead>
                   <tr>
-                    <th width="8%">ID</th>
-                    <th width="28%">Student Name</th>
+                    <th width="5%">#</th>
+                    <th width="20%">Student Name</th>
                     <th width="12%">Grade</th>
-                    <th width="20%">School</th>
-                    <th width="12%">Status</th>
-                    <th width="20%">Contact</th>
+                    <th width="15%">School</th>
+                    <th width="10%">Status</th>
+                    <th width="15%">Sponsor</th>
+                    <th width="18%">Contact</th>
                   </tr>
                 </thead>
                 <tbody>
                 <?php if(!empty($school_students)): ?>
-                  <?php foreach ($school_students as $s): ?>
+                  <?php 
+                    $serial = 1; 
+                    foreach ($school_students as $s): 
+                  ?>
                     <?php
                       $sid    = (int)($s['id'] ?? 0);
                       $name   = (string)($s['name'] ?? '');
@@ -156,6 +78,11 @@
                       $phone  = (string)($s['contact_no'] ?? '');
                       $staff_id = $s['staff_id'] ?? null;
                       $staff_active = (int)($s['staff_active'] ?? 0);
+
+                      // Sponsor information (already coming from model)
+                      $sponsor_name = (string)($s['sponsor_name'] ?? '');
+                      $sponsor_type = (string)($s['sponsor_type'] ?? '');
+                      $sponsor_relationship = $s['sponsor_relationship_type'] ?? 'direct';
 
                       // Determine status based on staff_id and staff_active
                       $status = 'unverified';
@@ -191,9 +118,10 @@
                         data-student-id="<?php echo $sid; ?>"
                         data-grade="<?php echo html_escape($grade); ?>"
                         data-school="<?php echo html_escape(mb_strtolower($school)); ?>"
-                        data-status="<?php echo html_escape($status); ?>">
+                        data-status="<?php echo html_escape($status); ?>"
+                        data-sponsor="<?php echo html_escape(mb_strtolower($sponsor_name)); ?>">
                       
-                      <td><strong><?php echo $sid; ?></strong></td>
+                      <td><strong><?php echo $serial; ?></strong></td>
 
                       <!-- Student Name with circular photo -->
                       <td>
@@ -214,6 +142,7 @@
                           </div>
                           <div class="media-body">
                             <strong><?php echo html_escape($name); ?></strong>
+                            <br><small class="text-muted">ID: <?php echo $sid; ?></small>
                             <div class="row-options" style="display:none;">
                               <a href="<?php echo admin_url('student_sponsor_portal/school_student_form/' . $sid); ?>">Edit</a> |
                               <a href="#" onclick="viewStudent(<?php echo $sid; ?>); return false;">View</a> |
@@ -239,6 +168,33 @@
                           <i class="fa <?php echo $status_icon; ?>"></i> <?php echo ucfirst($status); ?>
                         </span>
                       </td>
+
+                      <!-- Sponsor Column -->
+<td>
+  <?php 
+    $all_sponsor_names = (string)($s['all_sponsor_names'] ?? '');
+    $all_sponsor_types = (string)($s['all_sponsor_types'] ?? '');
+    $sponsor_count = (int)($s['sponsor_count'] ?? 0);
+  ?>
+  <?php if($all_sponsor_names): ?>
+    <div class="sponsor-info">
+      <strong class="text-success">
+     <?php echo html_escape($all_sponsor_names); ?>
+      </strong>
+     
+      <?php if($sponsor_count > 1): ?>
+        <br><small class="text-info">
+          <i class="fa fa-users"></i> <?php echo $sponsor_count; ?> Sponsors
+        </small>
+      <?php endif; ?>
+     
+    </div>
+  <?php else: ?>
+    <span class="text-muted">
+      <i class="fa fa-heart-o"></i> No Sponsor
+    </span>
+  <?php endif; ?>
+</td>
                       
                       <!-- Contact Column (Combined Email/Phone) -->
                       <td>
@@ -255,10 +211,12 @@
                         </div>
                       </td>
                     </tr>
-                  <?php endforeach; ?>
+                  <?php 
+                    $serial++; 
+                  endforeach; ?>
                 <?php else: ?>
                   <tr>
-                    <td colspan="6" class="text-center">
+                    <td colspan="7" class="text-center">
                       <div style="padding:40px;">
                         <i class="fa fa-graduation-cap fa-3x text-muted"></i>
                         <h4 class="text-muted">No students found</h4>
@@ -309,38 +267,6 @@
 </div>
 
 <style>
-/* Enhanced styling */
-.quick-stat {
-  text-align: center;
-  padding: 20px 15px;
-  background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
-  border-radius: 8px;
-  border: 1px solid #e9ecef;
-  margin-bottom: 10px;
-  transition: all 0.3s ease;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-}
-
-.quick-stat:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 8px rgba(0,0,0,0.1);
-}
-
-.quick-stat-number {
-  font-size: 28px;
-  font-weight: 700;
-  margin-bottom: 8px;
-  line-height: 1;
-}
-
-.quick-stat-label {
-  font-size: 12px;
-  color: #6c757d;
-  text-transform: uppercase;
-  font-weight: 600;
-  letter-spacing: 0.5px;
-}
-
 /* Button toolbar alignment */
 .btn-toolbar {
   display: flex;
@@ -414,6 +340,35 @@
 
 .contact-info a:hover {
   text-decoration: underline;
+}
+
+/* Sponsor info styling */
+.sponsor-info {
+  font-size: 12px;
+}
+
+.sponsor-info strong {
+  display: block;
+  margin-bottom: 2px;
+  font-size: 12px;
+}
+
+.sponsor-info small {
+  display: block;
+  line-height: 1.2;
+  font-size: 11px;
+}
+
+.sponsor-info .fa-heart {
+  color: #dc3545;
+}
+
+.sponsor-info .fa-tag {
+  color: #6c757d;
+}
+
+.sponsor-info .fa-exchange {
+  color: #17a2b8;
 }
 
 /* Row options styling */
@@ -500,45 +455,11 @@
   padding-right: 12px; 
 }
 
-/* Filters styling */
-.filters-row {
-  background: #f8f9fa;
-  padding: 15px;
-  border-radius: 6px;
-  margin-bottom: 20px;
-  border: 1px solid #e9ecef;
-}
-
-.filters-row .form-group {
-  margin-bottom: 0;
-}
-
-.filters-row label {
-  font-weight: 600;
-  font-size: 11px;
-  text-transform: uppercase;
-  color: #6c757d;
-  margin-bottom: 5px;
-}
-
-/* Stats row spacing */
-.stats-row {
-  padding: 0 15px;
-}
-
 /* Responsive adjustments */
 @media (max-width: 768px) {
   .btn-toolbar {
     flex-direction: column;
     gap: 10px;
-  }
-  
-  .quick-stat {
-    margin-bottom: 15px;
-  }
-  
-  .quick-stat-number {
-    font-size: 24px;
   }
 }
 </style>
@@ -628,26 +549,6 @@ function exportStudentsByIds(studentIds, filename) {
   form.remove();
 }
 
-function clearAllFilters() {
-  $('#filter_grade').val('').trigger('change');
-  $('#filter_status').val('').trigger('change');
-  $('#filter_school').val('');
-  $('#search_students').val('');
-  
-  if ($.fn.selectpicker) {
-    $('.selectpicker').selectpicker('refresh');
-  }
-  
-  if (table) {
-    table.search('').columns().search('').draw();
-    // Clear custom filters
-    $.fn.dataTable.ext.search = [];
-    table.draw();
-    // Re-add status filter
-    addStatusFilter();
-  }
-}
-
 // Student management functions
 function viewStudent(id) {
   $('#studentViewModal').modal('show');
@@ -706,30 +607,6 @@ function deleteStudent(id) {
   });
 }
 
-function addStatusFilter() {
-  $.fn.dataTable.ext.search.push(function(settings, data, dataIndex) {
-    if (settings.nTable !== table.table().node()) return true;
-
-    var selectedStatus = $('#filter_status').val();
-    if (!selectedStatus) return true;
-
-    var node = table.row(dataIndex).node();
-    if (!node) return true;
-
-    var rowStatus = node.getAttribute('data-status');
-    return rowStatus === selectedStatus;
-  });
-}
-
-function debounce(fn, delay) {
-  var t;
-  return function() {
-    clearTimeout(t);
-    var args = arguments, ctx = this;
-    t = setTimeout(function(){ fn.apply(ctx, args); }, delay || 300);
-  };
-}
-
 $(document).ready(function() {
   // Initialize avatar states
   $('.avatar__image').each(function() {
@@ -749,8 +626,8 @@ $(document).ready(function() {
     pageLength: 25,
     order: [[0, "desc"]],
     columnDefs: [
-      { orderable: false, targets: [1] }, // Name column
-      { searchable: false, targets: [0] }  // ID column
+      { orderable: false, targets: [1, 5] }, // Name and Sponsor columns
+      { searchable: false, targets: [0] }    // ID column
     ],
     language: {
       emptyTable: "No school students found",
@@ -761,45 +638,12 @@ $(document).ready(function() {
     }
   });
 
-  // Add status filter
-  addStatusFilter();
-
   // Row hover effects
   $(document).on('mouseenter', '.student-row', function(){ 
     $(this).find('.row-options').show(); 
   }).on('mouseleave', '.student-row', function(){ 
     $(this).find('.row-options').hide(); 
   });
-
-  // Search functionality
-  $('#search_students').on('keyup', debounce(function(){
-    table.search(this.value).draw();
-  }, 250));
-
-  // Grade filter
-  $('#filter_grade').on('change', function(){
-    var g = $(this).val();
-    if(g){ 
-      table.column(2).search('^\\s*Grade\\s*'+g+'\\b|^\\s*'+g+'\\s*$', true, false).draw(); 
-    } else { 
-      table.column(2).search('').draw(); 
-    }
-  });
-
-  // School filter
-  $('#filter_school').on('keyup', debounce(function(){
-    table.column(3).search(this.value).draw();
-  }, 250));
-
-  // Status filter
-  $('#filter_status').on('change', function(){
-    table.draw();
-  });
-
-  // Initialize selectpicker
-  if($.fn.selectpicker){ 
-    $('.selectpicker').selectpicker(); 
-  }
 });
 </script>
 

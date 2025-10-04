@@ -383,23 +383,103 @@
               <!-- Sponsorship Tab (Admin Only) -->
               <?php if(!isset($is_university_student) || !$is_university_student): ?>
               <div role="tabpanel" class="tab-pane" id="sponsorship">
+                  <!-- READ-ONLY CURRENT SPONSORS DISPLAY -->
+  <?php if(isset($student) && !empty($student['id'])): ?>
+    <div class="row">
+      <div class="col-md-12">
+        <h5><i class="fa fa-heart"></i> Current Sponsors</h5>
+        <hr>
+        <div class="current-sponsors-display">
+          <?php 
+            // Get sponsor history (already loaded by model)
+            $sponsor_history = $student['sponsor_history'] ?? [];
+            if (!empty($sponsor_history)): 
+          ?>
+            <div class="sponsors-list">
+              <?php foreach($sponsor_history as $index => $sponsor): ?>
+                <div class="sponsor-card" style="background: #f8f9fa; border: 1px solid #e9ecef; border-radius: 4px; padding: 15px; margin-bottom: 10px;">
+                  <div class="row">
+                    <div class="col-md-8">
+                      <h6 class="sponsor-name">
+                        <i class="fa fa-heart text-danger"></i> 
+                        <strong><?php echo html_escape($sponsor['sponsor_name']); ?></strong>
+                        <?php if(!empty($sponsor['sponsor_type'])): ?>
+                          <span class="label label-info"><?php echo html_escape($sponsor['sponsor_type']); ?></span>
+                        <?php endif; ?>
+                      </h6>
+                      
+                      <?php if(!empty($sponsor['sponsor_email'])): ?>
+                        <p class="sponsor-contact">
+                          <i class="fa fa-envelope text-primary"></i> 
+                          <a href="mailto:<?php echo html_escape($sponsor['sponsor_email']); ?>">
+                            <?php echo html_escape($sponsor['sponsor_email']); ?>
+                          </a>
+                        </p>
+                      <?php endif; ?>
+                      
+                      <div class="sponsor-meta">
+                        <small class="text-muted">
+                          <i class="fa fa-info-circle"></i> 
+                          <strong>Relationship:</strong> <?php echo ucfirst($sponsor['relationship_type'] ?? 'Direct'); ?> Sponsorship
+                          
+                          <?php if(!empty($sponsor['total_amount'])): ?>
+                            | <strong>Amount:</strong> ₹<?php echo number_format($sponsor['total_amount'], 0); ?>
+                          <?php endif; ?>
+                          
+                          <?php if(!empty($sponsor['sponsorship_start'])): ?>
+                            | <strong>Start:</strong> <?php echo date('M d, Y', strtotime($sponsor['sponsorship_start'])); ?>
+                          <?php endif; ?>
+                          
+                          <?php if(!empty($sponsor['sponsorship_end'])): ?>
+                            | <strong>End:</strong> <?php echo date('M d, Y', strtotime($sponsor['sponsorship_end'])); ?>
+                          <?php endif; ?>
+                        </small>
+                      </div>
+                    </div>
+                    
+                    <div class="col-md-4 text-right">
+                      <?php if($sponsor['relationship_type'] === 'transaction'): ?>
+                        <span class="label label-success">Transaction-based</span>
+                      <?php else: ?>
+                        <span class="label label-primary">Direct Assignment</span>
+                      <?php endif; ?>
+                      
+                      <?php if(!empty($sponsor['payment_type'])): ?>
+                        <br><small class="text-muted"><?php echo ucfirst(str_replace('_', ' ', $sponsor['payment_type'])); ?></small>
+                      <?php endif; ?>
+                    </div>
+                  </div>
+                </div>
+              <?php endforeach; ?>
+            </div>
+            
+            <div class="sponsors-summary" style="background: #e8f5e8; border: 1px solid #d4edda; border-radius: 4px; padding: 10px; margin-top: 15px;">
+              <strong><i class="fa fa-info-circle text-success"></i> Summary:</strong> 
+              This student is sponsored by <strong><?php echo count($sponsor_history); ?></strong> sponsor<?php echo count($sponsor_history) > 1 ? 's' : ''; ?>
+              <?php 
+                $total_amount = array_sum(array_column($sponsor_history, 'total_amount'));
+                if ($total_amount > 0): 
+              ?>
+                with a total commitment of <strong>₹<?php echo number_format($total_amount, 0); ?></strong>
+              <?php endif; ?>
+            </div>
+            
+          <?php else: ?>
+            <div class="no-sponsors" style="background: #fff3cd; border: 1px solid #ffeaa7; border-radius: 4px; padding: 20px; text-align: center;">
+              <i class="fa fa-heart-o fa-2x text-warning"></i>
+              <h6 class="text-warning" style="margin-top: 10px;">No Sponsors Assigned</h6>
+              <p class="text-muted">This student does not have any sponsors yet. Sponsors can be assigned through direct assignment or sponsorship transactions.</p>
+            </div>
+          <?php endif; ?>
+        </div>
+      </div>
+    </div>
+    
+    <br>
+  <?php endif; ?>
                 <div class="row">
                   <div class="col-md-6">
-                    <div class="form-group">
-                      <label for="sponsor_id" class="control-label">Main Sponsor</label>
-                      <select name="sponsor_id" id="sponsor_id" class="form-control selectpicker" data-live-search="true" data-none-selected-text="Select Sponsor">
-                        <option value="">Select Sponsor</option>
-                        <?php if(!empty($sponsors)): foreach($sponsors as $sponsor): ?>
-                          <?php
-                            $sponsor_selected = (isset($student) && (int)($student['sponsor_id'] ?? 0) === (int)$sponsor['id']) ||
-                                              (isset($old['sponsor_id']) && (int)$old['sponsor_id'] === (int)$sponsor['id']);
-                          ?>
-                          <option value="<?php echo (int)$sponsor['id']; ?>" <?php echo $sponsor_selected ? 'selected' : ''; ?>>
-                            <?php echo html_escape($sponsor['name']); ?>
-                          </option>
-                        <?php endforeach; endif; ?>
-                      </select>
-                    </div>
+                    
 
                     <div class="form-group">
                       <label for="sponsorship_start" class="control-label">Sponsorship Start Date</label>
