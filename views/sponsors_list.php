@@ -15,13 +15,18 @@
                             </div>
                             <div class="col-md-6">
                                 <div class="text-right" style="margin-top:15px;">
+                                    <!-- Export Button -->
                                     <div class="btn-group" role="group" style="margin-right: 5px;">
-                                        <a href="<?php echo admin_url('student_sponsor_portal/export_sponsors'); ?>" class="btn btn-success btn-sm">
-                                            <i class="fa fa-download"></i> Export Sponsors
+                                        <a href="<?php echo admin_url('student_sponsor_portal/export_sponsors'); ?>" 
+                                           class="btn btn-success btn-sm"
+                                           title="Export all sponsors to CSV file">
+                                            <i class="fa fa-download"></i> Export CSV
                                         </a>
                                     </div>
+                                    <!-- New Sponsor Button -->
                                     <div class="btn-group" role="group">
-                                        <a href="<?php echo admin_url('student_sponsor_portal/sponsor_form'); ?>" class="btn btn-primary btn-sm">
+                                        <a href="<?php echo admin_url('student_sponsor_portal/sponsor_form'); ?>" 
+                                           class="btn btn-primary btn-sm">
                                             <i class="fa fa-plus"></i> New Sponsor
                                         </a>
                                     </div>
@@ -31,7 +36,6 @@
 
                         <hr class="hr-panel-heading">
 
-                 
                         <!-- Sponsors Table -->
                         <div class="table-responsive">
                             <table class="table table-hover sponsors-table" id="sponsors-table">
@@ -234,7 +238,6 @@
                                                         <span class="text-muted" style="font-size: 11px;">
                                                             <i class="fa fa-users text-muted"></i> No students sponsored
                                                         </span>
-                                                      
                                                     </div>
                                                 <?php endif; ?>
                                             </td>
@@ -297,11 +300,11 @@
                                                         <span class="caret"></span>
                                                     </button>
                                                     <ul class="dropdown-menu dropdown-menu-right">
-                                                        <li><a href="#" onclick="viewSponsorDetails(<?php echo $sponsor_id; ?>); return false;"><i class="fa fa-eye"></i> View Details</a></li>
+                                                   
                                                         <?php if(has_permission('student_sponsor_portal', '', 'edit')): ?>
                                                         <li><a href="<?php echo admin_url('student_sponsor_portal/sponsor_form/' . $sponsor_id); ?>"><i class="fa fa-edit"></i> Edit</a></li>
                                                         <?php endif; ?>
-                                                        <li><a href="#" onclick="viewSponsorTransactions(<?php echo $sponsor_id; ?>); return false;"><i class="fa fa-money"></i> View Transactions</a></li>
+                                                    
                                                         <?php if(has_permission('student_sponsor_portal', '', 'delete')): ?>
                                                         <li class="divider"></li>
                                                         <li><a href="#" onclick="deleteSponsor(<?php echo $sponsor_id; ?>); return false;" class="text-danger"><i class="fa fa-trash"></i> Delete</a></li>
@@ -516,28 +519,6 @@
     border: 1px solid #e9ecef;
 }
 
-/* Filter buttons */
-#sponsor-filters .btn {
-    border-radius: 3px;
-    margin-right: 2px;
-}
-
-#sponsor-filters .btn.active {
-    background-color: #007bff;
-    color: white;
-    border-color: #007bff;
-}
-
-#sponsor-filters .badge {
-    background-color: rgba(255,255,255,0.3);
-    margin-left: 5px;
-}
-
-#sponsor-filters .btn.active .badge {
-    background-color: rgba(255,255,255,0.9);
-    color: #007bff;
-}
-
 /* Modal styling */
 .modal-lg { 
     width: 900px; 
@@ -645,22 +626,6 @@ $(document).ready(function() {
         }
     });
     
-    // Update filter counts
-    updateFilterCounts();
-    
-    // Filter functionality
-    $('#sponsor-filters button').on('click', function() {
-        $('#sponsor-filters button').removeClass('active');
-        $(this).addClass('active');
-        
-        var filter = $(this).data('filter');
-        if (filter === 'all') {
-            table.column(6).search('').draw();
-        } else {
-            table.column(6).search(filter).draw();
-        }
-    });
-    
     // View students button click
     $(document).on('click', '.view-students-btn', function() {
         var sponsorId = $(this).data('sponsor-id');
@@ -689,17 +654,6 @@ $(document).ready(function() {
         }
     });
 });
-
-// Update filter badge counts
-function updateFilterCounts() {
-    var activeSponsoring = $('.sponsor-row[data-status="active_sponsoring"]').length;
-    var activeNoStudents = $('.sponsor-row[data-status="active_no_students"]').length;
-    var inactive = $('.sponsor-row[data-status="inactive"]').length;
-    
-    $('#active-sponsoring-count').text(activeSponsoring);
-    $('#active-no-students-count').text(activeNoStudents);
-    $('#inactive-count').text(inactive);
-}
 
 // View sponsored students
 function viewSponsoredStudents(sponsorId, sponsorName) {
@@ -819,9 +773,6 @@ function deleteSponsor(sponsorId) {
                     $('#sponsor-row-' + sponsorId).remove();
                 }
                 
-                // Update filter counts
-                updateFilterCounts();
-                
                 if (typeof alert_float === 'function') {
                     alert_float('success', response.message || 'Sponsor deleted successfully');
                 } else {
@@ -853,35 +804,6 @@ function deleteSponsor(sponsorId) {
         }
     });
 }
-
-// Update filter counts when filters change
-$(document).ready(function() {
-    <?php if(!empty($sponsors)): ?>
-    // Set the counts from PHP
-    <?php 
-        $active_sponsoring_count = 0;
-        $active_no_students_count = 0;
-        $inactive_count = 0;
-        foreach($sponsors as $sponsor) {
-            $total_students = ((int)($sponsor['school_students_count'] ?? 0)) + ((int)($sponsor['university_students_count'] ?? 0));
-            $active = (int)($sponsor['active'] ?? 0);
-            
-            if ($active == 1) {
-                if ($total_students > 0) {
-                    $active_sponsoring_count++;
-                } else {
-                    $active_no_students_count++;
-                }
-            } else {
-                $inactive_count++;
-            }
-        }
-    ?>
-    $('#active-sponsoring-count').text(<?php echo $active_sponsoring_count; ?>);
-    $('#active-no-students-count').text(<?php echo $active_no_students_count; ?>);
-    $('#inactive-count').text(<?php echo $inactive_count; ?>);
-    <?php endif; ?>
-});
 </script>
 
 <?php init_tail(); ?>

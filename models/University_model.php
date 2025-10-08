@@ -923,37 +923,49 @@ class University_model extends App_Model
     /* ----------------- PHOTO HANDLING ----------------- */
     
     private function handle_profile_photo_upload()
-    {
-        if (!isset($_FILES['profile_photo'])) return null;
-        if ($_FILES['profile_photo']['error'] === UPLOAD_ERR_NO_FILE) return null;
-        if ($_FILES['profile_photo']['error'] !== UPLOAD_ERR_OK) {
-            throw new Exception('Upload failed (code '.$_FILES['profile_photo']['error'].')');
-        }
-
-        $tmp  = $_FILES['profile_photo']['tmp_name'];
-        $size = (int)$_FILES['profile_photo']['size'];
-
-        if ($size <= 0 || $size > 5*1024*1024) {
-            throw new Exception('File size too large. Max 5MB.');
-        }
-
-        $mime = 'application/octet-stream';
-        if (function_exists('finfo_open')) {
-            $f = finfo_open(FILEINFO_MIME_TYPE);
-            if ($f) { $m = @finfo_file($f, $tmp); if ($m) $mime = strtolower($m); finfo_close($f); }
-        } elseif (function_exists('getimagesize')) {
-            $gi = @getimagesize($tmp);
-            if ($gi && !empty($gi['mime'])) $mime = strtolower($gi['mime']);
-        }
-
-        $allowed = ['image/jpeg','image/jpg','image/png','image/gif','image/webp'];
-        if (!in_array($mime, $allowed, true)) throw new Exception('Invalid file type. Only JPG/PNG/GIF/WebP allowed.');
-
-        $bytes = @file_get_contents($tmp);
-        if ($bytes === false) throw new Exception('Could not read uploaded file.');
-
-        return $bytes;
+{
+    if (!isset($_FILES['profile_photo'])) return null;
+    if ($_FILES['profile_photo']['error'] === UPLOAD_ERR_NO_FILE) return null;
+    if ($_FILES['profile_photo']['error'] !== UPLOAD_ERR_OK) {
+        throw new Exception('Upload failed (code '.$_FILES['profile_photo']['error'].')');
     }
+
+    $tmp  = $_FILES['profile_photo']['tmp_name'];
+    $size = (int)$_FILES['profile_photo']['size'];
+
+    if ($size <= 0 || $size > 5*1024*1024) {
+        throw new Exception('File size too large. Max 5MB.');
+    }
+
+    // Use getimagesize FIRST (doesn't need fileinfo extension)
+    $mime = 'application/octet-stream';
+    if (function_exists('getimagesize')) {
+        $gi = @getimagesize($tmp);
+        if ($gi && !empty($gi['mime'])) {
+            $mime = strtolower($gi['mime']);
+        }
+    }
+
+    // Fallback to finfo only if getimagesize failed
+    if ($mime === 'application/octet-stream' && function_exists('finfo_open')) {
+        $f = @finfo_open(FILEINFO_MIME_TYPE);
+        if ($f) { 
+            $m = @finfo_file($f, $tmp); 
+            if ($m) $mime = strtolower($m); 
+            @finfo_close($f); 
+        }
+    }
+
+    $allowed = ['image/jpeg','image/jpg','image/png','image/gif','image/webp'];
+    if (!in_array($mime, $allowed, true)) {
+        throw new Exception('Invalid file type. Only JPG/PNG/GIF/WebP allowed.');
+    }
+
+    $bytes = @file_get_contents($tmp);
+    if ($bytes === false) throw new Exception('Could not read uploaded file.');
+
+    return $bytes;
+}
     
     public function get_profile_photo($student_id)
     {

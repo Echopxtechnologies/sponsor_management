@@ -613,6 +613,96 @@ public function index()
     }
 }
 
+
+/**
+ * Detect MIME type with multiple fallback methods
+ * Handles cases where finfo_open() is not available
+ */
+private function detect_mime_type_fallback($file_path, $uploaded_type = null)
+{
+    // Method 1: Try getimagesize (best for images, no fileinfo needed)
+    if (function_exists('getimagesize')) {
+        try {
+            $image_info = @getimagesize($file_path);
+            if ($image_info !== false && isset($image_info['mime'])) {
+                log_message('debug', 'MIME detected via getimagesize: ' . $image_info['mime']);
+                return strtolower($image_info['mime']);
+            }
+        } catch (Exception $e) {
+            log_message('warning', 'getimagesize failed: ' . $e->getMessage());
+        }
+    }
+    
+    // Method 2: Try finfo if available
+    if (function_exists('finfo_open')) {
+        try {
+            $finfo = @finfo_open(FILEINFO_MIME_TYPE);
+            if ($finfo !== false) {
+                $detected = @finfo_file($finfo, $file_path);
+                @finfo_close($finfo);
+                if ($detected !== false) {
+                    log_message('debug', 'MIME detected via finfo: ' . $detected);
+                    return strtolower($detected);
+                }
+            }
+        } catch (Exception $e) {
+            log_message('warning', 'finfo_open failed: ' . $e->getMessage());
+        }
+    }
+    
+    // Method 3: Check file signature (magic bytes)
+    if (is_readable($file_path)) {
+        $handle = @fopen($file_path, 'rb');
+        if ($handle) {
+            $bytes = fread($handle, 10);
+            fclose($handle);
+            
+            if (substr($bytes, 0, 3) === "\xFF\xD8\xFF") {
+                log_message('debug', 'MIME detected via signature: image/jpeg');
+                return 'image/jpeg';
+            }
+            if (substr($bytes, 0, 4) === "\x89PNG") {
+                log_message('debug', 'MIME detected via signature: image/png');
+                return 'image/png';
+            }
+            if (substr($bytes, 0, 3) === "GIF") {
+                log_message('debug', 'MIME detected via signature: image/gif');
+                return 'image/gif';
+            }
+            if (substr($bytes, 8, 4) === "WEBP") {
+                log_message('debug', 'MIME detected via signature: image/webp');
+                return 'image/webp';
+            }
+        }
+    }
+    
+    // Method 4: Use uploaded MIME type if valid
+    if (!empty($uploaded_type)) {
+        $valid = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
+        if (in_array(strtolower($uploaded_type), $valid)) {
+            log_message('debug', 'Using uploaded MIME type: ' . $uploaded_type);
+            return strtolower($uploaded_type);
+        }
+    }
+    
+    // Method 5: Guess from extension
+    $ext = strtolower(pathinfo($file_path, PATHINFO_EXTENSION));
+    $map = [
+        'jpg' => 'image/jpeg',
+        'jpeg' => 'image/jpeg',
+        'png' => 'image/png',
+        'gif' => 'image/gif',
+        'webp' => 'image/webp',
+    ];
+    
+    if (isset($map[$ext])) {
+        log_message('debug', 'MIME guessed from extension: ' . $map[$ext]);
+        return $map[$ext];
+    }
+    
+    log_message('warning', 'Could not determine MIME type, using fallback');
+    return 'application/octet-stream';
+}
 /**
  * Detect MIME type with multiple fallback methods
  * Handles cases where finfo_open() is not available
@@ -2109,10 +2199,8 @@ private function generate_csv_template()
     fclose($output);
     exit;
 }
-
-
 /**
- * Enhanced export with all fields (updated from existing method)
+ * Export all school students to CSV with ALL sponsors (no sponsor type)
  */
 public function export_school_students()
 {
@@ -2120,314 +2208,426 @@ public function export_school_students()
         access_denied('student_sponsor_portal');
     }
 
-    // Check if PHPSpreadsheet is available
-    $autoload_paths = [
-        FCPATH . 'vendor/autoload.php',
-        APPPATH . 'third_party/vendor/autoload.php',
-        APPPATH . 'libraries/vendor/autoload.php'
-    ];
-    
-    $phpspreadsheet_loaded = false;
-    foreach ($autoload_paths as $path) {
-        if (file_exists($path)) {
-            require_once($path);
-            $phpspreadsheet_loaded = true;
-            break;
+    try {
+        // Get ALL students
+        $students = $this->school_model->get_all();
+        
+        if (empty($students)) {
+            set_alert('warning', 'No students found to export');
+            redirect(admin_url('student_sponsor_portal/school_students'));
+            return;
         }
-    }
-    
-    if (!$phpspreadsheet_loaded || !class_exists('\PhpOffice\PhpSpreadsheet\Spreadsheet')) {
-        set_alert('danger', 'PHPSpreadsheet not available. Please install via Composer.');
-        redirect(admin_url('student_sponsor_portal/school_students'));
-        return;
-    }
 
-    $students = $this->school_model->get_all();
-    
-    $spreadsheet = new \PhpOffice\PhpSpreadsheet\Spreadsheet();
-    $sheet = $spreadsheet->getActiveSheet();
-    $sheet->setTitle('School Students');
-    
-    // Headers
-    $headers = [
-        'ID', 'Name', 'Email', 'Phone', 'Date of Birth', 'Age', 'Address', 'City', 'Postal Code', 'Country',
-        'School ID', 'Internal ID', 'Grade', 'School Type', 'School',
-        'Bank', 'Account Number', 'Branch Number', 'Branch Info',
-        'Father Name', 'Father Income', 'Mother Name', 'Mother Income',
-        'Guardian Name', 'Guardian Income', 'Background Information',
-        'Sponsorship Start', 'Sponsorship End', 'Introduced By', 'Introducer Phone',
-        'Internal Comment', 'External Comment', 'Staff Active', 'Profile Photo'
-    ];
-    
-    $sheet->fromArray($headers, null, 'A1');
-    
-    $row = 2;
-    foreach ($students as $s) {
-        $data = [
-            $s['id'] ?? '',
-            $s['name'] ?? '',
-            $s['email'] ?? '',
-            $s['contact_no'] ?? '',
-            $s['school_student_dob'] ?? '',
-            $s['school_age'] ?? '',
-            $s['address'] ?? '',
-            $s['city'] ?? '',
-            $s['zip'] ?? '',
-            $s['country_name'] ?? '',
-            $s['school_id'] ?? '',
-            $s['school_internal_id'] ?? '',
-            $s['school_grade'] ?? '',
-            $s['school_type'] ?? '',
-            $s['school_name'] ?? '',
-            $s['bank_name'] ?? '',
-            $s['school_bank_account_no'] ?? '',
-            $s['school_bank_branch_number'] ?? '',
-            $s['school_bank_branch_info'] ?? '',
-            $s['school_father_name'] ?? '',
-            $s['school_father_income'] ?? '',
-            $s['school_mother_name'] ?? '',
-            $s['school_mother_income'] ?? '',
-            $s['school_guardian_name'] ?? '',
-            $s['school_guardian_income'] ?? '',
-            $s['background_info'] ?? '',
-            $s['school_sponsorship_start_date'] ?? '',
-            $s['school_sponsorship_end_date'] ?? '',
-            $s['school_introducedby'] ?? '',
-            $s['school_introducedph'] ?? '',
-            $s['internal_comment'] ?? '',
-            $s['external_comment'] ?? '',
-            !empty($s['staff_active']) ? 'Yes' : 'No',
-            !empty($s['profile_photo']) ? 'Yes' : 'No'
+        // Generate filename
+        $filename = 'school_students_export_' . date('Y-m-d_H-i-s') . '.csv';
+        
+        // Set headers for CSV download
+        header('Content-Type: text/csv; charset=utf-8');
+        header('Content-Disposition: attachment; filename="' . $filename . '"');
+        header('Cache-Control: max-age=0');
+        header('Pragma: public');
+        
+        // Create output stream
+        $output = fopen('php://output', 'w');
+        
+        // Add BOM for UTF-8
+        fprintf($output, chr(0xEF).chr(0xBB).chr(0xBF));
+        
+        // Define CSV headers (NO sponsor type)
+        $csv_headers = [
+            'ID',
+            'Internal ID',
+            'Entity Type',
+            'Name',
+            'Email',
+            'Phone',
+            'Date of Birth',
+            'Age',
+            'Grade',
+            'Grade Mismatch Reason',
+            'School ID',
+            'School Name',
+            'School Type',
+            'Address',
+            'City',
+            'Postal Code',
+            'Country',
+            'Bank Name',
+            'Account Number',
+            'Branch Number',
+            'Branch Info',
+            'Father Name',
+            'Father Income',
+            'Mother Name',
+            'Mother Income',
+            'Guardian Name',
+            'Guardian Income',
+            'Sponsors',                   // All sponsor names
+            'Number of Sponsors',         
+            'Sponsorship Start',
+            'Sponsorship End',
+            'Introduced By',
+            'Introducer Phone',
+            'Background Info',
+            'Internal Comment',
+            'External Comment',
+            'Created Date'
         ];
         
-        $sheet->fromArray($data, null, 'A' . $row);
-        $row++;
-    }
-    
-    // Style header
-    $headerStyle = [
-        'font' => ['bold' => true, 'size' => 12],
-        'fill' => ['fillType' => \PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID, 'color' => ['rgb' => 'E8E8E8']],
-        'borders' => ['allBorders' => ['borderStyle' => \PhpOffice\PhpSpreadsheet\Style\Border::BORDER_THIN]],
-        'alignment' => ['horizontal' => \PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER]
-    ];
-    
-    $sheet->getStyle('A1:' . $sheet->getHighestColumn() . '1')->applyFromArray($headerStyle);
-    
-    // Auto-size columns
-    foreach (range('A', $sheet->getHighestColumn()) as $col) {
-        $sheet->getColumnDimension($col)->setAutoSize(true);
-    }
-    
-    // Add summary sheet
-    $summarySheet = $spreadsheet->createSheet();
-    $summarySheet->setTitle('Summary');
-    
-    $totalStudents = count($students);
-    $activeStudents = count(array_filter($students, function($s) { return !empty($s['staff_active']); }));
-    $verifiedStudents = count(array_filter($students, function($s) { return !empty($s['staff_id']); }));
-    $withPhotos = count(array_filter($students, function($s) { return !empty($s['profile_photo']); }));
-    
-    $summary = [
-        ['School Students Export Summary'],
-        [''],
-        ['Export Date:', date('Y-m-d H:i:s')],
-        ['Total Students:', $totalStudents],
-        ['Active Students:', $activeStudents],
-        ['Verified Students:', $verifiedStudents],
-        ['Students with Photos:', $withPhotos],
-        [''],
-        ['Grade Distribution:']
-    ];
-    
-    // Add grade distribution
-    $gradeDistribution = [];
-    foreach ($students as $student) {
-        $grade = $student['school_grade'] ?? 'Unknown';
-        if (!isset($gradeDistribution[$grade])) {
-            $gradeDistribution[$grade] = 0;
+        // Write headers
+        fputcsv($output, $csv_headers);
+        
+        // Write student data
+        foreach ($students as $student) {
+            $all_sponsor_names = $student['all_sponsor_names'] ?? '';
+            $sponsor_count = $student['sponsor_count'] ?? 0;
+            
+            $row = [
+                $student['id'] ?? '',
+                $student['school_internal_id'] ?? '',
+                $student['entity_type'] ?? 'school',
+                $student['name'] ?? '',
+                $student['email'] ?? '',
+                $student['contact_no'] ?? '',
+                $student['school_student_dob'] ?? '',
+                $student['school_age'] ?? '',
+                $student['school_grade'] ?? '',
+                $student['grade_mismatch_reason'] ?? '',
+                $student['school_id'] ?? '',
+                $student['school_name'] ?? '',
+                $student['school_type'] ?? '',
+                $student['address'] ?? '',
+                $student['city'] ?? '',
+                $student['zip'] ?? '',
+                $student['country_name'] ?? '',
+                $student['bank_name'] ?? '',
+                $student['school_bank_account_no'] ?? '',
+                $student['school_bank_branch_number'] ?? '',
+                $student['school_bank_branch_info'] ?? '',
+                $student['school_father_name'] ?? '',
+                $student['school_father_income'] ?? '',
+                $student['school_mother_name'] ?? '',
+                $student['school_mother_income'] ?? '',
+                $student['school_guardian_name'] ?? '',
+                $student['school_guardian_income'] ?? '',
+                $all_sponsor_names,          // ALL sponsors (comma-separated)
+                $sponsor_count,              // Number of sponsors
+                $student['school_sponsorship_start_date'] ?? '',
+                $student['school_sponsorship_end_date'] ?? '',
+                $student['school_introducedby'] ?? '',
+                $student['school_introducedph'] ?? '',
+                $student['background_info'] ?? '',
+                $student['internal_comment'] ?? '',
+                $student['external_comment'] ?? '',
+                $student['created_on'] ?? ($student['created_at'] ?? '')
+            ];
+            
+            fputcsv($output, $row);
         }
-        $gradeDistribution[$grade]++;
+        
+        fclose($output);
+        exit;
+        
+    } catch (Exception $e) {
+        log_message('error', 'CSV Export Error: ' . $e->getMessage());
+        set_alert('danger', 'Error exporting students: ' . $e->getMessage());
+        redirect(admin_url('student_sponsor_portal/school_students'));
     }
-    
-    foreach ($gradeDistribution as $grade => $count) {
-        $summary[] = ["Grade {$grade}:", $count];
-    }
-    
-    $summarySheet->fromArray($summary, null, 'A1');
-    $summarySheet->getColumnDimension('A')->setWidth(20);
-    $summarySheet->getColumnDimension('B')->setWidth(15);
-    
-    // Style summary header
-    $summarySheet->getStyle('A1')->applyFromArray([
-        'font' => ['bold' => true, 'size' => 14],
-        'fill' => ['fillType' => \PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID, 'color' => ['rgb' => 'D4E6F1']]
-    ]);
-    
-    // Set active sheet back to students
-    $spreadsheet->setActiveSheetIndex(0);
-    
-    $filename = 'school_students_export_' . date('Y-m-d_H-i-s') . '.xlsx';
-    
-    header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    header('Content-Disposition: attachment; filename="' . $filename . '"');
-    header('Cache-Control: max-age=0');
-    
-    $writer = new \PhpOffice\PhpSpreadsheet\Writer\Xlsx($spreadsheet);
-    $writer->save('php://output');
-    exit;
 }
 
+
 /**
- * Export students by specific IDs (for filtered/selected exports)
+ * Export all university students to CSV with ALL sponsors (no sponsor type)
  */
-public function export_school_students_by_ids()
+public function export_university_students()
 {
     if (!has_permission('student_sponsor_portal', '', 'view')) {
         access_denied('student_sponsor_portal');
     }
 
-    $student_ids_json = $this->input->post('student_ids');
-    $filename_prefix = $this->input->post('filename') ?: 'school_students_export';
-    
-    if (empty($student_ids_json)) {
-        set_alert('danger', 'No students selected for export');
-        redirect(admin_url('student_sponsor_portal/school_students'));
-        return;
-    }
-    
-    $student_ids = json_decode($student_ids_json, true);
-    if (!is_array($student_ids) || empty($student_ids)) {
-        set_alert('danger', 'Invalid student selection');
-        redirect(admin_url('student_sponsor_portal/school_students'));
-        return;
-    }
-    
-    // Sanitize IDs
-    $student_ids = array_map('intval', $student_ids);
-    $student_ids = array_filter($student_ids, function($id) { return $id > 0; });
-    
-    if (empty($student_ids)) {
-        set_alert('danger', 'No valid students selected');
-        redirect(admin_url('student_sponsor_portal/school_students'));
-        return;
-    }
-
-    // Check if PHPSpreadsheet is available
-    $autoload_paths = [
-        FCPATH . 'vendor/autoload.php',
-        APPPATH . 'third_party/vendor/autoload.php',
-        APPPATH . 'libraries/vendor/autoload.php'
-    ];
-    
-    $phpspreadsheet_loaded = false;
-    foreach ($autoload_paths as $path) {
-        if (file_exists($path)) {
-            require_once($path);
-            $phpspreadsheet_loaded = true;
-            break;
+    try {
+        // Get ALL university students
+        $students = $this->university_model->get_all();
+        
+        if (empty($students)) {
+            set_alert('warning', 'No students found to export');
+            redirect(admin_url('student_sponsor_portal/university_students'));
+            return;
         }
-    }
-    
-    if (!$phpspreadsheet_loaded || !class_exists('\PhpOffice\PhpSpreadsheet\Spreadsheet')) {
-        set_alert('danger', 'PHPSpreadsheet not available. Please install via Composer.');
-        redirect(admin_url('student_sponsor_portal/school_students'));
-        return;
-    }
 
-    // Get students by IDs
-    $students = $this->get_students_by_ids($student_ids);
-    
-    if (empty($students)) {
-        set_alert('danger', 'No students found for export');
-        redirect(admin_url('student_sponsor_portal/school_students'));
-        return;
-    }
-    
-    $spreadsheet = new \PhpOffice\PhpSpreadsheet\Spreadsheet();
-    $sheet = $spreadsheet->getActiveSheet();
-    $sheet->setTitle('Selected Students');
-    
-    // Headers (same as full export)
-    $headers = [
-        'ID', 'Name', 'Email', 'Phone', 'Date of Birth', 'Age', 'Address', 'City', 'Postal Code', 'Country',
-        'School ID', 'Internal ID', 'Grade', 'School Type', 'School',
-        'Bank', 'Account Number', 'Branch Number', 'Branch Info',
-        'Father Name', 'Father Income', 'Mother Name', 'Mother Income',
-        'Guardian Name', 'Guardian Income', 'Background Information',
-        'Sponsorship Start', 'Sponsorship End', 'Introduced By', 'Introducer Phone',
-        'Internal Comment', 'External Comment', 'Staff Active'
-    ];
-    
-    $sheet->fromArray($headers, null, 'A1');
-    
-    $row = 2;
-    foreach ($students as $s) {
-        $data = [
-            $s['id'] ?? '',
-            $s['name'] ?? '',
-            $s['email'] ?? '',
-            $s['contact_no'] ?? '',
-            $s['school_student_dob'] ?? '',
-            $s['school_age'] ?? '',
-            $s['address'] ?? '',
-            $s['city'] ?? '',
-            $s['zip'] ?? '',
-            $s['country_name'] ?? '',
-            $s['school_id'] ?? '',
-            $s['school_internal_id'] ?? '',
-            $s['school_grade'] ?? '',
-            $s['school_type'] ?? '',
-            $s['school_name'] ?? '',
-            $s['bank_name'] ?? '',
-            $s['school_bank_account_no'] ?? '',
-            $s['school_bank_branch_number'] ?? '',
-            $s['school_bank_branch_info'] ?? '',
-            $s['school_father_name'] ?? '',
-            $s['school_father_income'] ?? '',
-            $s['school_mother_name'] ?? '',
-            $s['school_mother_income'] ?? '',
-            $s['school_guardian_name'] ?? '',
-            $s['school_guardian_income'] ?? '',
-            $s['background_info'] ?? '',
-            $s['school_sponsorship_start_date'] ?? '',
-            $s['school_sponsorship_end_date'] ?? '',
-            $s['school_introducedby'] ?? '',
-            $s['school_introducedph'] ?? '',
-            $s['internal_comment'] ?? '',
-            $s['external_comment'] ?? '',
-            !empty($s['staff_active']) ? 'Yes' : 'No'
+        // Generate filename
+        $filename = 'university_students_export_' . date('Y-m-d_H-i-s') . '.csv';
+        
+        // Set headers for CSV download
+        header('Content-Type: text/csv; charset=utf-8');
+        header('Content-Disposition: attachment; filename="' . $filename . '"');
+        header('Cache-Control: max-age=0');
+        header('Pragma: public');
+        
+        // Create output stream
+        $output = fopen('php://output', 'w');
+        
+        // Add BOM for UTF-8
+        fprintf($output, chr(0xEF).chr(0xBB).chr(0xBF));
+        
+        // Define CSV headers (NO staff_id, NO sponsor type)
+        $csv_headers = [
+            'ID',
+            'Internal ID',
+            'Entity Type',
+            'Name',
+            'Email',
+            'Phone',
+            'Date of Birth',
+            'Age',
+            'Year of Study',
+            'University ID',
+            'University Name',
+            'Program',
+            'Address',
+            'City',
+            'Postal Code',
+            'Country',
+            'Bank Name',
+            'Account Number',
+            'Branch Number',
+            'Branch Info',
+            'Father Name',
+            'Father Income',
+            'Mother Name',
+            'Mother Income',
+            'Guardian Name',
+            'Guardian Income',
+            'Sponsors',                   // All sponsor names
+            'Number of Sponsors',         
+            'Sponsorship Start',
+            'Sponsorship End',
+            'Introduced By',
+            'Introducer Phone',
+            'Background Info',
+            'Internal Comment',
+            'External Comment',
+            'Created Date'
         ];
         
-        $sheet->fromArray($data, null, 'A' . $row);
-        $row++;
+        // Write headers
+        fputcsv($output, $csv_headers);
+        
+        // Write student data
+        foreach ($students as $student) {
+            $all_sponsor_names = $student['all_sponsor_names'] ?? '';
+            $sponsor_count = $student['sponsor_count'] ?? 0;
+            
+            $row = [
+                $student['id'] ?? '',
+                $student['university_internal_id'] ?? '',
+                $student['entity_type'] ?? 'university',
+                $student['name'] ?? '',
+                $student['email'] ?? '',
+                $student['contact_no'] ?? '',
+                $student['university_student_dob'] ?? '',
+                $student['university_age'] ?? '',
+                $student['university_year_of_study'] ?? '',
+                $student['university_id'] ?? '',
+                $student['university_name'] ?? '',
+                $student['program_name'] ?? '',
+                $student['address'] ?? '',
+                $student['city'] ?? '',
+                $student['zip'] ?? '',
+                $student['country_name'] ?? '',
+                $student['bank_name'] ?? '',
+                $student['university_bank_account_no'] ?? '',
+                $student['university_bank_branch_number'] ?? '',
+                $student['university_bank_branch_info'] ?? '',
+                $student['university_father_name'] ?? '',
+                $student['university_father_income'] ?? '',
+                $student['university_mother_name'] ?? '',
+                $student['university_mother_income'] ?? '',
+                $student['university_guardian_name'] ?? '',
+                $student['university_guardian_income'] ?? '',
+                $all_sponsor_names,          // ALL sponsors (comma-separated)
+                $sponsor_count,              // Number of sponsors
+                $student['university_sponsorship_start_date'] ?? '',
+                $student['university_sponsorship_end_date'] ?? '',
+                $student['university_introducedby'] ?? '',
+                $student['university_introducedph'] ?? '',
+                $student['background_info'] ?? '',
+                $student['internal_comment'] ?? '',
+                $student['external_comment'] ?? '',
+                $student['created_on'] ?? ($student['created_at'] ?? '')
+            ];
+            
+            fputcsv($output, $row);
+        }
+        
+        fclose($output);
+        exit;
+        
+    } catch (Exception $e) {
+        log_message('error', 'University CSV Export Error: ' . $e->getMessage());
+        set_alert('danger', 'Error exporting students: ' . $e->getMessage());
+        redirect(admin_url('student_sponsor_portal/university_students'));
     }
-    
-    // Style header
-    $headerStyle = [
-        'font' => ['bold' => true, 'size' => 12],
-        'fill' => ['fillType' => \PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID, 'color' => ['rgb' => 'E8E8E8']],
-        'borders' => ['allBorders' => ['borderStyle' => \PhpOffice\PhpSpreadsheet\Style\Border::BORDER_THIN]],
-        'alignment' => ['horizontal' => \PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER]
-    ];
-    
-    $sheet->getStyle('A1:' . $sheet->getHighestColumn() . '1')->applyFromArray($headerStyle);
-    
-    // Auto-size columns
-    foreach (range('A', $sheet->getHighestColumn()) as $col) {
-        $sheet->getColumnDimension($col)->setAutoSize(true);
-    }
-    
-    $filename = $filename_prefix . '_' . date('Y-m-d_H-i-s') . '.xlsx';
-    
-    header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    header('Content-Disposition: attachment; filename="' . $filename . '"');
-    header('Cache-Control: max-age=0');
-    
-    $writer = new \PhpOffice\PhpSpreadsheet\Writer\Xlsx($spreadsheet);
-    $writer->save('php://output');
-    exit;
 }
+
+/**
+ * Export all sponsors to CSV with sponsored students and financial data
+ */
+public function export_sponsors()
+{
+    if (!has_permission('student_sponsor_portal', '', 'view')) {
+        access_denied('student_sponsor_portal');
+    }
+
+    try {
+        // Get ALL sponsors with their sponsored students and financial data
+        $sponsors = $this->sponsor_model->get_all();
+        
+        if (empty($sponsors)) {
+            set_alert('warning', 'No sponsors found to export');
+            redirect(admin_url('student_sponsor_portal/sponsors'));
+            return;
+        }
+
+        // Generate filename
+        $filename = 'sponsors_export_' . date('Y-m-d_H-i-s') . '.csv';
+        
+        // Set headers for CSV download
+        header('Content-Type: text/csv; charset=utf-8');
+        header('Content-Disposition: attachment; filename="' . $filename . '"');
+        header('Cache-Control: max-age=0');
+        header('Pragma: public');
+        
+        // Create output stream
+        $output = fopen('php://output', 'w');
+        
+        // Add BOM for UTF-8
+        fprintf($output, chr(0xEF).chr(0xBB).chr(0xBF));
+        
+        // Define CSV headers
+        $csv_headers = [
+            'ID',
+            'Name',
+            'Type',
+            'Frequency',
+            'Email',
+            'Phone',
+            'Address',
+            'City',
+            'State',
+            'Postal Code',
+            'Country',
+            'Occupation',
+            'Company Name',
+            'Company Address',
+            'Company Phone',
+            'Bank Name',
+            'Account Number',
+            'Branch Number',
+            'Branch Info',
+            'School Students Count',
+            'School Students Names',
+            'University Students Count',
+            'University Students Names',
+            'Total Students Sponsored',
+            'Total Transactions',
+            'Total Committed Amount',
+            'Total Paid Amount',
+            'Total Outstanding Balance',
+            'Payment Completion %',
+            'Portal Access',
+            'Status',
+            'Created Date',
+            'Notes'
+        ];
+        
+        // Write headers
+        fputcsv($output, $csv_headers);
+        
+        // Write sponsor data
+        foreach ($sponsors as $sponsor) {
+            // Get sponsored students names
+            $student_names_data = $sponsor['sponsored_student_names'] ?? [
+                'school_students' => [],
+                'university_students' => [],
+                'school_names_display' => '',
+                'university_names_display' => '',
+                'school_total_count' => 0,
+                'university_total_count' => 0
+            ];
+            
+            // Get financial data
+            $total_commitment = (float)($sponsor['total_commitment'] ?? 0);
+            $total_paid = (float)($sponsor['total_paid'] ?? 0);
+            $total_balance = $total_commitment - $total_paid;
+            $payment_completion = $total_commitment > 0 
+                ? round(($total_paid / $total_commitment) * 100, 2) 
+                : 0;
+            
+            // Determine status
+            $staff_id = $sponsor['staff_id'] ?? null;
+            $active = (int)($sponsor['active'] ?? 0);
+            $total_students = (int)($sponsor['school_students_count'] ?? 0) + 
+                            (int)($sponsor['university_students_count'] ?? 0);
+            
+            $status_text = 'Inactive';
+            if ($active == 1) {
+                $status_text = $total_students > 0 ? 'Active & Sponsoring' : 'Active (No Students)';
+            }
+            
+            $portal_access = $staff_id !== null 
+                ? ($active == 1 ? 'Yes (Active)' : 'Yes (Inactive)') 
+                : 'No';
+            
+            $row = [
+                $sponsor['id'] ?? '',
+                $sponsor['name'] ?? '',
+                $sponsor['sponsor_type'] ?? '',
+                $sponsor['sponsor_frequency'] ?? '',
+                $sponsor['email'] ?? '',
+                $sponsor['contact_no'] ?? '',
+                $sponsor['address'] ?? '',
+                $sponsor['city'] ?? '',
+                $sponsor['state_name'] ?? '',
+                $sponsor['zip'] ?? '',
+                $sponsor['country_name'] ?? '',
+                $sponsor['sponsor_occupation'] ?? '',
+                $sponsor['sponsor_company_name'] ?? '',
+                $sponsor['sponsor_company_address'] ?? '',
+                $sponsor['sponsor_company_phone'] ?? '',
+                $sponsor['bank_name'] ?? '',
+                $sponsor['sponsor_bank_account_no'] ?? '',
+                $sponsor['sponsor_bank_branch_number'] ?? '',
+                $sponsor['sponsor_bank_branch_info'] ?? '',
+                $student_names_data['school_total_count'],
+                $student_names_data['school_names_display'],
+                $student_names_data['university_total_count'],
+                $student_names_data['university_names_display'],
+                $total_students,
+                $sponsor['total_transactions'] ?? 0,
+                $total_commitment,
+                $total_paid,
+                $total_balance,
+                $payment_completion . '%',
+                $portal_access,
+                $status_text,
+                $sponsor['created_on'] ?? ($sponsor['created_at'] ?? ''),
+                $sponsor['notes'] ?? ''
+            ];
+            
+            fputcsv($output, $row);
+        }
+        
+        fclose($output);
+        exit;
+        
+    } catch (Exception $e) {
+        log_message('error', 'Sponsors CSV Export Error: ' . $e->getMessage());
+        set_alert('danger', 'Error exporting sponsors: ' . $e->getMessage());
+        redirect(admin_url('student_sponsor_portal/sponsors'));
+    }
+}
+
 
 /**
  * Get students by specific IDs with all joined data
@@ -4973,33 +5173,6 @@ private function download_university_csv_template()
     exit;
 }
 
-    public function export_university_students()
-    {
-        if (!has_permission('student_sponsor_portal', '', 'view')) { access_denied('student_sponsor_portal'); }
-        $students = $this->university_model->get_all();
-
-        header('Content-Type: text/csv');
-        header('Content-Disposition: attachment; filename="university_students_'.date('Y-m-d').'.csv"');
-
-        $out = fopen('php://output', 'w');
-        fputcsv($out, [
-            'ID','Name','Email','Phone','University','Program','Year',
-            'University ID','DOB','Father Name','Mother Name',
-            'Sponsorship Start','Sponsorship End','Address','City','Postal Code','Country'
-        ]);
-
-        foreach($students as $s){
-            fputcsv($out, [
-                $s['id'] ?? '', $s['name'] ?? '', $s['email'] ?? '', $s['contact_no'] ?? '',
-                $s['university_name'] ?? '', $s['program_name'] ?? '', $s['university_year_of_study'] ?? '',
-                $s['university_id'] ?? '', $s['university_student_dob'] ?? '', 
-                $s['university_father_name'] ?? '', $s['university_mother_name'] ?? '',
-                $s['university_sponsorship_start_date'] ?? '', $s['university_sponsorship_end_date'] ?? '',
-                $s['address'] ?? '', $s['city'] ?? '', $s['zip'] ?? '', $s['country_name'] ?? ''
-            ]);
-        }
-        fclose($out);
-    }
 
     public function add_university_name() 
     {
@@ -5701,10 +5874,10 @@ private function download_university_csv_template()
     public function sponsors()
     {
         $current_student = $this->is_school_student_user();
-if ($current_student) {
-    redirect(admin_url('student_sponsor_portal/school_student_form/' . $current_student->id));
-    return;
-}
+        if ($current_student) {
+            redirect(admin_url('student_sponsor_portal/school_student_form/' . $current_student->id));
+            return;
+        }
         if (!has_permission('student_sponsor_portal', '', 'view')) access_denied('student_sponsor_portal');
 
         $data['title']    = 'Sponsor Management';
@@ -5748,114 +5921,126 @@ if ($current_student) {
     /**
      * Updated sponsor_form method to handle student selection
      */
-   public function sponsor_form($sponsor_id = null)
-    {
-        if (!has_permission('student_sponsor_portal', '', 'view')) {
-            access_denied('student_sponsor_portal');
-        }
-
-        if ($this->input->method() === 'post') {
-            $id        = $this->in_int('sponsor_id', 0);
-            $post_data = $this->input->post(null, true);
-            unset($post_data['sponsor_id']);
-
-            // Handle student selections
-            $school_students = [];
-            $university_students = [];
-            
-            if (!empty($post_data['selected_school_students'])) {
-                $selected_school = json_decode($post_data['selected_school_students'], true);
-                if (is_array($selected_school)) {
-                    $school_students = $selected_school;
-                }
-            }
-            
-            if (!empty($post_data['selected_university_students'])) {
-                $selected_university = json_decode($post_data['selected_university_students'], true);
-                if (is_array($selected_university)) {
-                    $university_students = $selected_university;
-                }
-            }
-
-            // Add student selections to post data
-            $post_data['selected_school_students'] = $school_students;
-            $post_data['selected_university_students'] = $university_students;
-
-            if ($id === 0) {
-                if (!has_permission('student_sponsor_portal', '', 'create')) access_denied('student_sponsor_portal');
-                $newId = $this->sponsor_model->add($post_data);
-                if ($newId) {
-                    // Update student selections and sponsor relationships - THIS IS KEY
-                    $this->sponsor_model->update_sponsored_students($newId, $school_students, $university_students);
-                    $this->sponsor_model->update_student_sponsor_relationships($newId, $school_students, $university_students);
-                    
-                    set_alert('success', 'Sponsor registered successfully');
-                    redirect(admin_url('student_sponsor_portal/sponsors'));
-                }
-                set_alert('danger', 'Error creating sponsor');
-            } else {
-                if (!has_permission('student_sponsor_portal', '', 'edit')) access_denied('student_sponsor_portal');
-                $ok = $this->sponsor_model->update($post_data, $id);
-                if ($ok) {
-                    // Update student selections and sponsor relationships - THIS IS KEY
-                    $this->sponsor_model->update_sponsored_students($id, $school_students, $university_students);
-                    $this->sponsor_model->update_student_sponsor_relationships($id, $school_students, $university_students);
-                    
-                    set_alert('success', 'Sponsor updated successfully');
-                    redirect(admin_url('student_sponsor_portal/sponsors'));
-                }
-                set_alert('danger', 'Error updating sponsor');
-            }
-        }
-
-        $data              = [];
-        $data['title']     = 'Register Sponsor';
-        $data['sponsor']   = null;
-
-        if ($sponsor_id) {
-            $row = $this->sponsor_model->get_by_id((int)$sponsor_id);
-            if (!$row) {
-                set_alert('danger', 'Sponsor not found');
-                redirect(admin_url('student_sponsor_portal/sponsors'));
-            }
-            $data['sponsor'] = $row;
-            $data['title']   = 'Edit Sponsor';
-        }
-
-        $banks = [];
-        if ($this->db->table_exists(db_prefix().'bank')) {
-            $rs = $this->db->order_by('name','asc')->get(db_prefix().'bank')->result_array();
-            foreach ($rs as $r) {
-                $banks[] = ['id' => (int)$r['id'], 'name' => (string)$r['name']];
-            }
-        }
-        $data['banks'] = $banks;
-
-        $countries = [];
-        if ($this->db->table_exists(db_prefix().'countries')) {
-            $rs = $this->db->order_by('short_name','asc')->get(db_prefix().'countries')->result_array();
-            foreach ($rs as $r) {
-                $countries[] = ['id' => (int)$r['country_id'], 'name' => (string)$r['short_name']];
-            }
-        }
-        $data['countries'] = $countries;
-
-        $states = [];
-        $selected_country_id = isset($data['sponsor']['country_id']) ? (int)$data['sponsor']['country_id'] : 0;
-        if ($selected_country_id > 0 && $this->db->table_exists(db_prefix().'state')) {
-            $rs = $this->db->where('country_id', $selected_country_id)
-                           ->order_by('name','asc')
-                           ->get(db_prefix().'state')->result_array();
-            foreach ($rs as $r) {
-                $states[] = ['id' => (int)$r['id'], 'name' => (string)$r['name']];
-            }
-        }
-        $data['states'] = $states;
-
-        $this->load->view('student_sponsor_portal/sponsor_form', $data);
+public function sponsor_form($sponsor_id = null)
+{
+    if (!has_permission('student_sponsor_portal', '', 'view')) {
+        access_denied('student_sponsor_portal');
     }
 
+    if ($this->input->method() === 'post') {
+        // CRITICAL DEBUG: Log ALL incoming POST data
+        $all_post = $this->input->post(null, true);
+        log_message('debug', '=== SPONSOR FORM POST DATA START ===');
+        log_message('debug', 'Raw POST data: ' . print_r($all_post, true));
+        log_message('debug', '=== SPONSOR FORM POST DATA END ===');
 
+        $id = $this->in_int('sponsor_id', 0);
+        $post_data = $this->input->post(null, true);
+        
+        unset($post_data['sponsor_id']);
+
+        // DEBUG: Log what we're about to send to model
+        log_message('debug', '=== DATA BEING SENT TO MODEL ===');
+        log_message('debug', 'Sponsor ID: ' . $id);
+        log_message('debug', 'Email value: ' . ($post_data['email'] ?? 'NOT SET'));
+        log_message('debug', 'Name value: ' . ($post_data['name'] ?? 'NOT SET'));
+        log_message('debug', 'Contact_no value: ' . ($post_data['contact_no'] ?? 'NOT SET'));
+        log_message('debug', 'Full post_data: ' . print_r($post_data, true));
+        log_message('debug', '=== END DATA TO MODEL ===');
+
+        // Handle student selections
+        $school_students = [];
+        $university_students = [];
+        
+        if (!empty($post_data['selected_school_students'])) {
+            $selected_school = json_decode($post_data['selected_school_students'], true);
+            if (is_array($selected_school)) {
+                $school_students = $selected_school;
+            }
+        }
+        
+        if (!empty($post_data['selected_university_students'])) {
+            $selected_university = json_decode($post_data['selected_university_students'], true);
+            if (is_array($selected_university)) {
+                $university_students = $selected_university;
+            }
+        }
+
+        $post_data['selected_school_students'] = $school_students;
+        $post_data['selected_university_students'] = $university_students;
+
+        if ($id === 0) {
+            if (!has_permission('student_sponsor_portal', '', 'create')) {
+                access_denied('student_sponsor_portal');
+            }
+            
+            $newId = $this->sponsor_model->add($post_data);
+            if ($newId) {
+                $this->sponsor_model->update_sponsored_students($newId, $school_students, $university_students);
+                set_alert('success', 'Sponsor registered successfully');
+                redirect(admin_url('student_sponsor_portal/sponsors'));
+            }
+            set_alert('danger', 'Error creating sponsor');
+        } else {
+            if (!has_permission('student_sponsor_portal', '', 'edit')) {
+                access_denied('student_sponsor_portal');
+            }
+            
+            log_message('debug', '=== CALLING MODEL UPDATE ===');
+            $ok = $this->sponsor_model->update($post_data, $id);
+            log_message('debug', '=== UPDATE RESULT: ' . ($ok ? 'TRUE' : 'FALSE') . ' ===');
+            
+            if ($ok) {
+                $this->sponsor_model->update_sponsored_students($id, $school_students, $university_students);
+                
+                // DEBUG: Verify the update by fetching the record
+                $updated_sponsor = $this->sponsor_model->get_by_id($id);
+                log_message('debug', '=== VERIFICATION AFTER UPDATE ===');
+                log_message('debug', 'Email in DB after update: ' . ($updated_sponsor['email'] ?? 'NULL'));
+                log_message('debug', 'Name in DB after update: ' . ($updated_sponsor['name'] ?? 'NULL'));
+                log_message('debug', '=== END VERIFICATION ===');
+                
+                set_alert('success', 'Sponsor updated successfully');
+                redirect(admin_url('student_sponsor_portal/sponsors'));
+            }
+            
+            log_message('error', 'Update returned FALSE for sponsor ID: ' . $id);
+            set_alert('danger', 'Error updating sponsor. Please check the logs.');
+        }
+    }
+
+    // Load form data...
+    $data = [];
+    $data['title'] = 'Register Sponsor';
+    $data['sponsor'] = null;
+
+    if ($sponsor_id) {
+        $row = $this->sponsor_model->get_by_id((int)$sponsor_id);
+        if (!$row) {
+            set_alert('danger', 'Sponsor not found');
+            redirect(admin_url('student_sponsor_portal/sponsors'));
+        }
+        $data['sponsor'] = $row;
+        $data['title'] = 'Edit Sponsor';
+    }
+
+    $data['banks'] = $this->sponsor_model->get_banks();
+    $data['countries'] = $this->sponsor_model->get_countries();
+    
+    $states = [];
+    $selected_country_id = isset($data['sponsor']['country_id']) ? (int)$data['sponsor']['country_id'] : 0;
+    if ($selected_country_id > 0 && $this->db->table_exists(db_prefix().'state')) {
+        $rs = $this->db->where('country_id', $selected_country_id)
+                       ->order_by('name','asc')
+                       ->get(db_prefix().'state')->result_array();
+        foreach ($rs as $r) {
+            $states[] = ['id' => (int)$r['id'], 'name' => (string)$r['name']];
+        }
+    }
+    $data['states'] = $states;
+
+    $this->load->view('student_sponsor_portal/sponsor_form', $data);
+}
 
     /**
      * Search students (for AJAX autocomplete)
@@ -6475,6 +6660,107 @@ public function send_test_email($id)
     redirect(admin_url('student_sponsor_portal/transaction/'.$id.'?tab=payments'));
 }
 
+
+public function send_payment_email($payment_id)
+{
+    $CI =& get_instance();
+    $CI->load->model('emails_model');
+    $this->load->model('student_sponsor_portal/sponsor_transactions_model');
+
+    // Step 1: Fetch the payment record
+    $pay_tbl = $this->sponsor_transactions_model->get_pay_tbl(); // Access table name via model method
+    $payment = $this->db->select('*')->where('id', $payment_id)->get($pay_tbl)->row();
+    
+    if (!$payment) {
+        log_message('error', 'Payment not found for ID: ' . $payment_id);
+        return false;
+    }
+
+    // Step 2: Fetch the sponsor transaction record based on the transaction ID
+    $txn = $this->sponsor_transactions_model->get($payment->transaction_id);
+    if (!$txn) {
+        log_message('error', 'Transaction not found for payment: ' . $payment_id);
+        return false;
+    }
+
+    // Step 3: Get sponsor details (email and name)
+    $sponsor = $this->db->select('email, name')->where('id', $txn->sponsor_id)->get(db_prefix().'sponsor_records')->row();
+    if (!$sponsor) {
+        log_message('error', 'Sponsor not found for transaction ID: ' . $txn->sponsor_id);
+        return false;
+    }
+
+    // Step 4: Get student details (name)
+    $student_name = '';
+    if ($txn->school_student_id) {
+        $student = $this->db->select('name')->where('id', $txn->school_student_id)->get(db_prefix().'school_students')->row();
+        $student_name = $student ? $student->name : 'Student';
+    } elseif ($txn->university_student_id) {
+        $student = $this->db->select('name')->where('id', $txn->university_student_id)->get(db_prefix().'university_students')->row();
+        $student_name = $student ? $student->name : 'Student';
+    }
+
+    // Step 5: Prepare the email body with detailed payment information
+    $subject = "Payment Details for " . $sponsor->name;
+
+    // Calculate remaining amount
+    $remaining_amount = $txn->total_amount - $txn->amount_paid;
+
+    $body = '
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <p style="color: #4a90e2; font-size: 18px; margin-bottom: 20px;">Hello ' . $sponsor->name . ',</p>
+        
+        <p style="color: #333; line-height: 1.6; margin-bottom: 20px;">
+            We have received a new payment for the sponsorship of <strong>' . $student_name . '</strong>. Below are the details:
+        </p>
+        
+        <table style="width: 100%; border-collapse: collapse; margin: 20px 0; background-color: #f9f9f9;">
+            <thead>
+                <tr style="background-color: #e8e8e8;">
+                    <th style="border: 1px solid #ddd; padding: 12px; text-align: left; font-weight: bold;">Transaction ID</th>
+                    <th style="border: 1px solid #ddd; padding: 12px; text-align: left; font-weight: bold;">Payment Amount</th>
+                    <th style="border: 1px solid #ddd; padding: 12px; text-align: left; font-weight: bold;">Remaining Amount</th>
+                    <th style="border: 1px solid #ddd; padding: 12px; text-align: left; font-weight: bold;">Payment Date</th>
+                    <th style="border: 1px solid #ddd; padding: 12px; text-align: left; font-weight: bold;">Payment Method</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td style="border: 1px solid #ddd; padding: 12px;">' . $txn->transaction_id . '</td>
+                    <td style="border: 1px solid #ddd; padding: 12px;">' . number_format($payment->amount, 2) . ' ' . $payment->currency . '</td>
+                    <td style="border: 1px solid #ddd; padding: 12px;">' . number_format($remaining_amount, 2) . ' ' . $payment->currency . '</td>
+                    <td style="border: 1px solid #ddd; padding: 12px;">' . date('m/d/Y', strtotime($payment->payment_date)) . '</td>
+                    <td style="border: 1px solid #ddd; padding: 12px;">' . ($payment->note ?: 'N/A') . '</td>
+                </tr>
+            </tbody>
+        </table>
+        
+        <p style="color: #333; line-height: 1.6; margin-top: 20px;">
+            Thank you for your continued support of <strong>' . get_option('companyname') . '</strong>.<br>
+            If you have any questions, feel free to contact us.
+        </p>
+    </div>';
+
+    // Step 6: Attempt to send the email
+    log_message('debug', 'Attempting to send email to: ' . $sponsor->email);
+    
+    $result = $CI->emails_model->send_simple_email(
+        $sponsor->email,
+        $subject,
+        $body
+    );
+    
+    if ($result) {
+        log_message('debug', 'Payment email sent successfully to: ' . $sponsor->email);
+    } else {
+        log_message('error', 'Failed to send payment email to: ' . $sponsor->email);
+    }
+
+    return $result;
+}
+
+
+
     public function transaction_save()
     {
         if (!is_admin() && !has_permission('student_sponsor_portal','', 'create') && !has_permission('student_sponsor_portal','', 'edit')) {
@@ -6549,97 +6835,111 @@ public function send_test_email($id)
     }
 
     public function add_payment($transaction_id)
-    {
-        if (!is_admin() && !has_permission('student_sponsor_portal', '', 'create')) {
-            access_denied('student_sponsor_portal');
-        }
+{
+    if (!is_admin() && !has_permission('student_sponsor_portal', '', 'create')) {
+        access_denied('student_sponsor_portal');
+    }
 
-        $transaction_id = (int) $transaction_id;
-        if ($transaction_id <= 0) {
-            show_error('Invalid transaction id', 400);
-        }
+    $transaction_id = (int) $transaction_id;
+    if ($transaction_id <= 0) {
+        show_error('Invalid transaction id', 400);
+    }
 
-        $txn = $this->db->where('id', $transaction_id)
-                        ->get(db_prefix().'sponsor_transactions')->row();
-        if (!$txn) {
-            show_error('Transaction not found', 404);
-        }
+    $txn = $this->db->where('id', $transaction_id)
+                    ->get(db_prefix().'sponsor_transactions')->row();
+    if (!$txn) {
+        show_error('Transaction not found', 404);
+    }
 
-        $pdate    = trim($this->input->post('payment_date', true));
-        $amount   = (float) $this->input->post('amount', true);
-        $currency = trim($this->input->post('currency', true));
-        $note     = trim($this->input->post('note', true));
-        $sponsor  = (int) $this->input->post('sponsor_id', true);
-        $student  = (int) $this->input->post('student_id', true);
+    $pdate    = trim($this->input->post('payment_date', true));
+    $amount   = (float) $this->input->post('amount', true);
+    $currency = trim($this->input->post('currency', true));
+    $note     = trim($this->input->post('note', true));
+    $sponsor  = (int) $this->input->post('sponsor_id', true);
+    $student  = (int) $this->input->post('student_id', true);
 
-        if (!$pdate || !$amount) {
-            set_alert('warning', 'Payment date and amount are required.');
-            redirect(admin_url('student_sponsor_portal/transaction/'.$transaction_id.'?tab=payments'));
-        }
-
-        $row = [
-            'transaction_id' => $transaction_id,
-            'sponsor_id'     => $sponsor ?: (int)$txn->sponsor_id,
-            'student_id'     => $student ?: (int)($txn->school_student_id ?: $txn->university_student_id),
-            'payment_date'   => $pdate,
-            'amount'         => $amount,
-            'currency'       => $currency ?: $txn->currency,
-            'note'           => $note,
-            'created_by'     => get_staff_user_id(),
-            'created_at'     => date('Y-m-d H:i:s'),
-        ];
-        $ok = $this->db->insert(db_prefix().'sponsor_payments', $row);
-
-        if (!$ok) {
-            set_alert('warning', 'Failed to add payment.');
-            redirect(admin_url('student_sponsor_portal/transaction/'.$transaction_id.'?tab=payments'));
-        }
-
-        $sum = $this->db->select_sum('amount', 's')
-                        ->where('transaction_id', $transaction_id)
-                        ->get(db_prefix().'sponsor_payments')->row();
-        $amount_paid = (float) ($sum ? $sum->s : 0);
-
-        $last = $this->db->select('payment_date')
-                         ->where('transaction_id', $transaction_id)
-                         ->order_by('payment_date', 'DESC')
-                         ->limit(1)
-                         ->get(db_prefix().'sponsor_payments')->row();
-        $last_payment_date = $last ? $last->payment_date : null;
-
-        $next_payment_due = null;
-        if ($last_payment_date) {
-            $dt = DateTime::createFromFormat('Y-m-d', $last_payment_date) ?: new DateTime($last_payment_date);
-            if ($dt) {
-                switch ($txn->payment_type) {
-                    case 'monthly':
-                        $dt->modify('+1 month');
-                        $next_payment_due = $dt->format('Y-m-d');
-                        break;
-                    case 'quarterly':
-                        $dt->modify('+3 months');
-                        $next_payment_due = $dt->format('Y-m-d');
-                        break;
-                    case 'yearly':
-                        $dt->modify('+1 year');
-                        $next_payment_due = $dt->format('Y-m-d');
-                        break;
-                    default:
-                        $next_payment_due = null;
-                }
-            }
-        }
-
-        $this->db->where('id', $transaction_id)->update(db_prefix().'sponsor_transactions', [
-            'amount_paid'       => $amount_paid,
-            'balance_amount'    => max(0, (float)$txn->total_amount - $amount_paid),
-            'last_payment_date' => $last_payment_date,
-            'next_payment_due'  => $next_payment_due,
-        ]);
-
-        set_alert('success', 'Payment added.');
+    if (!$pdate || !$amount) {
+        set_alert('warning', 'Payment date and amount are required.');
         redirect(admin_url('student_sponsor_portal/transaction/'.$transaction_id.'?tab=payments'));
     }
+
+    $row = [
+        'transaction_id' => $transaction_id,
+        'sponsor_id'     => $sponsor ?: (int)$txn->sponsor_id,
+        'student_id'     => $student ?: (int)($txn->school_student_id ?: $txn->university_student_id),
+        'payment_date'   => $pdate,
+        'amount'         => $amount,
+        'currency'       => $currency ?: $txn->currency,
+        'note'           => $note,
+        'created_by'     => get_staff_user_id(),
+        'created_at'     => date('Y-m-d H:i:s'),
+    ];
+
+    // Insert payment record
+    $ok = $this->db->insert(db_prefix().'sponsor_payments', $row);
+
+    if (!$ok) {
+        set_alert('warning', 'Failed to add payment.');
+        redirect(admin_url('student_sponsor_portal/transaction/'.$transaction_id.'?tab=payments'));
+    }
+
+    // Now, fetch the payment record using the transaction_id and get the payment_id
+    $payment = $this->db->where('transaction_id', $transaction_id)
+                        ->order_by('payment_date', 'DESC')  // Ensure we get the latest payment first
+                        ->get(db_prefix().'sponsor_payments')->row();
+
+    if ($payment) {
+        // Pass the correct payment_id to send_payment_email
+        $this->send_payment_email($payment->id);  // Send the email with the correct payment_id
+    }
+
+    // Update the transaction with the new payment details
+    $sum = $this->db->select_sum('amount', 's')
+                    ->where('transaction_id', $transaction_id)
+                    ->get(db_prefix().'sponsor_payments')->row();
+    $amount_paid = (float) ($sum ? $sum->s : 0);
+
+    $last = $this->db->select('payment_date')
+                     ->where('transaction_id', $transaction_id)
+                     ->order_by('payment_date', 'DESC')
+                     ->limit(1)
+                     ->get(db_prefix().'sponsor_payments')->row();
+    $last_payment_date = $last ? $last->payment_date : null;
+
+    $next_payment_due = null;
+    if ($last_payment_date) {
+        $dt = DateTime::createFromFormat('Y-m-d', $last_payment_date) ?: new DateTime($last_payment_date);
+        if ($dt) {
+            switch ($txn->payment_type) {
+                case 'monthly':
+                    $dt->modify('+1 month');
+                    $next_payment_due = $dt->format('Y-m-d');
+                    break;
+                case 'quarterly':
+                    $dt->modify('+3 months');
+                    $next_payment_due = $dt->format('Y-m-d');
+                    break;
+                case 'yearly':
+                    $dt->modify('+1 year');
+                    $next_payment_due = $dt->format('Y-m-d');
+                    break;
+                default:
+                    $next_payment_due = null;
+            }
+        }
+    }
+
+    // Update transaction record with new payment status
+    $this->db->where('id', $transaction_id)->update(db_prefix().'sponsor_transactions', [
+        'amount_paid'       => $amount_paid,
+        'balance_amount'    => max(0, (float)$txn->total_amount - $amount_paid),
+        'last_payment_date' => $last_payment_date,
+        'next_payment_due'  => $next_payment_due,
+    ]);
+
+    set_alert('success', 'Payment added.');
+    redirect(admin_url('student_sponsor_portal/transaction/'.$transaction_id.'?tab=payments'));
+}
 
     public function edit_payment($transaction_id, $payment_id)
     {
@@ -6700,16 +7000,24 @@ public function send_test_email($id)
     /* =====================                  HELPER METHODS             =================== */
     /* =================================================================================== */
 
-    private function _get_countries()
-    {
-        if ($this->db->table_exists(db_prefix() . 'countries')) {
-            return $this->db->select('country_id as id, short_name as name, calling_code as phone_code')
-                           ->order_by('short_name', 'ASC')
-                           ->get(db_prefix() . 'countries')
-                           ->result_array();
-        }
-        return [];
+  /**
+ * Get countries with proper phone code field mapping
+ */
+private function _get_countries()
+{
+    if ($this->db->table_exists(db_prefix() . 'countries')) {
+        return $this->db->select('
+            country_id as id, 
+            short_name as name, 
+            calling_code as phone_code,
+            calling_code
+        ')
+        ->order_by('short_name', 'ASC')
+        ->get(db_prefix() . 'countries')
+        ->result_array();
     }
+    return [];
+}
     private function in(string $key, string $default = '')
     {
         $val = $this->input->post($key, true);

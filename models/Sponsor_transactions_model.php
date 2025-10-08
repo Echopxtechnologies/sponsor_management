@@ -12,7 +12,14 @@ class Sponsor_transactions_model extends App_Model
         parent::__construct();
         $this->txn_tbl = db_prefix() . 'sponsor_transactions';
         $this->pay_tbl = db_prefix() . 'sponsor_payments';
+        // Debug: Log the table names
+        log_message('debug', 'Txn Table: ' . $this->txn_tbl);
+        log_message('debug', 'Pay Table: ' . $this->pay_tbl);
         $this->ensure_tables();
+    }
+    public function get_pay_tbl()
+    {
+        return $this->pay_tbl;
     }
 
     /** Compute next due date from an anchor date and a frequency */
@@ -351,28 +358,6 @@ private function clean($in)
         return $this->db->get()->result();
     }
 
-    /** Insert and return new ID */
-    // public function create(array $data)
-    // {
-    //     $clean = $this->clean($data);
-
-    //     // require sponsor and exactly one student type
-    //     if (!$clean['sponsor_id'] || !$this->has_exactly_one_student($clean)) {
-    //         return false;
-    //     }
-
-    //     // timestamps if columns exist
-    //     if ($this->db->field_exists('created_at', $this->txn_tbl)) {
-    //         $clean['created_at'] = date('Y-m-d H:i:s');
-    //     }
-    //     if ($this->db->field_exists('updated_at', $this->txn_tbl)) {
-    //         $clean['updated_at'] = date('Y-m-d H:i:s');
-    //     }
-
-    //     $this->db->insert($this->txn_tbl, $clean);
-    //     return (int)$this->db->insert_id();
-    // }
-
    public function create(array $data)
 {
     $clean = $this->clean($data);
@@ -389,24 +374,6 @@ private function clean($in)
     }
     return $id;
 }
-
-
-    /** Update by ID */
-    // public function update($id, array $data)
-    // {
-    //     $clean = $this->clean($data);
-
-    //     if (!$clean['sponsor_id'] || !$this->has_exactly_one_student($clean)) {
-    //         return false;
-    //     }
-
-    //     if ($this->db->field_exists('updated_at', $this->txn_tbl)) {
-    //         $clean['updated_at'] = date('Y-m-d H:i:s');
-    //     }
-
-    //     $this->db->where('id', (int)$id)->update($this->txn_tbl, $clean);
-    //     return $this->db->affected_rows() > 0;
-    // }
     
 public function update($id, array $data)
 {

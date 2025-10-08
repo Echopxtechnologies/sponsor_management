@@ -12,8 +12,7 @@ defined('BASEPATH') or exit('No direct script access allowed');
  * - Financial transaction summaries
  * - Statistics and reporting
  * 
- * @author Your Name
- * @version 1.0
+ * @version 1.1 - Fixed country schema foreign key issue
  */
 class Sponsor_model extends App_Model
 {
@@ -683,127 +682,248 @@ class Sponsor_model extends App_Model
 
     /* ============================== CORE CRUD METHODS ============================== */
 
+
     /**
-     * Add a new sponsor
-     * @param array $data Sponsor data
-     * @return int|false Sponsor ID on success, false on failure
-     */
-    public function add(array $data)
-    {
-        // If a staff login email was provided, treat it as the authoritative contact email
-        $staffEmail = isset($data['staff_email']) ? trim((string)$data['staff_email']) : '';
-        if ($staffEmail !== '' && filter_var($staffEmail, FILTER_VALIDATE_EMAIL)) {
-            $data['email'] = $staffEmail;
-        }
+ * Optional: Create or update related client record for sponsor
+ * Only use if you need client integration
+ * @param int $sponsor_id Sponsor ID
+ * @param array $sponsor_data Sponsor data
+ * @return int|bool Client ID or false on failure
+ */
+public function sync_sponsor_to_client($sponsor_id, $sponsor_data)
+{
+    if ($sponsor_id <= 0) {
+        return false;
+    }
 
-        $row = $this->sanitize_payload($data, /*is_update=*/false);
+    $this->load->model('clients_model');
 
-        // Country FK normalization
-        $row['country_id'] = $this->validate_country_id($row['country_id'] ?? null);
+    // Check if client already exists with sponsor reference
+    $existing_client = $this->db->where('sponsor_id', $sponsor_id)
+                                 ->get(db_prefix() . 'clients')
+                                 ->row();
 
-        // Enforce NULL for unique columns when empty (avoid duplicate '' errors)
-        if (isset($row['sponsor_bank_account_no']) && $row['sponsor_bank_account_no'] === '') {
-            $row['sponsor_bank_account_no'] = null;
-        }
+    $client_data = [
+        'company'       => $sponsor_data['name'] ?? '',  // CORRECT FIELD
+        'phonenumber'   => $sponsor_data['contact_no'] ?? '',  // CORRECT FIELD
+        'country'       => $sponsor_data['country_id'] ?? 0,
+        'city'          => $sponsor_data['city'] ?? '',
+        'zip'           => $sponsor_data['zip'] ?? '',
+        'address'       => $sponsor_data['address'] ?? '',
+        'active'        => $sponsor_data['active'] ?? 1,
+    ];
 
-        // Minimal required field
-        if (empty($row['name'])) {
-            return false;
-        }
+    // Add contact person with email
+    $contact_data = [
+        'firstname'     => $sponsor_data['name'] ?? '',
+        'email'         => $sponsor_data['email'] ?? '',
+        'is_primary'    => 1
+    ];
 
-        // Ensure email is either a valid email or NULL
-        if (isset($row['email'])) {
-            $row['email'] = trim((string)$row['email']);
-            if ($row['email'] === '' || !filter_var($row['email'], FILTER_VALIDATE_EMAIL)) {
-                $row['email'] = null;
+    try {
+        if ($existing_client) {
+            // Update existing client
+            $this->clients_model->update($client_data, $existing_client->userid);
+            
+            // Update contact
+            $this->db->where('userid', $existing_client->userid)
+                     ->where('is_primary', 1)
+                     ->update(db_prefix() . 'contacts', $contact_data);
+            
+            return $existing_client->userid;
+        } else {
+            // Create new client
+            $client_id = $this->clients_model->add($client_data, true);
+            
+            if ($client_id) {
+                // Store sponsor reference in client custom field
+                $this->db->where('userid', $client_id)
+                         ->update(db_prefix() . 'clients', ['sponsor_id' => $sponsor_id]);
+                
+                // Update the primary contact
+                $this->db->where('userid', $client_id)
+                         ->where('is_primary', 1)
+                         ->update(db_prefix() . 'contacts', ['email' => $contact_data['email']]);
             }
+            
+            return $client_id;
         }
+    } catch (Exception $e) {
+        log_message('error', 'sync_sponsor_to_client failed: ' . $e->getMessage());
+        return false;
+    }
+}
 
-        $this->db->trans_start();
+    /**
+ * Add a new sponsor - FIXED VERSION
+ * @param array $data Sponsor data
+ * @return int|false Sponsor ID on success, false on failure
+ */
+public function add(array $data)
+{
+    // If a staff login email was provided, treat it as the authoritative contact email
+    $staffEmail = isset($data['staff_email']) ? trim((string)$data['staff_email']) : '';
+    if ($staffEmail !== '' && filter_var($staffEmail, FILTER_VALIDATE_EMAIL)) {
+        $data['email'] = $staffEmail;
+    }
 
-        $ok = $this->db->insert($this->table, $row);
-        if (!$ok) {
-            log_message('error', 'Sponsor_model::add DB error: ' . ($this->db->error()['message'] ?? 'unknown'));
-            $this->db->trans_complete();
-            return false;
+    $row = $this->sanitize_payload($data, /*is_update=*/false);
+
+    // Country FK normalization
+    $row['country_id'] = $this->validate_country_id($row['country_id'] ?? null);
+
+    // Enforce NULL for unique columns when empty
+    if (isset($row['sponsor_bank_account_no']) && $row['sponsor_bank_account_no'] === '') {
+        $row['sponsor_bank_account_no'] = null;
+    }
+
+    // Minimal required field
+    if (empty($row['name'])) {
+        log_message('error', 'Sponsor_model::add - Name is required');
+        return false;
+    }
+
+    // Ensure email is either a valid email or NULL
+    if (isset($row['email'])) {
+        $row['email'] = trim((string)$row['email']);
+        if ($row['email'] === '' || !filter_var($row['email'], FILTER_VALIDATE_EMAIL)) {
+            $row['email'] = null;
         }
+    }
 
-        $sponsor_id = (int) $this->db->insert_id();
+    $this->db->trans_start();
 
-        // Optional: create a related client/contact with minimal info
-        if (!empty($row['name'])) {
-            $this->load->model('clients_model');
-            try {
-                $this->clients_model->add([
-                    'firstname'     => $row['name'],
-                    'email'         => $row['email'] ?? '',
-                    'phonenumber'   => $row['contact_no'] ?? '',
-                    'custom_fields' => ['contact_type' => 'sponsor'],
-                ]);
-            } catch (Throwable $e) {
-                log_message('error', 'clients_model->add failed: ' . $e->getMessage());
-                // don't fail the sponsor insert because of this
-            }
-        }
-
+    $ok = $this->db->insert($this->table, $row);
+    if (!$ok) {
+        $error = $this->db->error();
+        log_message('error', 'Sponsor_model::add DB error: ' . ($error['message'] ?? 'unknown') . ' | Code: ' . ($error['code'] ?? 'N/A'));
         $this->db->trans_complete();
-        if ($this->db->trans_status() === false) {
-            return false;
-        }
-
-        return $sponsor_id;
+        return false;
     }
 
-    /**
-     * Update sponsor
-     * @param array $data Sponsor data
-     * @param int $sponsor_id Sponsor ID
-     * @return bool Success status
-     */
-    public function update(array $data, int $sponsor_id): bool
-    {
-        if ($sponsor_id <= 0) {
-            return false;
-        }
+    $sponsor_id = (int) $this->db->insert_id();
+    
+    log_message('info', 'Sponsor_model::add - Successfully created sponsor ID: ' . $sponsor_id);
 
-        // If a staff login email was provided, treat it as the authoritative contact email
-        $staffEmail = isset($data['staff_email']) ? trim((string)$data['staff_email']) : '';
-        if ($staffEmail !== '' && filter_var($staffEmail, FILTER_VALIDATE_EMAIL)) {
-            $data['email'] = $staffEmail;
-        }
+    // REMOVED: Client sync - sponsors are independent entities
+    // If you need to create a related client, do it in the controller with proper mapping
 
-        $row = $this->sanitize_payload($data, /*is_update=*/true);
-
-        // Country FK normalization when present
-        if (array_key_exists('country_id', $row)) {
-            $row['country_id'] = $this->validate_country_id($row['country_id']);
-        }
-
-        // Enforce NULL for unique columns when empty to avoid duplicate '' errors
-        if (array_key_exists('sponsor_bank_account_no', $row) && $row['sponsor_bank_account_no'] === '') {
-            $row['sponsor_bank_account_no'] = null;
-        }
-
-        // Normalize email if present
-        if (array_key_exists('email', $row)) {
-            $row['email'] = trim((string)$row['email']);
-            if ($row['email'] === '' || !filter_var($row['email'], FILTER_VALIDATE_EMAIL)) {
-                $row['email'] = null;
-            }
-        }
-
-        if (!$row) {
-            // nothing to update
-            return false;
-        }
-
-        $this->db->where('id', $sponsor_id);
-        $ok = $this->db->update($this->table, $row);
-        if (!$ok) {
-            log_message('error', 'Sponsor_model::update DB error: ' . ($this->db->error()['message'] ?? 'unknown'));
-        }
-        return (bool) $ok;
+    $this->db->trans_complete();
+    if ($this->db->trans_status() === false) {
+        return false;
     }
+
+    return $sponsor_id;
+}
+
+/**
+ * Update sponsor - FIXED: Don't override email unless explicitly requested
+ * @param array $data Sponsor data
+ * @param int $sponsor_id Sponsor ID
+ * @return bool Success status
+ */
+public function update(array $data, int $sponsor_id): bool
+{
+    log_message('debug', '=== MODEL UPDATE START ===');
+    log_message('debug', 'Sponsor ID: ' . $sponsor_id);
+    log_message('debug', 'Input data received: ' . print_r($data, true));
+    
+    if ($sponsor_id <= 0) {
+        log_message('error', 'Invalid sponsor_id: ' . $sponsor_id);
+        return false;
+    }
+
+    // FIXED: Only use staff_email if main email is empty or if explicitly updating staff account
+    $staffEmail = isset($data['staff_email']) ? trim((string)$data['staff_email']) : '';
+    $mainEmail = isset($data['email']) ? trim((string)$data['email']) : '';
+    
+    // Only override if main email is empty AND staff email is provided
+    if ($mainEmail === '' && $staffEmail !== '' && filter_var($staffEmail, FILTER_VALIDATE_EMAIL)) {
+        $data['email'] = $staffEmail;
+        log_message('debug', 'Using staff email as main email (main email was empty): ' . $staffEmail);
+    } else {
+        log_message('debug', 'Using main email field: ' . $mainEmail);
+    }
+
+    // Sanitize the payload
+    log_message('debug', 'Before sanitize_payload: email = ' . ($data['email'] ?? 'NOT SET'));
+    $row = $this->sanitize_payload($data, true);
+    log_message('debug', 'After sanitize_payload: ' . print_r($row, true));
+
+    // Country ID normalization
+    $row['country_id'] = $this->validate_country_id($row['country_id'] ?? null);
+
+    // Enforce NULL for unique columns when empty
+    if (isset($row['sponsor_bank_account_no']) && $row['sponsor_bank_account_no'] === '') {
+        $row['sponsor_bank_account_no'] = null;
+    }
+
+    // Minimal required field validation
+    if (empty($row['name'])) {
+        log_message('error', 'Sponsor_model::update - Name is required');
+        return false;
+    }
+
+    // Validate and normalize email properly
+    if (isset($row['email'])) {
+        log_message('debug', 'Email field exists in row: ' . $row['email']);
+        $row['email'] = trim((string)$row['email']);
+        
+        if ($row['email'] !== '' && !filter_var($row['email'], FILTER_VALIDATE_EMAIL)) {
+            log_message('warning', 'Invalid email format: ' . $row['email']);
+            $row['email'] = null;
+        }
+        log_message('debug', 'Final email value: ' . ($row['email'] ?? 'NULL'));
+    } else {
+        log_message('warning', 'Email field NOT in sanitized row!');
+    }
+
+    log_message('debug', '=== FINAL ROW TO UPDATE ===');
+    log_message('debug', print_r($row, true));
+    log_message('debug', '=== END FINAL ROW ===');
+
+    $this->db->trans_start();
+
+    // Perform the update
+    $this->db->where('id', $sponsor_id);
+    $this->db->db_debug = false;
+    
+    $ok = $this->db->update($this->table, $row);
+    
+    // Log the actual query executed
+    $last_query = $this->db->last_query();
+    log_message('debug', '=== SQL QUERY EXECUTED ===');
+    log_message('debug', $last_query);
+    log_message('debug', '=== END SQL QUERY ===');
+    
+    // Check affected rows
+    $affected_rows = $this->db->affected_rows();
+    log_message('debug', 'Affected rows: ' . $affected_rows);
+
+    if (!$ok) {
+        $error = $this->db->error();
+        log_message('error', 'DB UPDATE FAILED!');
+        log_message('error', 'Error message: ' . ($error['message'] ?? 'unknown'));
+        log_message('error', 'Error code: ' . ($error['code'] ?? 'N/A'));
+        $this->db->trans_complete();
+        return false;
+    }
+
+    log_message('info', 'Sponsor_model::update - Successfully updated sponsor ID: ' . $sponsor_id);
+
+    $this->db->trans_complete();
+    
+    if ($this->db->trans_status() === false) {
+        log_message('error', 'Transaction failed for sponsor ID: ' . $sponsor_id);
+        return false;
+    }
+
+    log_message('debug', '=== MODEL UPDATE END - SUCCESS ===');
+    return true;
+}
+
+
+
 
     /**
      * Delete sponsor and handle related data
@@ -886,21 +1006,33 @@ class Sponsor_model extends App_Model
     }
 
     /* ============================== DROPDOWN DATA METHODS ============================== */
-
-    /**
-     * Get all countries for dropdown
-     * @return array Countries list
-     */
-    public function get_countries(): array
-    {
-        $c = $this->country_schema();
-        if (!$c['table']) return [];
-
-        $this->db->select($c['id'] . ' AS id, ' . $c['name'] . ' AS name', false);
-        $this->db->from($c['table']);
-        $this->db->order_by($c['name'], 'ASC');
-        return $this->db->get()->result_array();
+/**
+ * Get all countries for dropdown with phone codes
+ * @return array Countries list with calling codes
+ */
+public function get_countries()
+{
+    if (!$this->db->table_exists(db_prefix() . 'countries')) {
+        return [];
     }
+
+    $this->db->select('country_id as id, short_name as name, calling_code, calling_code as phone_code');
+    $this->db->from(db_prefix() . 'countries');
+    $this->db->where('calling_code IS NOT NULL');
+    $this->db->where('calling_code !=', '');
+    $this->db->order_by('short_name', 'ASC');
+    
+    $result = $this->db->get()->result_array();
+    
+    // Debug logging
+    if (empty($result)) {
+        log_message('error', 'Sponsor_model::get_countries - No countries returned. Query: ' . $this->db->last_query());
+    } else {
+        log_message('debug', 'Sponsor_model::get_countries - Retrieved ' . count($result) . ' countries with calling codes');
+    }
+    
+    return $result;
+}
 
     /**
      * Get all banks for dropdown
@@ -1190,149 +1322,116 @@ class Sponsor_model extends App_Model
         return $result;
     }
 
-    /**
-     * Update sponsored students for a sponsor by creating/updating transactions
-     * @param int $sponsor_id Sponsor ID
-     * @param array $school_students Array of school student internal IDs
-     * @param array $university_students Array of university student internal IDs
-     * @return bool Success status
-     */
-    public function update_sponsored_students($sponsor_id, $school_students = [], $university_students = [])
-    {
-        if ($sponsor_id <= 0) {
-            return false;
-        }
-
-        $this->db->trans_start();
-
-        try {
-            // Remove existing transactions for this sponsor if not in the new lists
-            if ($this->db->table_exists($this->tbl_sponsor_transactions)) {
-                // Handle school students
-                if (!empty($school_students)) {
-                    // Get school student IDs from internal IDs
-                    $this->db->select('id');
-                    $this->db->where_in('school_internal_id', $school_students);
-                    $school_ids = array_column($this->db->get($this->tbl_school_students)->result_array(), 'id');
-                    
-                    if (!empty($school_ids)) {
-                        // Remove transactions for school students not in the list
-                        $this->db->where('sponsor_id', $sponsor_id);
-                        $this->db->where('school_student_id IS NOT NULL');
-                        $this->db->where_not_in('school_student_id', $school_ids);
-                        $this->db->delete($this->tbl_sponsor_transactions);
-                    }
-                } else {
-                    // Remove all school student transactions for this sponsor
-                    $this->db->where('sponsor_id', $sponsor_id);
-                    $this->db->where('school_student_id IS NOT NULL');
-                    $this->db->delete($this->tbl_sponsor_transactions);
-                }
-
-                // Handle university students
-                if (!empty($university_students)) {
-                    // Get university student IDs from internal IDs
-                    $this->db->select('id');
-                    $this->db->where_in('university_internal_id', $university_students);
-                    $university_ids = array_column($this->db->get($this->tbl_university_students)->result_array(), 'id');
-                    
-                    if (!empty($university_ids)) {
-                        // Remove transactions for university students not in the list
-                        $this->db->where('sponsor_id', $sponsor_id);
-                        $this->db->where('university_student_id IS NOT NULL');
-                        $this->db->where_not_in('university_student_id', $university_ids);
-                        $this->db->delete($this->tbl_sponsor_transactions);
-                    }
-                } else {
-                    // Remove all university student transactions for this sponsor
-                    $this->db->where('sponsor_id', $sponsor_id);
-                    $this->db->where('university_student_id IS NOT NULL');
-                    $this->db->delete($this->tbl_sponsor_transactions);
-                }
-            }
-
-            $this->db->trans_complete();
-            return $this->db->trans_status();
-            
-        } catch (Exception $e) {
-            log_message('error', 'Error updating sponsored students: ' . $e->getMessage());
-            $this->db->trans_rollback();
-            return false;
-        }
+   /**
+ * FIXED VERSION - Update sponsored students WITHOUT deleting transactions
+ * This method should only update the JSON fields in sponsor table
+ * It does NOT touch the transactions table - transactions are managed separately
+ * @param int $sponsor_id
+ * @param array $school_internal_ids
+ * @param array $university_internal_ids
+ * @return bool
+ */
+public function update_sponsored_students($sponsor_id, $school_internal_ids = [], $university_internal_ids = [])
+{
+    if ($sponsor_id <= 0) {
+        log_message('error', 'Invalid sponsor_id provided to update_sponsored_students: ' . $sponsor_id);
+        return false;
     }
 
-    /**
-     * Create sponsor-student relationships through transactions
-     * @param int $sponsor_id Sponsor ID
-     * @param array $school_students Array of school student internal IDs
-     * @param array $university_students Array of university student internal IDs
-     * @return bool Success status
-     */
-    public function update_student_sponsor_relationships($sponsor_id, $school_students = [], $university_students = [])
-    {
-        if ($sponsor_id <= 0) {
-            return false;
-        }
+    // Ensure arrays
+    $school_internal_ids = is_array($school_internal_ids) ? $school_internal_ids : [];
+    $university_internal_ids = is_array($university_internal_ids) ? $university_internal_ids : [];
 
-        $this->load->model('student_sponsor_portal/sponsor_transactions_model');
+    // Clean the arrays - remove empty values
+    $clean_school_ids = array_unique(array_filter($school_internal_ids, function($id) {
+        return !empty(trim($id));
+    }));
+    
+    $clean_university_ids = array_unique(array_filter($university_internal_ids, function($id) {
+        return !empty(trim($id));
+    }));
+
+    log_message('info', "update_sponsored_students called for sponsor {$sponsor_id}");
+    log_message('info', "School IDs: " . implode(', ', $clean_school_ids));
+    log_message('info', "University IDs: " . implode(', ', $clean_university_ids));
+
+    $this->db->trans_start();
+
+    try {
+        // ONLY update the JSON fields in sponsor table
+        // Do NOT touch transactions - they should be managed separately via transactions module
+        $update_data = [
+            'school_internal_ids' => $this->encode_internal_ids($clean_school_ids),
+            'university_internal_ids' => $this->encode_internal_ids($clean_university_ids)
+        ];
+
+        $this->db->where('id', $sponsor_id);
+        $result = $this->db->update($this->table, $update_data);
         
-        // Create transactions for school students
-        foreach ($school_students as $internal_id) {
-            // Get student ID from internal ID
-            $student = $this->db->select('id')->where('school_internal_id', $internal_id)
-                               ->get($this->tbl_school_students)->row();
-            
-            if (!$student) continue;
-
-            // Check if transaction already exists
-            $existing = $this->db->where('sponsor_id', $sponsor_id)
-                                ->where('school_student_id', $student->id)
-                                ->get($this->tbl_sponsor_transactions)->row();
-            
-            if (!$existing) {
-                // Create new transaction
-                $this->sponsor_transactions_model->create([
-                    'sponsor_id' => $sponsor_id,
-                    'school_student_id' => $student->id,
-                    'university_student_id' => null,
-                    'total_amount' => 0,
-                    'amount_paid' => 0,
-                    'currency' => 'INR',
-                    'payment_type' => 'one_time'
-                ]);
-            }
+        if (!$result) {
+            throw new Exception('Failed to update sponsor JSON fields');
         }
 
-        // Create transactions for university students
-        foreach ($university_students as $internal_id) {
-            // Get student ID from internal ID
-            $student = $this->db->select('id')->where('university_internal_id', $internal_id)
-                               ->get($this->tbl_university_students)->row();
-            
-            if (!$student) continue;
+        log_message('info', "Updated sponsor {$sponsor_id} JSON fields successfully");
 
-            // Check if transaction already exists
-            $existing = $this->db->where('sponsor_id', $sponsor_id)
-                                ->where('university_student_id', $student->id)
-                                ->get($this->tbl_sponsor_transactions)->row();
-            
-            if (!$existing) {
-                // Create new transaction
-                $this->sponsor_transactions_model->create([
-                    'sponsor_id' => $sponsor_id,
-                    'school_student_id' => null,
-                    'university_student_id' => $student->id,
-                    'total_amount' => 0,
-                    'amount_paid' => 0,
-                    'currency' => 'INR',
-                    'payment_type' => 'one_time'
-                ]);
-            }
+        $this->db->trans_complete();
+        
+        if ($this->db->trans_status() === false) {
+            throw new Exception('Transaction failed');
         }
-
+        
+        log_message('info', "Successfully completed update_sponsored_students for sponsor {$sponsor_id}");
         return true;
-    }
 
+    } catch (Exception $e) {
+        log_message('error', 'Error in update_sponsored_students: ' . $e->getMessage());
+        $this->db->trans_rollback();
+        return false;
+    }
+}
+
+/* ============================== INTERNAL ID HELPERS ============================== */
+
+/**
+ * Encode array of internal IDs as JSON
+ * @param array $ids
+ * @return string|null
+ */
+private function encode_internal_ids($ids)
+{
+    if (empty($ids) || !is_array($ids)) {
+        return null;
+    }
+    
+    // Filter out empty values and ensure unique
+    $clean_ids = array_unique(array_filter($ids, function($id) {
+        return !empty(trim($id));
+    }));
+    
+    return empty($clean_ids) ? null : json_encode(array_values($clean_ids));
+}
+/**
+ * Decode JSON string to array of internal IDs
+ * @param string $json
+ * @return array
+ */
+private function decode_internal_ids($json)
+{
+    if (empty($json)) {
+        return [];
+    }
+    
+    $decoded = json_decode($json, true);
+    
+    if (!is_array($decoded)) {
+        return [];
+    }
+    
+    // Filter out empty values
+    return array_filter($decoded, function($id) {
+        return !empty(trim($id));
+    });
+}
     /**
      * Get statistics for a sponsor
      * @param int $sponsor_id Sponsor ID
@@ -1373,20 +1472,40 @@ class Sponsor_model extends App_Model
     /* ============================== HELPER METHODS ============================== */
 
     /**
-     * Country table schema - standardized like School model
+     * Country table schema - FIXED to detect actual database structure
      * @return array Country table configuration
      */
     private function country_schema()
     {
+        // Check which country table exists in your database and use correct schema
+        if ($this->db->table_exists(db_prefix() . 'country')) {
+            // Singular table name exists (tblcountry)
+            return [
+                'table' => db_prefix() . 'country',
+                'id' => 'id',              // Primary key is likely 'id'
+                'name' => 'name'           // Country name field
+            ];
+        }
+        
+        if ($this->db->table_exists(db_prefix() . 'countries')) {
+            // Plural table name exists (tblcountries)
+            return [
+                'table' => db_prefix() . 'countries',
+                'id' => 'country_id',      // Based on School_model
+                'name' => 'short_name'     // Based on School_model
+            ];
+        }
+        
+        // No country table exists - return null schema
         return [
-            'table' => db_prefix() . 'countries',  // tblcountries
-            'id' => 'country_id', 
-            'name' => 'short_name'
+            'table' => null,
+            'id' => null,
+            'name' => null
         ];
     }
 
     /**
-     * Validate country ID
+     * Validate country ID - FIXED version with proper error handling
      * @param mixed $country_id Country ID to validate
      * @return int|null Valid country ID or null
      */
@@ -1395,17 +1514,25 @@ class Sponsor_model extends App_Model
         if (empty($country_id)) return null;
         
         $c = $this->country_schema();
-        $country_id = (int)$country_id;
         
-        // Verify country exists
-        if (!$this->db->table_exists($c['table'])) {
+        // If no country table exists, return null (no validation possible)
+        if (!$c['table']) {
+            log_message('debug', 'Sponsor_model: No country table exists, setting country_id to null');
             return null;
         }
         
+        $country_id = (int)$country_id;
+        
+        // Verify country exists using correct schema
         $exists = $this->db->where($c['id'], $country_id)
                           ->count_all_results($c['table']) > 0;
         
-        return $exists ? $country_id : null;
+        if (!$exists) {
+            log_message('warning', 'Sponsor_model: Country ID ' . $country_id . ' not found in ' . $c['table']);
+            return null;
+        }
+        
+        return $country_id;
     }
 
     /**
@@ -1414,76 +1541,89 @@ class Sponsor_model extends App_Model
      * @param bool $is_update Whether this is an update operation
      * @return array Sanitized data
      */
-    private function sanitize_payload(array $data, bool $is_update): array
-    {
-        // Only basic sponsor fields
-        $fields = [
-            'entity_type', 'name', 'email', 'contact_no', 'address', 'city', 'zip',
-            'country_id', 'state_id', 'state', 'bank_id',
-            'sponsor_type', 'sponsor_occupation',
-            'sponsor_bank_branch_info', 'sponsor_bank_branch_number', 'sponsor_bank_account_no',
-            'membership_start_date', 'membership_end_date', 'sponsor_frequency',
-            'staff_id', 'active'
-        ];
+  /**
+ * Whitelist and sanitize input for insert/update - FIXED VERSION
+ * @param array $data Raw input data
+ * @param bool $is_update Whether this is an update operation
+ * @return array Sanitized data
+ */
+private function sanitize_payload(array $data, bool $is_update): array
+{
+    $fields = [
+        'entity_type', 'name', 'email', 'contact_no', 'address', 'city', 'zip',
+        'country_id', 'bank_id',
+        'sponsor_type', 'sponsor_occupation',
+        'sponsor_bank_branch_info', 'sponsor_bank_branch_number', 'sponsor_bank_account_no',
+        'membership_start_date', 'membership_end_date', 'sponsor_frequency',
+        'staff_id', 'active'
+    ];
 
-        $row = [];
-        foreach ($fields as $f) {
-            if (!array_key_exists($f, $data)) {
-                continue;
-            }
-            $v = $data[$f];
+    $row = [];
+    foreach ($fields as $f) {
+        if (!array_key_exists($f, $data)) {
+            continue;
+        }
+        $v = $data[$f];
 
-            // Trim strings
-            if (is_string($v)) {
-                $v = trim($v);
-            }
-
-            switch ($f) {
-                case 'country_id':
-                case 'state_id':
-                case 'bank_id':
-                case 'staff_id':
-                    // Allow nulls
-                    if ($v === '' || $v === null) {
-                        $row[$f] = null;
-                    } else {
-                        $row[$f] = (int) $v;
-                    }
-                    break;
-
-                case 'active':
-                    $row[$f] = (int) !!$v;
-                    break;
-
-                case 'membership_start_date':
-                case 'membership_end_date':
-                    $row[$f] = $this->normalize_date_or_null($v);
-                    break;
-
-                case 'entity_type':
-                    // enforce your intended default
-                    $row[$f] = ($v !== '') ? $v : 'sponsor';
-                    break;
-
-                default:
-                    // Strings -> for INSERT keep empty string as ''; for UPDATE convert '' to NULL
-                    if ($is_update) {
-                        $row[$f] = ($v === '') ? null : $v;
-                    } else {
-                        $row[$f] = ($v === null) ? '' : $v;
-                    }
-                    break;
-            }
+        // Trim strings
+        if (is_string($v)) {
+            $v = trim($v);
         }
 
-        // Ensure default entity_type if not provided
-        if (!isset($row['entity_type']) || $row['entity_type'] === '') {
-            $row['entity_type'] = 'sponsor';
-        }
+        switch ($f) {
+            case 'country_id':
+            case 'bank_id':
+            case 'staff_id':
+                // Allow nulls for foreign keys
+                if ($v === '' || $v === null) {
+                    $row[$f] = null;
+                } else {
+                    $row[$f] = (int) $v;
+                }
+                break;
 
-        return $row;
+            case 'active':
+                $row[$f] = (int) !!$v;
+                break;
+
+            case 'membership_start_date':
+            case 'membership_end_date':
+                $row[$f] = $this->normalize_date_or_null($v);
+                break;
+
+            case 'entity_type':
+                $row[$f] = ($v !== '') ? $v : 'sponsor';
+                break;
+
+            // CRITICAL FIX: Handle email and contact_no specially
+            case 'email':
+            case 'contact_no':
+                // Allow empty string to clear the field
+                // Let the validation in update() method handle email validation
+                $row[$f] = ($v === null) ? null : (string)$v;
+                break;
+
+            default:
+                // Other strings - convert empty to NULL only for non-critical fields
+                if ($is_update) {
+                    // For updates, preserve empty strings for text fields
+                    // Only convert to NULL if explicitly null
+                    $row[$f] = ($v === null) ? null : (string)$v;
+                } else {
+                    // For inserts, empty string is ok
+                    $row[$f] = ($v === null) ? '' : (string)$v;
+                }
+                break;
+        }
     }
 
+    // Ensure default entity_type if not provided
+    if (!isset($row['entity_type']) || $row['entity_type'] === '') {
+        $row['entity_type'] = 'sponsor';
+    }
+
+    return $row;
+}
     /**
      * Return Y-m-d or NULL
      * @param mixed $v Date value
@@ -1500,39 +1640,40 @@ class Sponsor_model extends App_Model
 
     /**
      * Map DB row to view form shape
+     * /**
+     * Map DB row to view form shape
      * @param array $r Database row
      * @return array Mapped form fields
      */
-    private function map_database_to_form_fields(array $r): array
-    {
-        return [
-            'id'                          => $r['id'] ?? '',
-            'name'                        => $r['name'] ?? '',
-            'email'                       => $r['email'] ?? '',
-            'contact_no'                  => $r['contact_no'] ?? '',
-            'phone'                       => $r['contact_no'] ?? '',
-            'address'                     => $r['address'] ?? '',
-            'city'                        => $r['city'] ?? '',
-            'zip'                         => $r['zip'] ?? '',
-            'country_id'                  => $r['country_id'] ?? '',
-            'country_name'                => $r['country_name'] ?? '',
-            'state_id'                    => $r['state_id'] ?? '',
-            'state'                       => $r['state'] ?? '',
-            'bank_id'                     => $r['bank_id'] ?? '',
-            'bank_name'                   => $r['bank_name'] ?? '',
-            'sponsor_type'                => $r['sponsor_type'] ?? '',
-            'sponsor_occupation'          => $r['sponsor_occupation'] ?? '',
-            'sponsor_bank_branch_info'    => $r['sponsor_bank_branch_info'] ?? '',
-            'sponsor_bank_branch_number'  => $r['sponsor_bank_branch_number'] ?? '',
-            'sponsor_bank_account_no'     => $r['sponsor_bank_account_no'] ?? '',
-            'membership_start_date'       => $r['membership_start_date'] ?? '',
-            'membership_end_date'         => $r['membership_end_date'] ?? '',
-            'sponsor_frequency'           => $r['sponsor_frequency'] ?? '',
-            'entity_type'                 => $r['entity_type'] ?? 'sponsor',
-            'staff_id'                    => $r['staff_id'] ?? '',
-            'active'                      => $r['active'] ?? '',
-        ];
-    }
+  private function map_database_to_form_fields(array $r): array
+{
+    return [
+        'id'                          => $r['id'] ?? '',
+        'name'                        => $r['name'] ?? '',
+        'email'                       => $r['email'] ?? '',
+        'contact_no'                  => $r['contact_no'] ?? '',
+        'phone'                       => $r['contact_no'] ?? '',
+        'address'                     => $r['address'] ?? '',
+        'city'                        => $r['city'] ?? '',
+        'zip'                         => $r['zip'] ?? '',
+        'country_id'                  => $r['country_id'] ?? '',
+        'country_name'                => $r['country_name'] ?? '',
+        // REMOVED state_id and state fields
+        'bank_id'                     => $r['bank_id'] ?? '',
+        'bank_name'                   => $r['bank_name'] ?? '',
+        'sponsor_type'                => $r['sponsor_type'] ?? '',
+        'sponsor_occupation'          => $r['sponsor_occupation'] ?? '',
+        'sponsor_bank_branch_info'    => $r['sponsor_bank_branch_info'] ?? '',
+        'sponsor_bank_branch_number'  => $r['sponsor_bank_branch_number'] ?? '',
+        'sponsor_bank_account_no'     => $r['sponsor_bank_account_no'] ?? '',
+        'membership_start_date'       => $r['membership_start_date'] ?? '',
+        'membership_end_date'         => $r['membership_end_date'] ?? '',
+        'sponsor_frequency'           => $r['sponsor_frequency'] ?? '',
+        'entity_type'                 => $r['entity_type'] ?? 'sponsor',
+        'staff_id'                    => $r['staff_id'] ?? '',
+        'active'                      => $r['active'] ?? '',
+    ];
+}
 
     /* ============================== TABLE MANAGEMENT ============================== */
 
@@ -1546,48 +1687,61 @@ class Sponsor_model extends App_Model
     }
 
     /**
-     * Ensure sponsor records table exists
+     * Ensure sponsor records table exists with CORRECT foreign key constraint
      */
-    private function ensure_sponsor_table()
-    {
-        if (!$this->db->table_exists($this->table)) {
-            $this->db->query("
-                CREATE TABLE IF NOT EXISTS `{$this->table}` (
-                    `id` int(11) NOT NULL AUTO_INCREMENT,
-                    `entity_type` varchar(50) NOT NULL DEFAULT 'sponsor',
-                    `name` varchar(255) NOT NULL,
-                    `email` varchar(255) DEFAULT NULL,
-                    `contact_no` varchar(50) DEFAULT NULL,
-                    `address` text DEFAULT NULL,
-                    `city` varchar(100) DEFAULT NULL,
-                    `zip` varchar(20) DEFAULT NULL,
-                    `country_id` int(11) DEFAULT NULL,
-                    `state_id` int(11) DEFAULT NULL,
-                    `state` varchar(100) DEFAULT NULL,
-                    `bank_id` int(11) DEFAULT NULL,
-                    `sponsor_type` varchar(100) DEFAULT NULL,
-                    `sponsor_occupation` varchar(255) DEFAULT NULL,
-                    `sponsor_bank_branch_info` varchar(255) DEFAULT NULL,
-                    `sponsor_bank_branch_number` varchar(50) DEFAULT NULL,
-                    `sponsor_bank_account_no` varchar(100) DEFAULT NULL,
-                    `membership_start_date` date DEFAULT NULL,
-                    `membership_end_date` date DEFAULT NULL,
-                    `sponsor_frequency` varchar(50) DEFAULT NULL,
-                    `staff_id` int(11) DEFAULT NULL,
-                    `active` tinyint(1) NOT NULL DEFAULT 1,
-                    `created_at` datetime DEFAULT current_timestamp(),
-                    `updated_at` datetime DEFAULT current_timestamp() ON UPDATE current_timestamp(),
-                    PRIMARY KEY (`id`),
-                    UNIQUE KEY `unique_bank_account` (`sponsor_bank_account_no`),
-                    KEY `idx_country_id` (`country_id`),
-                    KEY `idx_bank_id` (`bank_id`),
-                    KEY `idx_staff_id` (`staff_id`),
-                    KEY `idx_active` (`active`),
-                    KEY `idx_sponsor_type` (`sponsor_type`)
-                ) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci
-            ");
+  private function ensure_sponsor_table()
+{
+    if (!$this->db->table_exists($this->table)) {
+        $c = $this->country_schema();
+        $country_fk = '';
+        
+        if ($c['table']) {
+            $country_fk = ",
+                CONSTRAINT `{$this->table}_ibfk_1` 
+                FOREIGN KEY (`country_id`) 
+                REFERENCES `{$c['table']}` (`{$c['id']}`)
+                ON DELETE SET NULL 
+                ON UPDATE CASCADE";
         }
+        
+        $this->db->query("
+            CREATE TABLE IF NOT EXISTS `{$this->table}` (
+                `id` int(11) NOT NULL AUTO_INCREMENT,
+                `entity_type` varchar(50) NOT NULL DEFAULT 'sponsor',
+                `name` varchar(255) NOT NULL,
+                `email` varchar(255) DEFAULT NULL,
+                `contact_no` varchar(50) DEFAULT NULL,
+                `address` text DEFAULT NULL,
+                `city` varchar(100) DEFAULT NULL,
+                `zip` varchar(20) DEFAULT NULL,
+                `country_id` int(11) DEFAULT NULL,
+                `bank_id` int(11) DEFAULT NULL,
+                `sponsor_type` varchar(100) DEFAULT NULL,
+                `sponsor_occupation` varchar(255) DEFAULT NULL,
+                `sponsor_bank_branch_info` varchar(255) DEFAULT NULL,
+                `sponsor_bank_branch_number` varchar(50) DEFAULT NULL,
+                `sponsor_bank_account_no` varchar(100) DEFAULT NULL,
+                `membership_start_date` date DEFAULT NULL,
+                `membership_end_date` date DEFAULT NULL,
+                `sponsor_frequency` varchar(50) DEFAULT NULL,
+                `staff_id` int(11) DEFAULT NULL,
+                `active` tinyint(1) NOT NULL DEFAULT 1,
+                `created_at` datetime DEFAULT current_timestamp(),
+                `updated_at` datetime DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+                PRIMARY KEY (`id`),
+                UNIQUE KEY `unique_bank_account` (`sponsor_bank_account_no`),
+                KEY `idx_country_id` (`country_id`),
+                KEY `idx_bank_id` (`bank_id`),
+                KEY `idx_staff_id` (`staff_id`),
+                KEY `idx_active` (`active`),
+                KEY `idx_sponsor_type` (`sponsor_type`)
+                {$country_fk}
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci
+        ");
+        
+        log_message('info', 'Sponsor_model: Created sponsor_records table with country FK to ' . ($c['table'] ?? 'none'));
     }
+}
 
     /**
      * Ensure sponsor transactions table exists
@@ -1616,9 +1770,138 @@ class Sponsor_model extends App_Model
                     KEY `idx_school_student_id` (`school_student_id`),
                     KEY `idx_university_student_id` (`university_student_id`),
                     KEY `idx_status` (`status`),
-                    CONSTRAINT `fk_sponsor_transactions_sponsor` FOREIGN KEY (`sponsor_id`) REFERENCES `{$this->table}` (`id`) ON DELETE CASCADE
+                    CONSTRAINT `fk_sponsor_transactions_sponsor` 
+                    FOREIGN KEY (`sponsor_id`) 
+                    REFERENCES `{$this->table}` (`id`) 
+                    ON DELETE CASCADE
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_unicode_ci
             ");
         }
     }
+
+    /* ============================== DIAGNOSTIC/DEBUG METHODS ============================== */
+
+    /**
+     * Debug method to check country table structure
+     * Use this to diagnose which country table exists in your database
+     * 
+     * @return array Debug information
+     */
+    public function debug_country_schema()
+    {
+        $debug_info = [
+            'detected_schema' => $this->country_schema(),
+            'tables_checked' => []
+        ];
+
+        // Check both possible table names
+        $possible_tables = [
+            'tblcountry' => db_prefix() . 'country',
+            'tblcountries' => db_prefix() . 'countries'
+        ];
+
+        foreach ($possible_tables as $label => $table_name) {
+            $exists = $this->db->table_exists($table_name);
+            $debug_info['tables_checked'][$label] = [
+                'table_name' => $table_name,
+                'exists' => $exists
+            ];
+
+            if ($exists) {
+                // Get table structure
+                $structure = $this->db->query("DESCRIBE `{$table_name}`")->result_array();
+                $debug_info['tables_checked'][$label]['structure'] = $structure;
+                
+                // Get sample data
+                $sample = $this->db->limit(3)->get($table_name)->result_array();
+                $debug_info['tables_checked'][$label]['sample_data'] = $sample;
+            }
+        }
+
+        // Check sponsor_records foreign key constraints
+        $fk_query = "
+            SELECT 
+                CONSTRAINT_NAME,
+                COLUMN_NAME,
+                REFERENCED_TABLE_NAME,
+                REFERENCED_COLUMN_NAME
+            FROM information_schema.KEY_COLUMN_USAGE
+            WHERE TABLE_SCHEMA = DATABASE()
+            AND TABLE_NAME = '{$this->table}'
+            AND REFERENCED_TABLE_NAME IS NOT NULL
+        ";
+        
+        $debug_info['sponsor_foreign_keys'] = $this->db->query($fk_query)->result_array();
+
+        return $debug_info;
+    }
+
+    
+
+    /**
+     * Fix country foreign key constraint if it's pointing to wrong table
+     * WARNING: This will drop and recreate the foreign key
+     * 
+     * @return array Result of fix operation
+     */
+    public function fix_country_foreign_key()
+    {
+        $result = [
+            'success' => false,
+            'message' => '',
+            'actions_taken' => []
+        ];
+
+        try {
+            $c = $this->country_schema();
+            
+            if (!$c['table']) {
+                $result['message'] = 'No country table detected in database';
+                return $result;
+            }
+
+            // Get existing FK constraints on country_id
+            $existing_fk = $this->db->query("
+                SELECT CONSTRAINT_NAME, REFERENCED_TABLE_NAME, REFERENCED_COLUMN_NAME
+                FROM information_schema.KEY_COLUMN_USAGE
+                WHERE TABLE_SCHEMA = DATABASE()
+                AND TABLE_NAME = '{$this->table}'
+                AND COLUMN_NAME = 'country_id'
+                AND REFERENCED_TABLE_NAME IS NOT NULL
+            ")->result_array();
+
+            foreach ($existing_fk as $fk) {
+                // Drop incorrect FK
+                $drop_sql = "ALTER TABLE `{$this->table}` DROP FOREIGN KEY `{$fk['CONSTRAINT_NAME']}`";
+                $this->db->query($drop_sql);
+                $result['actions_taken'][] = "Dropped FK: {$fk['CONSTRAINT_NAME']}";
+            }
+
+            // Create correct FK
+            $fk_name = $this->table . '_country_fk';
+            $create_fk_sql = "
+                ALTER TABLE `{$this->table}`
+                ADD CONSTRAINT `{$fk_name}`
+                FOREIGN KEY (`country_id`) 
+                REFERENCES `{$c['table']}` (`{$c['id']}`)
+                ON DELETE SET NULL 
+                ON UPDATE CASCADE
+            ";
+            
+            $this->db->query($create_fk_sql);
+            $result['actions_taken'][] = "Created FK: {$fk_name} -> {$c['table']}({$c['id']})";
+            
+            $result['success'] = true;
+            $result['message'] = 'Foreign key constraint fixed successfully';
+            
+        } catch (Exception $e) {
+            $result['success'] = false;
+            $result['message'] = 'Error fixing foreign key: ' . $e->getMessage();
+            log_message('error', 'Sponsor_model::fix_country_foreign_key - ' . $e->getMessage());
+        }
+
+        return $result;
+    }
+
+    
 }

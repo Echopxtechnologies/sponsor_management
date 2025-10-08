@@ -7,7 +7,7 @@
         <div class="panel_s">
           <div class="panel-body">
 
-            <!-- Header -->
+            <!-- Header Section -->
             <div class="row">
               <div class="col-md-6">
                 <h4 class="customer-profile-group-heading" style="margin-top:20px;">
@@ -16,40 +16,57 @@
               </div>
               <div class="col-md-6">
                 <div class="text-right" style="margin-top:15px;">
-                  <div class="btn-group" role="group" style="margin-right: 5px;">
-                    <a href="<?php echo admin_url('student_sponsor_portal/bulk_import_university_students'); ?>" 
-                       class="btn btn-warning btn-sm" title="Bulk Import Students">
-                      <i class="fa fa-upload"></i> Import
-                    </a>
-                  </div>
-                  <div class="btn-group" role="group" style="margin-right: 5px;">
-                    <button type="button" class="btn btn-success btn-sm dropdown-toggle" 
-                            data-toggle="dropdown" title="Export Options">
-                      <i class="fa fa-download"></i> Export <span class="caret"></span>
-                    </button>
-                    <ul class="dropdown-menu dropdown-menu-right">
-                      <li><a href="<?php echo admin_url('student_sponsor_portal/export_university_students'); ?>">
-                        <i class="fa fa-file-excel-o"></i> Export All Students (Excel)</a></li>
-                      <li><a href="#" onclick="exportFilteredStudents(); return false;">
-                        <i class="fa fa-filter"></i> Export Filtered Results (Excel)</a></li>
-                      <li class="divider"></li>
-                      <li><a href="<?php echo admin_url('student_sponsor_portal/download_university_students_template'); ?>">
-                        <i class="fa fa-download"></i> Download Excel Template</a></li>
-                    </ul>
-                  </div>
-                  <div class="btn-group" role="group">
-                    <a href="<?php echo admin_url('student_sponsor_portal/university_student_form'); ?>" 
-                       class="btn btn-primary btn-sm">
-                      <i class="fa fa-plus"></i> New Student
-                    </a>
-                  </div>
+                  <!-- Import Button -->
+                  <a href="<?php echo admin_url('student_sponsor_portal/bulk_import_university_students'); ?>" 
+                     class="btn btn-warning btn-sm" 
+                     style="margin-right: 5px;"
+                     title="Import students from Excel/CSV file">
+                    <i class="fa fa-upload"></i> Import
+                  </a>
+                  
+                  <!-- Export Button (Direct CSV Download) -->
+                  <a href="<?php echo admin_url('student_sponsor_portal/export_university_students'); ?>" 
+                     class="btn btn-success btn-sm" 
+                     style="margin-right: 5px;"
+                     title="Export all students to CSV file">
+                    <i class="fa fa-download"></i> Export CSV
+                  </a>
+                  
+                  <!-- Download Template Button -->
+                  <a href="<?php echo admin_url('student_sponsor_portal/download_university_students_template'); ?>" 
+                     class="btn btn-info btn-sm" 
+                     style="margin-right: 5px;"
+                     title="Download import template">
+                    <i class="fa fa-file-text-o"></i> Template
+                  </a>
+                  
+                  <!-- Add Student Button -->
+                  <a href="<?php echo admin_url('student_sponsor_portal/university_student_form'); ?>" 
+                     class="btn btn-primary btn-sm">
+                    <i class="fa fa-plus"></i> New Student
+                  </a>
                 </div>
               </div>
             </div>
 
             <hr class="hr-panel-heading">
 
-            <!-- Table -->
+            <!-- Statistics Summary (Optional) -->
+            <?php if(!empty($students) && count($students) > 0): ?>
+            <div class="row" style="margin-bottom: 15px;">
+              <div class="col-md-12">
+                <div class="alert alert-info" style="margin-bottom: 10px; padding: 8px 15px;">
+                  <i class="fa fa-info-circle"></i>
+                  <strong>Total Students: <?php echo count($students); ?></strong>
+                  <span class="pull-right">
+                    <small>Click on student name to view/edit details</small>
+                  </span>
+                </div>
+              </div>
+            </div>
+            <?php endif; ?>
+
+            <!-- Students Table -->
             <div class="table-responsive">
               <table class="table table-hover students-table" id="university-students-table">
                 <thead>
@@ -71,6 +88,7 @@
                     foreach ($students as $s): 
                   ?>
                     <?php
+                      // Student data
                       $sid    = (int)($s['id'] ?? 0);
                       $name   = (string)($s['name'] ?? '');
                       $university = (string)($s['university_name'] ?? '');
@@ -81,16 +99,16 @@
                       $staff_id = $s['staff_id'] ?? null;
                       $active = (int)($s['active'] ?? 0);
 
-                      // Determine status based on staff_id and active
+                      // Sponsor information
+                      $sponsor_name = (string)($s['sponsor_name'] ?? '');
+                      $sponsor_type = (string)($s['sponsor_type'] ?? '');
+                      $all_sponsor_names = (string)($s['all_sponsor_names'] ?? '');
+                      $sponsor_count = (int)($s['sponsor_count'] ?? 0);
+
+                      // Determine status
                       $status = 'unverified';
                       $status_class = 'default';
                       $status_icon = 'fa-question-circle';
-                        $sponsor_name = (string)($s['sponsor_name'] ?? '');
-  $sponsor_type = (string)($s['sponsor_type'] ?? '');
-  $sponsor_relationship = $s['sponsor_relationship_type'] ?? 'direct';
-  $all_sponsor_names = (string)($s['all_sponsor_names'] ?? '');
-  $all_sponsor_types = (string)($s['all_sponsor_types'] ?? '');
-  $sponsor_count = (int)($s['sponsor_count'] ?? 0);
                       
                       if ($staff_id !== null) {
                         $status = 'verified';
@@ -123,10 +141,12 @@
                       ];
                       $year_display = $year_code ? ($year_map[$year_code] ?? $year_code) : '';
 
-                      // Make initials fallback
+                      // Generate initials for avatar
                       $initials = '';
                       foreach (preg_split('/\s+/', trim($name)) as $p) {
-                        if ($p !== '' && strlen($initials) < 2) $initials .= strtoupper(substr($p, 0, 1));
+                        if ($p !== '' && strlen($initials) < 2) {
+                          $initials .= strtoupper(substr($p, 0, 1));
+                        }
                       }
 
                       $photoUrl = admin_url('student_sponsor_portal/display_profile_photo/' . $sid);
@@ -137,11 +157,13 @@
                         data-year="<?php echo html_escape($year_code); ?>"
                         data-program="<?php echo html_escape(mb_strtolower($program)); ?>"
                         data-university="<?php echo html_escape(mb_strtolower($university)); ?>"
-                        data-status="<?php echo html_escape($status); ?>">
+                        data-status="<?php echo html_escape($status); ?>"
+                        data-sponsor="<?php echo html_escape(mb_strtolower($sponsor_name)); ?>">
                       
+                      <!-- Serial Number -->
                       <td><strong><?php echo $serial; ?></strong></td>
 
-                      <!-- Student Name with circular photo -->
+                      <!-- Student Name with Avatar -->
                       <td>
                         <div class="media">
                           <div class="media-left">
@@ -159,19 +181,32 @@
                             </div>
                           </div>
                           <div class="media-body">
-                            <strong><?php echo html_escape($name); ?></strong>
+                            <strong>
+                              <a href="<?php echo admin_url('student_sponsor_portal/university_student_form/' . $sid); ?>">
+                                <?php echo html_escape($name); ?>
+                              </a>
+                            </strong>
                             <br><small class="text-muted">ID: <?php echo $sid; ?></small>
                             <div class="row-options" style="display:none;">
                               <a href="<?php echo admin_url('student_sponsor_portal/university_student_form/' . $sid); ?>">Edit</a> |
-                              <a href="#" onclick="viewStudent(<?php echo $sid; ?>); return false;">View</a> |
+                             
                               <a href="#" onclick="deleteStudent(<?php echo $sid; ?>); return false;" class="text-danger">Delete</a>
                             </div>
                           </div>
                         </div>
                       </td>
 
-                      <td><?php echo $university ? html_escape($university) : '<span class="text-muted">Not specified</span>'; ?></td>
-                      <td><?php echo $program ? html_escape($program) : '<span class="text-muted">Not specified</span>'; ?></td>
+                      <!-- University -->
+                      <td>
+                        <?php echo $university ? html_escape($university) : '<span class="text-muted">Not specified</span>'; ?>
+                      </td>
+                      
+                      <!-- Program -->
+                      <td>
+                        <?php echo $program ? html_escape($program) : '<span class="text-muted">Not specified</span>'; ?>
+                      </td>
+                      
+                      <!-- Year of Study -->
                       <td>
                         <?php if($year_display !== ''): ?>
                           <span class="label label-info"><?php echo html_escape($year_display); ?></span>
@@ -180,41 +215,49 @@
                         <?php endif; ?>
                       </td>
                       
-                      <!-- Status Column -->
+                      <!-- Status -->
                       <td>
                         <span class="label label-<?php echo $status_class; ?>" title="<?php echo ucfirst($status); ?>">
                           <i class="fa <?php echo $status_icon; ?>"></i> <?php echo ucfirst($status); ?>
                         </span>
                       </td>
                       
-                      <!-- Sponsor Column -->
-<td>
-  <?php if($all_sponsor_names): ?>
-    <div class="sponsor-info">
-      <strong class="text-success">
-        <i class="fa fa-heart"></i> <?php echo html_escape($all_sponsor_names); ?>
-      </strong>
-     
-      <?php if($sponsor_count > 1): ?>
-        <br><small class="text-info">
-          <i class="fa fa-users"></i> <?php echo $sponsor_count; ?> Sponsors
-        </small>
-      <?php endif; ?>
-    </div>
-  <?php else: ?>
-    <span class="text-muted">
-      <i class="fa fa-heart-o"></i> No Sponsor
-    </span>
-  <?php endif; ?>
-</td>
-                      <!-- Contact Column (Combined Email/Phone) -->
+                      <!-- Sponsor -->
+                      <td>
+                        <?php if($all_sponsor_names): ?>
+                          <div class="sponsor-info">
+                            <strong class="text-success">
+                              <?php echo html_escape($all_sponsor_names); ?>
+                            </strong>
+                            <?php if($sponsor_count > 1): ?>
+                              <br><small class="text-info">
+                                <i class="fa fa-users"></i> <?php echo $sponsor_count; ?> Sponsors
+                              </small>
+                            <?php endif; ?>
+                          </div>
+                        <?php else: ?>
+                          <span class="text-muted">
+                            <i class="fa fa-heart-o"></i> No Sponsor
+                          </span>
+                        <?php endif; ?>
+                      </td>
+                      
+                      <!-- Contact -->
                       <td>
                         <div class="contact-info">
                           <?php if($email): ?>
-                            <div><a href="mailto:<?php echo html_escape($email); ?>" class="text-primary"><i class="fa fa-envelope-o"></i> <?php echo html_escape($email); ?></a></div>
+                            <div>
+                              <a href="mailto:<?php echo html_escape($email); ?>" class="text-primary">
+                                <i class="fa fa-envelope-o"></i> <?php echo html_escape($email); ?>
+                              </a>
+                            </div>
                           <?php endif; ?>
                           <?php if($phone): ?>
-                            <div><a href="tel:<?php echo html_escape($phone); ?>" class="text-success"><i class="fa fa-phone"></i> <?php echo html_escape($phone); ?></a></div>
+                            <div>
+                              <a href="tel:<?php echo html_escape($phone); ?>" class="text-success">
+                                <i class="fa fa-phone"></i> <?php echo html_escape($phone); ?>
+                              </a>
+                            </div>
                           <?php endif; ?>
                           <?php if(!$email && !$phone): ?>
                             <span class="text-muted">No contact info</span>
@@ -226,17 +269,20 @@
                     $serial++; 
                   endforeach; ?>
                 <?php else: ?>
+                  <!-- Empty State -->
                   <tr>
                     <td colspan="8" class="text-center">
                       <div style="padding:40px;">
                         <i class="fa fa-university fa-3x text-muted"></i>
                         <h4 class="text-muted">No students found</h4>
-                        <p class="text-muted">Get started by adding your first university student or importing from Excel.</p>
+                        <p class="text-muted">Get started by adding your first university student or importing from Excel/CSV.</p>
                         <div class="btn-group">
-                          <a href="<?php echo admin_url('student_sponsor_portal/university_student_form'); ?>" class="btn btn-primary">
+                          <a href="<?php echo admin_url('student_sponsor_portal/university_student_form'); ?>" 
+                             class="btn btn-primary">
                             <i class="fa fa-plus"></i> Add First Student
                           </a>
-                          <a href="<?php echo admin_url('student_sponsor_portal/bulk_import_university_students'); ?>" class="btn btn-warning">
+                          <a href="<?php echo admin_url('student_sponsor_portal/bulk_import_university_students'); ?>" 
+                             class="btn btn-warning">
                             <i class="fa fa-upload"></i> Import Students
                           </a>
                         </div>
@@ -255,13 +301,15 @@
   </div>
 </div>
 
-<!-- View Modal -->
+<!-- View Student Modal -->
 <div class="modal fade" id="studentViewModal" tabindex="-1" role="dialog" aria-labelledby="studentViewModalLabel">
   <div class="modal-dialog modal-lg" role="document">
     <div class="modal-content">
       <div class="modal-header">
         <button type="button" class="close" data-dismiss="modal"><span>&times;</span></button>
-        <h4 class="modal-title" id="studentViewModalLabel"><i class="fa fa-university"></i> Student Details</h4>
+        <h4 class="modal-title" id="studentViewModalLabel">
+          <i class="fa fa-university"></i> Student Details
+        </h4>
       </div>
       <div class="modal-body" id="studentViewContent">
         <div class="text-center">
@@ -271,25 +319,16 @@
       </div>
       <div class="modal-footer">
         <button type="button" class="btn btn-default" data-dismiss="modal">Close</button>
-        <a id="editStudentBtn" class="btn btn-primary"><i class="fa fa-edit"></i> Edit Student</a>
+        <a id="editStudentBtn" class="btn btn-primary">
+          <i class="fa fa-edit"></i> Edit Student
+        </a>
       </div>
     </div>
   </div>
 </div>
 
 <style>
-/* Button toolbar alignment */
-.btn-toolbar {
-  display: flex;
-  gap: 5px;
-  align-items: center;
-}
-
-.btn-toolbar .btn-group {
-  margin-right: 0;
-}
-
-/* Main table styling */
+/* Main Table Styling */
 .students-table {
   border: 1px solid #e9ecef;
   border-radius: 6px;
@@ -314,6 +353,7 @@
   border-bottom: 1px solid #f1f3f4;
 }
 
+/* Label/Badge Styling */
 .label { 
   font-size: 10px; 
   padding: 4px 8px;
@@ -321,7 +361,6 @@
   font-weight: 500;
 }
 
-/* Status-specific styling */
 .label-success { 
   background-color: #28a745;
   color: white;
@@ -339,7 +378,7 @@
   color: white;
 }
 
-/* Contact info styling */
+/* Contact Info Styling */
 .contact-info div {
   margin-bottom: 2px;
   font-size: 12px;
@@ -353,7 +392,24 @@
   text-decoration: underline;
 }
 
-/* Row options styling */
+/* Sponsor Info Styling */
+.sponsor-info {
+  font-size: 12px;
+}
+
+.sponsor-info strong {
+  display: block;
+  margin-bottom: 2px;
+  font-size: 12px;
+}
+
+.sponsor-info small {
+  display: block;
+  line-height: 1.2;
+  font-size: 11px;
+}
+
+/* Row Options (Action Links) */
 .row-options { 
   font-size: 11px; 
   color: #777; 
@@ -375,7 +431,7 @@
   color: #c82333 !important; 
 }
 
-/* Row hover effects */
+/* Row Hover Effects */
 .student-row {
   transition: all 0.2s ease;
 }
@@ -389,7 +445,7 @@
   display: block !important; 
 }
 
-/* Avatar styling */
+/* Avatar Styling */
 .avatar {
   width: 42px;
   height: 42px;
@@ -437,11 +493,21 @@
   padding-right: 12px; 
 }
 
-/* Responsive adjustments */
+/* Alert Styling */
+.alert-info {
+  background-color: #d1ecf1;
+  border-color: #bee5eb;
+  color: #0c5460;
+}
+
+/* Responsive Adjustments */
 @media (max-width: 768px) {
-  .btn-toolbar {
-    flex-direction: column;
-    gap: 10px;
+  .text-right {
+    text-align: left !important;
+  }
+  
+  .table-responsive {
+    font-size: 12px;
   }
 }
 </style>
@@ -449,7 +515,7 @@
 <script>
 var table;
 
-// Avatar management functions
+// Avatar Management Functions
 function hideInitials(studentId) {
   var avatar = document.getElementById('avatar-' + studentId);
   var initials = document.getElementById('initials-' + studentId);
@@ -474,64 +540,7 @@ function showInitials(studentId) {
   }
 }
 
-// Export functions
-function exportFilteredStudents() {
-  var visibleRows = table.rows({ search: 'applied' }).data();
-  if (visibleRows.length === 0) {
-    alert('No students found with current filters');
-    return;
-  }
-  
-  var studentIds = [];
-  table.rows({ search: 'applied' }).every(function() {
-    var row = this.node();
-    var studentId = $(row).data('student-id');
-    if (studentId) {
-      studentIds.push(studentId);
-    }
-  });
-  
-  if (studentIds.length === 0) {
-    alert('No students to export');
-    return;
-  }
-  
-  exportStudentsByIds(studentIds, 'filtered_university_students_export');
-}
-
-function exportStudentsByIds(studentIds, filename) {
-  var form = $('<form>', {
-    method: 'POST',
-    action: '<?php echo admin_url("student_sponsor_portal/export_university_students_by_ids"); ?>'
-  });
-  
-  form.append($('<input>', {
-    type: 'hidden',
-    name: 'student_ids',
-    value: JSON.stringify(studentIds)
-  }));
-  
-  form.append($('<input>', {
-    type: 'hidden',
-    name: 'filename',
-    value: filename
-  }));
-  
-  // Add CSRF token if available
-  if (typeof csrfData !== 'undefined' && csrfData && csrfData.token_name && csrfData.hash) {
-    form.append($('<input>', {
-      type: 'hidden',
-      name: csrfData.token_name,
-      value: csrfData.hash
-    }));
-  }
-  
-  $('body').append(form);
-  form.submit();
-  form.remove();
-}
-
-// Student management functions
+// View Student Details
 function viewStudent(id) {
   $('#studentViewModal').modal('show');
 
@@ -543,15 +552,24 @@ function viewStudent(id) {
       $('#studentViewContent').html(resp.html);
       $('#editStudentBtn').attr('href', '<?php echo admin_url("student_sponsor_portal/university_student_form/"); ?>' + id);
     } else {
-      $('#studentViewContent').html('<div class="alert alert-danger">' + (resp.message || 'Error loading student') + '</div>');
+      $('#studentViewContent').html(
+        '<div class="alert alert-danger">' + 
+        (resp.message || 'Error loading student') + 
+        '</div>'
+      );
     }
   }, 'json').fail(function() {
-    $('#studentViewContent').html('<div class="alert alert-danger">Error loading student details</div>');
+    $('#studentViewContent').html(
+      '<div class="alert alert-danger">Error loading student details</div>'
+    );
   });
 }
 
+// Delete Student
 function deleteStudent(id) {
-  if (!confirm('Are you sure you want to delete this student? This action cannot be undone.')) return;
+  if (!confirm('Are you sure you want to delete this student? This action cannot be undone.')) {
+    return;
+  }
 
   var row = $('#student-row-' + id).css('opacity', '0.5');
 
@@ -589,6 +607,7 @@ function deleteStudent(id) {
   });
 }
 
+// Document Ready
 $(document).ready(function() {
   // Initialize avatar states
   $('.avatar__image').each(function() {
@@ -602,21 +621,23 @@ $(document).ready(function() {
     }
   });
 
-  // DataTable initialization
+  // Initialize DataTable
   table = $('#university-students-table').DataTable({
     responsive: true,
     pageLength: 25,
     order: [[0, "desc"]],
     columnDefs: [
-      { orderable: false, targets: [1] }, // Name column
-      { searchable: false, targets: [0] }  // ID column
+      { orderable: false, targets: [1, 6, 7] }, // Name, Sponsor, Contact
+      { searchable: false, targets: [0] }       // ID column
     ],
     language: {
       emptyTable: "No university students found",
       zeroRecords: "No matching students found",
       info: "Showing _START_ to _END_ of _TOTAL_ students",
       infoEmpty: "Showing 0 to 0 of 0 students",
-      infoFiltered: "(filtered from _MAX_ total students)"
+      infoFiltered: "(filtered from _MAX_ total students)",
+      search: "Search students:",
+      lengthMenu: "Show _MENU_ students per page"
     }
   });
 

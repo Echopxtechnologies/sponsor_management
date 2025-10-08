@@ -177,12 +177,12 @@
                     </div>
                   </div>
 
-                  <div class="col-md-6">
+                   <div class="col-md-6">
                     <!-- Country dropdown + add (admin only can add new) -->
                     <div class="form-group">
                       <label for="country_id" class="control-label">Country</label>
-                      <?php if(isset($is_school_student) && $is_school_student): ?>
-                        <!-- Simple dropdown for school students -->
+                      <?php if(isset($is_university_student) && $is_university_student): ?>
+                        <!-- Simple dropdown for university students -->
                         <select name="country_id" id="country_id" class="form-control selectpicker" data-live-search="true" data-none-selected-text="Select Country">
                           <option value="">Select Country</option>
                           <?php if(!empty($countries)): foreach($countries as $c): ?>
@@ -190,8 +190,8 @@
                               $cid   = (int)($c['id'] ?? 0);
                               $cname = $c['name'] ?? $c['short_name'] ?? '';
                               $pcode = $c['phone_code'] ?? $c['calling_code'] ?? '';
-                              $selected = (isset($student) && (int)($student['country_id'] ?? 0) === $cid) ||
-                                         (isset($old['country_id']) && (int)$old['country_id'] === $cid);
+                            
+
                             ?>
                             <option value="<?php echo $cid; ?>"
                               data-phone-code="<?php echo html_escape($pcode); ?>"
@@ -205,20 +205,25 @@
                         <div class="country-select-wrapper">
                           <select name="country_id" id="country_id" class="form-control selectpicker" data-live-search="true" data-none-selected-text="Select Country">
                             <option value="">Select Country</option>
-                            <?php if(!empty($countries)): foreach($countries as $c): ?>
-                              <?php
-                                $cid   = (int)($c['id'] ?? 0);
-                                $cname = $c['name'] ?? $c['short_name'] ?? '';
-                                $pcode = $c['phone_code'] ?? $c['calling_code'] ?? '';
-                                $selected = (isset($student) && (int)($student['country_id'] ?? 0) === $cid) ||
-                                           (isset($old['country_id']) && (int)$old['country_id'] === $cid);
-                              ?>
-                              <option value="<?php echo $cid; ?>"
-                                data-phone-code="<?php echo html_escape($pcode); ?>"
-                                <?php echo $selected ? 'selected' : ''; ?>>
-                                <?php echo html_escape($cname); ?><?php echo $pcode!=='' ? ' ('.html_escape($pcode).')' : ''; ?>
-                              </option>
-                            <?php endforeach; endif; ?>
+    <?php 
+if(!empty($countries)): 
+  // Only use student data, not old POST data after save
+  $current_country_id = isset($student) ? (int)($student['country_id'] ?? 0) : 0;
+  
+  foreach($countries as $c): 
+    $cid = (int)($c['id'] ?? 0);
+    $cname = $c['name'] ?? $c['short_name'] ?? '';
+    $pcode = $c['phone_code'] ?? $c['calling_code'] ?? '';
+    
+    // Simple, clear selection
+    $selected = ($current_country_id === $cid);
+?>
+    <option value="<?php echo $cid; ?>"
+    data-phone-code="<?php echo html_escape($pcode); ?>"
+    <?php echo $selected ? 'selected' : ''; ?>>
+    <?php echo html_escape($cname); ?><?php echo $pcode!=='' ? ' ('.html_escape($pcode).')' : ''; ?>
+  </option>
+<?php endforeach; endif; ?>
                           </select>
                           <button type="button" class="btn btn-default btn-sm add-new-btn" data-toggle="modal" data-target="#addCountryModal" title="Add New Country">
                             <i class="fa fa-plus"></i>
@@ -1545,17 +1550,57 @@ if (typeof alert_float !== 'function') { window.alert_float = function(type, mes
     });
   }
 
-  $(function(){
-    // init selectpicker
-    setTimeout(function(){ if($.fn && $.fn.selectpicker){ $('.selectpicker').selectpicker('destroy').selectpicker(); } }, 100);
+// Initialize selectpicker properly
+$(function(){
+  // Init selectpicker with explicit refresh
+  setTimeout(function(){ 
+    if($.fn && $.fn.selectpicker){ 
+      $('.selectpicker').selectpicker({
+        style: 'btn-default',
+        liveSearch: true,
+        dropupAuto: false
+      });
+      
+      // Force the selectpicker to show the current database value on load
+      var currentCountry = $('#country_id').val();
+      if(currentCountry) {
+        $('#country_id').selectpicker('val', currentCountry);
+        $('#country_id').selectpicker('refresh');
+      }
+    } 
+  }, 100);
 
-    // phone code update
-    $('#country_id').on('change', function(){
-      var code = $(this).find('option:selected').data('phone-code') || '+94';
-      $('#phone-code-display').text(code);
-      recalcProfileCompletion();
-    });
-
+  // Handle country selection changes
+  $('#country_id').on('changed.bs.select', function(e, clickedIndex, isSelected, previousValue){
+    var $selected = $(this).find('option:selected');
+    var code = $selected.data('phone-code') || '+94';
+    var selectedValue = $(this).val();
+    
+    console.log('Country changed to:', selectedValue, 'Code:', code); // Debug
+    
+    // Update phone code display
+    $('#phone-code-display').text(code);
+    
+    // CRITICAL: Force selectpicker to visually update
+    $(this).selectpicker('val', selectedValue);
+    $(this).selectpicker('render');
+    
+    recalcProfileCompletion();
+  });
+  
+  // Also handle the native change event as backup
+  $('#country_id').on('change', function(){
+    var code = $(this).find('option:selected').data('phone-code') || '+94';
+    var selectedValue = $(this).val();
+    
+    $('#phone-code-display').text(code);
+    
+    // Force refresh
+    if($.fn.selectpicker) {
+      $(this).selectpicker('val', selectedValue);
+      $(this).selectpicker('refresh');
+    }
+  });
     // profile photo preview
     $('#profile_photo').on('change', function(){
       var f = this.files && this.files[0]; if(!f) return;

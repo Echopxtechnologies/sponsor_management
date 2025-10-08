@@ -61,12 +61,34 @@
                         <span class="help-block">Auto-updates from Payments.</span>
                       </div>
                     </div>
-                    <div class="col-md-4">
-                      <div class="form-group">
-                        <label>Currency</label>
-                        <input type="text" class="form-control" name="currency" value="<?php echo $txn ? html_escape($txn->currency) : 'INR'; ?>">
-                      </div>
-                    </div>
+                  <div class="col-md-4">
+  <div class="form-group">
+    <label>Currency <span class="text-danger">*</span></label>
+    <select name="currency" class="form-control selectpicker" required>
+      <?php
+        // Define available currencies
+        $currencies = [
+          'LKR' => 'Sri Lankan Rupees (LKR)',
+          'USD' => 'US Dollars (USD)',
+          'CAD' => 'Canadian Dollars (CAD)',
+          'GBP' => 'UK Pounds (GBP)',
+          'NZD' => 'New Zealand Dollars (NZD)'
+        ];
+        
+        // Get current currency (default to LKR)
+        $selected_currency = $txn ? strtoupper($txn->currency) : 'LKR';
+        
+        // Generate options
+        foreach ($currencies as $code => $label):
+      ?>
+        <option value="<?php echo $code; ?>" <?php echo ($selected_currency == $code) ? 'selected' : ''; ?>>
+          <?php echo $label; ?>
+        </option>
+      <?php endforeach; ?>
+    </select>
+    <small class="help-block">Currency will be stored as 3-letter code (e.g., LKR, USD)</small>
+  </div>
+</div>
                   </div>
 
                   <div class="form-group">
