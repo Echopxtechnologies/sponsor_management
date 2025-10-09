@@ -71,7 +71,7 @@ function check_student_dashboard_redirect() {
                          ->row();
 
     if ($is_sponsor && isset($is_sponsor->id) && $is_sponsor->id > 0) {
-        redirect(admin_url('student_sponsor_portal/sponsor_form/' . (int)$is_sponsor->id));
+        redirect(admin_url('student_sponsor_portal/sponsor_profile'));
         exit;
     }
     
@@ -192,7 +192,7 @@ function student_sponsor_portal_admin_menu()
     $CI->app_menu->add_sidebar_children_item('student-sponsor-portal', [
         'slug'     => 'ssp-dashboard',
         'name'     => 'Dashboard',
-        'href'     => admin_url('student_sponsor_portal'),
+        'href'     => admin_url('student_sponsor_portal/dashboard'),
         'position' => 1,
     ]);
 
@@ -202,6 +202,7 @@ function student_sponsor_portal_admin_menu()
         'href'     => admin_url('student_sponsor_portal/school_students'),
         'position' => 2,
     ]);
+    
 
     $CI->app_menu->add_sidebar_children_item('student-sponsor-portal', [
         'slug'     => 'ssp-university',

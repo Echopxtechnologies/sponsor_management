@@ -7359,9 +7359,8 @@ private function process_import_file($file_path, $file_ext)
         return ['success' => false, 'message' => 'Processing error: ' . $e->getMessage()];
     }
 }
-
 /**
- * Load Excel file data
+ * Load Excel file data - FIXED VERSION
  */
 private function load_excel_file($file_path)
 {
@@ -7387,7 +7386,15 @@ private function load_excel_file($file_path)
     
     $spreadsheet = \PhpOffice\PhpSpreadsheet\IOFactory::load($file_path);
     $worksheet = $spreadsheet->getActiveSheet();
-    return $worksheet->toArray(null, true, true, true);
+    
+    // CRITICAL FIX: Use numeric indices, not column letters
+    // FALSE = don't use column letters as keys
+    $rows = $worksheet->toArray(null, true, true, false);
+    
+    log_message('debug', 'Excel Import: Loaded ' . count($rows) . ' rows');
+    log_message('debug', 'Excel Import: First row (headers): ' . json_encode($rows[0] ?? []));
+    
+    return $rows;
 }
 
 /**
@@ -7950,4 +7957,756 @@ private function add_sponsor_export_summary_sheet($spreadsheet, $students, $spon
     $summarySheet->getColumnDimension('B')->setWidth(25);
 }
 
+
+// sposnor import function 
+/**
+ * Bulk import sponsors from Excel/CSV
+ */
+public function bulk_import_sponsors()
+{
+    if (!has_permission('student_sponsor_portal', '', 'create')) {
+        access_denied('student_sponsor_portal');
+    }
+
+    // Handle POST submission
+    if ($this->input->method() === 'post') {
+        log_message('debug', 'Sponsor Import: POST request received for bulk import');
+        
+        if (empty($_FILES['import_file']['name'])) {
+            log_message('error', 'Sponsor Import: No file uploaded');
+            set_alert('danger', 'Please select a file to import');
+            redirect(admin_url('student_sponsor_portal/bulk_import_sponsors'));
+            return;
+        }
+
+        $file_data = $_FILES['import_file'];
+        log_message('debug', 'Sponsor Import: File uploaded - ' . $file_data['name'] . ' (' . $file_data['size'] . ' bytes)');
+
+        // Validate file type - Accept both Excel and CSV
+        $file_ext = strtolower(pathinfo($file_data['name'], PATHINFO_EXTENSION));
+        $allowed_extensions = ['xlsx', 'xls', 'csv'];
+        
+        if (!in_array($file_ext, $allowed_extensions)) {
+            log_message('error', 'Sponsor Import: Invalid file type - ' . $file_ext);
+            set_alert('danger', 'Only Excel (.xlsx, .xls) and CSV files are supported.');
+            redirect(admin_url('student_sponsor_portal/bulk_import_sponsors'));
+            return;
+        }
+
+        // Check file size (max 20MB)
+        if ($file_data['size'] > 20 * 1024 * 1024) {
+            log_message('error', 'Sponsor Import: File too large - ' . $file_data['size'] . ' bytes');
+            set_alert('danger', 'File size exceeds 20MB limit');
+            redirect(admin_url('student_sponsor_portal/bulk_import_sponsors'));
+            return;
+        }
+
+        // Process the uploaded file
+        $temp_file = $file_data['tmp_name'];
+        
+        try {
+            log_message('debug', 'Sponsor Import: Starting to process file');
+            $result = $this->process_sponsor_import_file($temp_file, $file_ext);
+            
+            if ($result['success']) {
+                $message = "Sponsor import completed! ";
+                $message .= "Added: {$result['added']}, ";
+                $message .= "Updated: {$result['updated']}, ";
+                $message .= "Errors: {$result['errors']}";
+                
+                log_message('info', 'Sponsor Import: ' . $message);
+                
+                if (!empty($result['error_details'])) {
+                    $this->session->set_flashdata('import_errors', $result['error_details']);
+                }
+                
+                set_alert('success', $message);
+            } else {
+                log_message('error', 'Sponsor import failed: ' . $result['message']);
+                set_alert('danger', 'Import failed: ' . $result['message']);
+            }
+            
+        } catch (Exception $e) {
+            log_message('error', 'Sponsor Import Exception: ' . $e->getMessage());
+            set_alert('danger', 'Import failed: ' . $e->getMessage());
+        }
+        
+        redirect(admin_url('student_sponsor_portal/bulk_import_sponsors'));
+        return;
+    }
+    
+    // Show the form
+    $data['title'] = 'Bulk Import Sponsors';
+    $data['import_errors'] = $this->session->flashdata('import_errors');
+    $this->load->view('student_sponsor_portal/bulk_import_sponsors', $data);
+}
+
+/**
+ * Process sponsor import file (Excel or CSV)
+ */
+private function process_sponsor_import_file($file_path, $file_ext)
+{
+    log_message('debug', 'Sponsor Import: Processing file: ' . $file_path . ' (.' . $file_ext . ')');
+    
+    if (!file_exists($file_path) || !is_readable($file_path)) {
+        return ['success' => false, 'message' => 'Cannot read upload file'];
+    }
+    
+    $added = 0;
+    $updated = 0;
+    $errors = 0;
+    $error_details = [];
+    
+    try {
+        // Load file data
+        if (in_array($file_ext, ['xlsx', 'xls'])) {
+            $rows = $this->load_excel_file($file_path);
+        } else {
+            $rows = $this->load_csv_file($file_path);
+        }
+        
+        if (empty($rows)) {
+            return ['success' => false, 'message' => 'No data found in file'];
+        }
+        
+        // Get headers and create mapping
+        $headers = array_shift($rows);
+        if (empty($headers)) {
+            return ['success' => false, 'message' => 'No headers found in file'];
+        }
+        
+        $column_mapping = $this->create_sponsor_column_mapping($headers);
+        if (empty($column_mapping)) {
+            return ['success' => false, 'message' => 'No valid columns found. Please check your headers match the template.'];
+        }
+        
+        log_message('debug', 'Sponsor Import: Column mapping: ' . json_encode($column_mapping));
+        
+        $row_number = 1; // Start from 1 (header is row 0)
+        
+        // Process each data row
+        foreach ($rows as $row) {
+            $row_number++;
+            
+            try {
+                // Skip empty rows
+                if (empty(array_filter($row))) {
+                    continue;
+                }
+                
+                // Map the row data
+                $sponsor_data = $this->map_sponsor_row_data($row, $column_mapping);
+                
+                // Validate required fields
+                if (empty($sponsor_data['name'])) {
+                    $errors++;
+                    $error_details[] = "Row {$row_number}: Name is required";
+                    continue;
+                }
+                
+                // Check for existing sponsor by email
+                $existing_sponsor = $this->find_existing_sponsor($sponsor_data);
+                
+                if ($existing_sponsor) {
+                    // Update existing sponsor
+                    log_message('debug', "Sponsor Import: Row {$row_number}: Updating existing sponsor ID: " . $existing_sponsor['id']);
+                    
+                    $result = $this->sponsor_model->update($sponsor_data, $existing_sponsor['id']);
+                    
+                    if ($result) {
+                        $updated++;
+                    } else {
+                        $errors++;
+                        $error_details[] = "Row {$row_number}: Failed to update sponsor";
+                    }
+                } else {
+                    // Add new sponsor
+                    log_message('debug', "Sponsor Import: Row {$row_number}: Creating new sponsor");
+                    
+                    $result = $this->sponsor_model->add($sponsor_data);
+                    
+                    if ($result && !is_array($result)) {
+                        $added++;
+                        log_message('debug', "Sponsor Import: Row {$row_number}: Successfully added sponsor with ID: " . $result);
+                    } else {
+                        $errors++;
+                        $message = is_array($result) ? ($result['message'] ?? 'Unknown error') : 'Failed to add sponsor';
+                        $error_details[] = "Row {$row_number}: {$message}";
+                    }
+                }
+                
+            } catch (Exception $e) {
+                $errors++;
+                $error_details[] = "Row {$row_number}: " . $e->getMessage();
+                log_message('error', "Sponsor Import: Row {$row_number} exception: " . $e->getMessage());
+            }
+        }
+        
+        log_message('info', "Sponsor import completed. Added: {$added}, Updated: {$updated}, Errors: {$errors}");
+        
+        return [
+            'success' => true,
+            'added' => $added,
+            'updated' => $updated,
+            'errors' => $errors,
+            'error_details' => $error_details
+        ];
+        
+    } catch (Exception $e) {
+        log_message('error', 'Sponsor import processing error: ' . $e->getMessage());
+        return ['success' => false, 'message' => 'Processing error: ' . $e->getMessage()];
+    }
+}
+/**
+ * Create column mapping for sponsors - HANDLES BOTH IDs AND NAMES
+ */
+private function create_sponsor_column_mapping($headers)
+{
+    $mapping = [];
+    
+    // Complete field mappings
+    $field_mappings = [
+        // Basic Information
+        'name' => ['name', 'sponsor_name', 'full_name', 'sponsor name', 'full name', 'sponsor name'],
+        'email' => ['email', 'email_address', 'email address', 'sponsor_email', 'sponsor email'],
+        'contact_no' => ['phone', 'contact_no', 'contact no', 'phone_number', 'phone number', 'contact_number', 'contact number', 'mobile', 'contact', 'phone no'],
+        'address' => ['address', 'street_address', 'street address', 'home_address', 'home address'],
+        'city' => ['city', 'town', 'location'],
+        'zip' => ['postal_code', 'postal code', 'zip', 'zip_code', 'zip code', 'postcode', 'zipcode'],
+        
+        // Sponsor-specific fields
+        'sponsor_type' => ['sponsor_type', 'sponsor type', 'type', 'category', 'sponsor category'],
+        'sponsor_occupation' => ['sponsor_occupation', 'sponsor occupation', 'occupation', 'job', 'profession', 'work', 'employment'],
+        
+        // Payment/Frequency
+        'sponsor_frequency' => [
+            'sponsor_frequency', 'sponsor frequency', 'frequency', 'payment_frequency', 'payment frequency', 
+            'donation frequency', 'donation_frequency', 'sponsorship frequency', 'sponsorship_frequency',
+            'payment_type', 'payment type'
+        ],
+        
+        // Bank Information
+        'sponsor_bank_branch_info' => ['branch_info', 'branch info', 'branch_information', 'branch information', 'branch details', 'branch', 'sponsor_bank_branch_info', 'bank branch info', 'bank branch'],
+        'sponsor_bank_branch_number' => ['branch_number', 'branch number', 'branch_code', 'branch code', 'branch no', 'sponsor_bank_branch_number', 'bank branch number', 'bank branch no'],
+        'sponsor_bank_account_no' => ['bank_account_number', 'bank account number', 'account_number', 'account number', 'bank_account', 'bank account', 'account no', 'account_no', 'sponsor_bank_account_no'],
+        
+        // Membership/Sponsorship Dates
+        'membership_start_date' => [
+            'membership_start_date', 'membership start date', 'membership_start', 'membership start', 'start_date', 'start date',
+            'sponsorship_start_date', 'sponsorship start date', 'sponsorship_start', 'sponsorship start', 'startdate'
+        ],
+        'membership_end_date' => [
+            'membership_end_date', 'membership end date', 'membership_end', 'membership end', 'end_date', 'end date',
+            'sponsorship_end_date', 'sponsorship end date', 'sponsorship_end', 'sponsorship end', 'enddate'
+        ],
+        
+        // Country - can be ID or Name
+        'country' => ['country', 'country_name', 'country name', 'country_id', 'country id', 'countryid'],
+        
+        // Bank - can be ID or Name
+        'bank' => ['bank', 'bank_name', 'bank name', 'bank_id', 'bank id', 'bankid'],
+    ];
+    
+    foreach ($headers as $index => $header) {
+        // Normalize header: lowercase, replace special chars with spaces
+        $clean_header = strtolower(trim($header));
+        $clean_header = str_replace(['-', '_'], ' ', $clean_header);
+        $clean_header = preg_replace('/\s+/', ' ', $clean_header); // normalize multiple spaces
+        
+        foreach ($field_mappings as $field => $possible_names) {
+            // Normalize possible names for comparison
+            $normalized_names = array_map(function($name) {
+                $n = strtolower(trim($name));
+                $n = str_replace(['-', '_'], ' ', $n);
+                return preg_replace('/\s+/', ' ', $n);
+            }, $possible_names);
+            
+            if (in_array($clean_header, $normalized_names)) {
+                $mapping[$field] = $index;
+                log_message('debug', "Sponsor Import: Mapped column '{$header}' (index {$index}) to field '{$field}'");
+                break;
+            }
+        }
+    }
+    
+    log_message('debug', 'Sponsor Import: Final column mapping: ' . json_encode($mapping));
+    
+    return $mapping;
+}
+/**
+ * Map row data for sponsors - HANDLES BOTH IDs AND NAMES
+ */
+private function map_sponsor_row_data($row, $mapping)
+{
+    $data = [];
+    
+    foreach ($mapping as $field => $column_index) {
+        $value = isset($row[$column_index]) ? trim($row[$column_index]) : '';
+        
+        // Handle special field transformations
+        switch ($field) {
+            case 'membership_start_date':
+            case 'membership_end_date':
+                if ($value && $value !== '') {
+                    try {
+                        // Handle Excel date serial numbers
+                        if (is_numeric($value) && $value > 59 && class_exists('\PhpOffice\PhpSpreadsheet\Shared\Date')) {
+                            $date = \PhpOffice\PhpSpreadsheet\Shared\Date::excelToDateTimeObject($value);
+                            $data[$field] = $date->format('Y-m-d');
+                        } else {
+                            $date = new DateTime($value);
+                            $data[$field] = $date->format('Y-m-d');
+                        }
+                    } catch (Exception $e) {
+                        $data[$field] = null;
+                        log_message('debug', "Sponsor Import: Invalid date format for field {$field}: {$value}");
+                    }
+                } else {
+                    $data[$field] = null;
+                }
+                break;
+                
+            case 'sponsor_frequency':
+                // Normalize frequency values
+                if ($value && $value !== '') {
+                    $normalized = strtolower(trim(str_replace(['-', '_', ' '], '', $value)));
+                    
+                    // Map variations to standard values
+                    $frequency_map = [
+                        'onetime' => 'one-time',
+                        'once' => 'one-time',
+                        'single' => 'one-time',
+                        'monthly' => 'monthly',
+                        'month' => 'monthly',
+                        'quarterly' => 'quarterly',
+                        'quarter' => 'quarterly',
+                        '3months' => 'quarterly',
+                        'halfyearly' => 'half-yearly',
+                        'halfyear' => 'half-yearly',
+                        'biannual' => 'half-yearly',
+                        '6months' => 'half-yearly',
+                        'yearly' => 'yearly',
+                        'annual' => 'yearly',
+                        'annually' => 'yearly',
+                        'year' => 'yearly',
+                    ];
+                    
+                    $data['sponsor_frequency'] = $frequency_map[$normalized] ?? $value;
+                } else {
+                    $data['sponsor_frequency'] = null;
+                }
+                break;
+                
+            case 'sponsor_type':
+                // Normalize sponsor type
+                if ($value && $value !== '') {
+                    $normalized = strtolower(trim($value));
+                    if (in_array($normalized, ['individual', 'company', 'organization', 'corporate'])) {
+                        // Map variations
+                        if ($normalized === 'organization' || $normalized === 'corporate') {
+                            $data['sponsor_type'] = 'company';
+                        } else {
+                            $data['sponsor_type'] = $normalized;
+                        }
+                    } else {
+                        $data['sponsor_type'] = 'individual'; // Default
+                    }
+                } else {
+                    $data['sponsor_type'] = 'individual'; // Default
+                }
+                break;
+                
+            case 'country':
+                // Handle both ID and Name
+                if ($value && $value !== '') {
+                    if (is_numeric($value)) {
+                        // It's an ID - use directly
+                        $data['country_id'] = (int)$value;
+                        log_message('debug', "Sponsor Import: Using country ID: {$value}");
+                    } else {
+                        // It's a name - store for lookup
+                        $data['country_name'] = $value;
+                        log_message('debug', "Sponsor Import: Will lookup country: {$value}");
+                    }
+                }
+                break;
+                
+            case 'bank':
+                // Handle both ID and Name
+                if ($value && $value !== '') {
+                    if (is_numeric($value)) {
+                        // It's an ID - use directly
+                        $data['bank_id'] = (int)$value;
+                        log_message('debug', "Sponsor Import: Using bank ID: {$value}");
+                    } else {
+                        // It's a name - store for lookup
+                        $data['bank_name'] = $value;
+                        log_message('debug', "Sponsor Import: Will lookup bank: {$value}");
+                    }
+                }
+                break;
+                
+            // All other fields - direct mapping
+            default:
+                $data[$field] = $value !== '' ? $value : null;
+                break;
+        }
+    }
+    
+    // Handle foreign key lookups ONLY if we have names (not IDs)
+    if (!empty($data['country_name']) && empty($data['country_id'])) {
+        $country_id = $this->get_or_create_country_id($data['country_name']);
+        if ($country_id) {
+            $data['country_id'] = $country_id;
+            log_message('debug', "Sponsor Import: Looked up country '{$data['country_name']}' -> ID: {$country_id}");
+        }
+        unset($data['country_name']);
+    } elseif (isset($data['country_name'])) {
+        unset($data['country_name']);
+    }
+    
+    if (!empty($data['bank_name']) && empty($data['bank_id'])) {
+        $bank_id = $this->get_or_create_bank_id($data['bank_name']);
+        if ($bank_id) {
+            $data['bank_id'] = $bank_id;
+            log_message('debug', "Sponsor Import: Looked up bank '{$data['bank_name']}' -> ID: {$bank_id}");
+        }
+        unset($data['bank_name']);
+    } elseif (isset($data['bank_name'])) {
+        unset($data['bank_name']);
+    }
+    
+    // Set entity_type (required field)
+    $data['entity_type'] = 'sponsor';
+    
+    log_message('debug', 'Sponsor Import: Final mapped row data: ' . json_encode($data));
+    
+    return $data;
+}
+/**
+ * Find existing sponsor by email
+ */
+private function find_existing_sponsor($sponsor_data)
+{
+    // Check by email first
+    if (!empty($sponsor_data['email'])) {
+        $sponsor = $this->db->where('email', $sponsor_data['email'])
+                           ->get(db_prefix() . 'sponsor_records')
+                           ->row_array();
+        if ($sponsor) {
+            log_message('debug', 'Sponsor Import: Found existing sponsor by email: ' . $sponsor_data['email']);
+            return $sponsor;
+        }
+    }
+    
+    // Then check by bank account number if provided (unique field)
+    if (!empty($sponsor_data['sponsor_bank_account_no'])) {
+        $sponsor = $this->db->where('sponsor_bank_account_no', $sponsor_data['sponsor_bank_account_no'])
+                           ->get(db_prefix() . 'sponsor_records')
+                           ->row_array();
+        if ($sponsor) {
+            log_message('debug', 'Sponsor Import: Found existing sponsor by bank account: ' . $sponsor_data['sponsor_bank_account_no']);
+            return $sponsor;
+        }
+    }
+    
+    return null;
+}
+/**
+ * Download Excel template for sponsors
+ */
+public function download_sponsors_template()
+{
+    if (!has_permission('student_sponsor_portal', '', 'view')) {
+        access_denied('student_sponsor_portal');
+    }
+    
+    // Check if PHPSpreadsheet is available
+    $autoload_paths = [
+        FCPATH . 'vendor/autoload.php',
+        APPPATH . 'third_party/vendor/autoload.php',
+        APPPATH . 'libraries/vendor/autoload.php'
+    ];
+    
+    $phpspreadsheet_loaded = false;
+    foreach ($autoload_paths as $path) {
+        if (file_exists($path)) {
+            require_once($path);
+            $phpspreadsheet_loaded = true;
+            break;
+        }
+    }
+    
+    if (!$phpspreadsheet_loaded || !class_exists('\PhpOffice\PhpSpreadsheet\Spreadsheet')) {
+        // Fallback to CSV template
+        $this->download_sponsors_csv_template();
+        return;
+    }
+    
+    $spreadsheet = new \PhpOffice\PhpSpreadsheet\Spreadsheet();
+    $sheet = $spreadsheet->getActiveSheet();
+    
+    // Set headers - Aligned with database columns (removed product_id, school_internal_ids, university_internal_ids)
+    $headers = [
+    'Name',                     // name
+    'Sponsor Type',             // sponsor_type (individual/company)
+    'Occupation',               // sponsor_occupation
+    'Phone Number',             // contact_no
+    'Email',                    // email
+    'Address',                  // address
+    'City',                     // city
+    'ZIP Code',                 // zip
+    'Country',                  // country_name (will lookup country_id)
+    'Bank',                     // bank_name (will lookup bank_id)
+    'Bank Branch Info',         // sponsor_bank_branch_info
+    'Bank Branch Number',       // sponsor_bank_branch_number
+    'Bank Account Number',      // sponsor_bank_account_no
+    'Payment Frequency',        // sponsor_frequency
+    'Sponsorship Start Date',   // membership_start_date
+    'Sponsorship End Date'    // membership_end_date
+
+    ];
+    
+    $sheet->fromArray($headers, null, 'A1');
+    
+    // Add sample data - Professional Sri Lankan example
+    $sampleData = [
+        'Pradeep Fernando',                              // Name
+        'individual',                                    // sponsor_type (individual or company)
+        'Senior Software Engineer',                      // sponsor_occupation
+        '+94771234567',                                  // contact_no
+        'pradeep.fernando@example.lk',                  // email
+        'No. 245/3, Galle Road, Colombo 03',           // address
+        'Colombo',                                       // city
+        '00300',                                         // zip
+        '1',                                             // country_id (Sri Lanka)
+        '1',                                             // bank_id (Bank of Ceylon, Commercial Bank, etc.)
+        'Kollupitiya Branch',                           // sponsor_bank_branch_info
+        '003',                                           // sponsor_bank_branch_number
+        '8012345678',                                    // sponsor_bank_account_no
+        'monthly',                                       // sponsor_frequency (monthly, yearly, quarterly, one-time)
+        '2025-01-01',                                   // membership_start_date (YYYY-MM-DD)
+        '2025-12-31'                                    // membership_end_date (YYYY-MM-DD)
+    ];
+    
+    $sheet->fromArray($sampleData, null, 'A2');
+    
+    // Add second sample for company type
+    $sampleData2 = [
+        'ABC Holdings (Pvt) Ltd',                       // Name
+        'company',                                       // sponsor_type
+        'Corporate Social Responsibility',               // sponsor_occupation
+        '+94112567890',                                  // contact_no
+        'csr@abcholdings.lk',                           // email
+        'No. 100, Bauddhaloka Mawatha, Colombo 04',   // address
+        'Colombo',                                       // city
+        '00400',                                         // zip
+        '1',                                             // country_id
+        '2',                                             // bank_id
+        'Bambalapitiya Branch',                         // sponsor_bank_branch_info
+        '004',                                           // sponsor_bank_branch_number
+        '1234567890',                                    // sponsor_bank_account_no
+        'yearly',                                        // sponsor_frequency
+        '2025-01-01',                                   // membership_start_date
+        '2026-12-31'                                    // membership_end_date
+    ];
+    
+    $sheet->fromArray($sampleData2, null, 'A3');
+    
+    // Style the header
+    $headerStyle = [
+        'font' => ['bold' => true, 'size' => 11, 'color' => ['rgb' => 'FFFFFF']],
+        'fill' => [
+            'fillType' => \PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID,
+            'color' => ['rgb' => '4472C4']
+        ],
+        'borders' => ['allBorders' => ['borderStyle' => \PhpOffice\PhpSpreadsheet\Style\Border::BORDER_THIN]],
+        'alignment' => ['horizontal' => \PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_CENTER]
+    ];
+    
+    $sheet->getStyle('A1:' . $sheet->getHighestColumn() . '1')->applyFromArray($headerStyle);
+    
+    // Auto-size columns
+    foreach (range('A', $sheet->getHighestColumn()) as $col) {
+        $sheet->getColumnDimension($col)->setAutoSize(true);
+    }
+    
+    // Add instructions sheet
+    $instructionsSheet = $spreadsheet->createSheet();
+    $instructionsSheet->setTitle('Instructions');
+    
+    $instructions = [
+        ['Sponsors Import Template - Instructions'],
+        [''],
+        ['REQUIRED FIELDS:'],
+        ['- Name: Sponsor\'s full name or organization name (required)'],
+        ['- Sponsor Type: Must be either "individual" or "company" (required)'],
+        [''],
+        ['OPTIONAL FIELDS:'],
+        ['- Sponsor Occupation: Sponsor\'s occupation, profession, or department (e.g., Software Engineer, CSR Manager)'],
+        ['- Contact Number: Phone/mobile number with country code (e.g., +94771234567)'],
+        ['- Email: Sponsor\'s email address (recommended for communication)'],
+        ['- Address: Complete physical address with street number and name'],
+        ['- City: City/town name (e.g., Colombo, Kandy, Galle)'],
+        ['- ZIP Code: Postal/ZIP code (e.g., 00300, 00400)'],
+        ['- Country ID: Numeric ID of the country (check your countries table, Sri Lanka is usually 1)'],
+        ['- Bank ID: Numeric ID of the bank (check your banks table)'],
+        ['- Bank Branch Info: Bank branch name or location (e.g., Kollupitiya Branch, Kandy City Branch)'],
+        ['- Bank Branch Number: Bank branch code/number (e.g., 003, 004)'],
+        ['- Bank Account Number: Sponsor\'s bank account number'],
+        ['- Sponsor Frequency: Donation frequency - use: monthly, yearly, quarterly, or one-time'],
+        ['- Membership Start Date: Start date in YYYY-MM-DD format (e.g., 2025-01-15)'],
+        ['- Membership End Date: End date in YYYY-MM-DD format (e.g., 2026-01-15)'],
+        [''],
+        ['FIELD VALIDATIONS:'],
+        ['- Sponsor Type: Only "individual" or "company" are valid values (lowercase)'],
+        ['- Country ID & Bank ID: Must match existing IDs in your database'],
+        ['- Dates: Must be in YYYY-MM-DD format (year-month-day)'],
+        ['- IDs: Must be numeric values only'],
+        ['- Contact Number: Include country code (e.g., +94 for Sri Lanka)'],
+        [''],
+        ['COMMON SRI LANKAN BANKS:'],
+        ['- Bank of Ceylon (BOC)'],
+        ['- People\'s Bank'],
+        ['- Commercial Bank of Ceylon'],
+        ['- Sampath Bank'],
+        ['- Hatton National Bank (HNB)'],
+        ['- Nations Trust Bank (NTB)'],
+        ['- DFCC Bank'],
+        ['- Seylan Bank'],
+        ['(Verify Bank IDs from your system admin panel)'],
+        [''],
+        ['IMPORT BEHAVIOR:'],
+        ['- Sponsors with existing email will be updated (if email is unique in your system)'],
+        ['- Sponsors with existing bank account number will be updated (if unique in your system)'],
+        ['- Remove both sample data rows (rows 2 and 3) before importing your actual data'],
+        [''],
+        ['TIPS & BEST PRACTICES:'],
+        ['- Maximum recommended file size: 20MB'],
+        ['- Verify Country IDs and Bank IDs from your system before importing'],
+        ['- Test with 1-2 records first before bulk import'],
+        ['- Keep a backup of your existing sponsor data before importing'],
+        ['- For company sponsors, put department/role in Sponsor Occupation field'],
+        ['- Use consistent date format throughout (YYYY-MM-DD)'],
+        ['- Ensure email addresses are unique to avoid conflicts'],
+        ['- Bank account numbers should also be unique per sponsor']
+    ];
+    
+    $instructionsSheet->fromArray($instructions, null, 'A1');
+    $instructionsSheet->getColumnDimension('A')->setWidth(80);
+    
+    // Style instructions header
+    $instructionsSheet->getStyle('A1')->applyFromArray([
+        'font' => ['bold' => true, 'size' => 14, 'color' => ['rgb' => '1F4E78']],
+        'alignment' => ['horizontal' => \PhpOffice\PhpSpreadsheet\Style\Alignment::HORIZONTAL_LEFT]
+    ]);
+    
+    // Highlight section headers in instructions
+    $sectionRows = [3, 6, 22, 30, 39, 45];
+    foreach ($sectionRows as $row) {
+        $instructionsSheet->getStyle('A' . $row)->applyFromArray([
+            'font' => ['bold' => true, 'size' => 11, 'color' => ['rgb' => '2E5C8A']]
+        ]);
+    }
+    
+    // Set active sheet back to template
+    $spreadsheet->setActiveSheetIndex(0);
+    
+    $filename = 'sponsors_import_template_' . date('Y-m-d') . '.xlsx';
+    
+    header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    header('Content-Disposition: attachment; filename="' . $filename . '"');
+    header('Cache-Control: max-age=0');
+    
+    $writer = new \PhpOffice\PhpSpreadsheet\Writer\Xlsx($spreadsheet);
+    $writer->save('php://output');
+    exit;
+}
+
+/**
+ * Fallback CSV template download for sponsors
+ */
+private function download_sponsors_csv_template()
+{
+    $filename = 'sponsors_import_template_' . date('Y-m-d') . '.csv';
+    
+    header('Content-Type: text/csv; charset=utf-8');
+    header('Content-Disposition: attachment; filename="' . $filename . '"');
+    header('Cache-Control: max-age=0');
+    
+    $output = fopen('php://output', 'w');
+    
+    // Add BOM for UTF-8
+    fprintf($output, chr(0xEF).chr(0xBB).chr(0xBF));
+    
+    // Headers - Aligned with database columns (removed product_id, school_internal_ids, university_internal_ids)
+    $headers = [
+    'Name',                     // name
+    'Sponsor Type',             // sponsor_type (individual/company)
+    'Occupation',               // sponsor_occupation
+    'Phone Number',             // contact_no
+    'Email',                    // email
+    'Address',                  // address
+    'City',                     // city
+    'ZIP Code',                 // zip
+    'Country',                  // country_name (will lookup country_id)
+    'Bank',                     // bank_name (will lookup bank_id)
+    'Bank Branch Info',         // sponsor_bank_branch_info
+    'Bank Branch Number',       // sponsor_bank_branch_number
+    'Bank Account Number',      // sponsor_bank_account_no
+    'Payment Frequency',        // sponsor_frequency
+    'Sponsorship Start Date',   // membership_start_date
+    'Sponsorship End Date'     // membership_end_date
+
+    ];
+    
+    fputcsv($output, $headers);
+    
+    // Sample data 1 - Individual sponsor (Professional Sri Lankan example)
+    $sample1 = [
+        'Pradeep Fernando',                              // Name
+        'individual',                                    // sponsor_type
+        'Senior Software Engineer',                      // sponsor_occupation
+        '+94771234567',                                  // contact_no
+        'pradeep.fernando@example.lk',                  // email
+        'No. 245/3, Galle Road, Colombo 03',           // address
+        'Colombo',                                       // city
+        '00300',                                         // zip
+        '1',                                             // country_id
+        '1',                                             // bank_id
+        'Kollupitiya Branch',                           // sponsor_bank_branch_info
+        '003',                                           // sponsor_bank_branch_number
+        '8012345678',                                    // sponsor_bank_account_no
+        'monthly',                                       // sponsor_frequency
+        '2025-01-01',                                   // membership_start_date
+        '2025-12-31'                                    // membership_end_date
+    ];
+    
+    fputcsv($output, $sample1);
+    
+    // Sample data 2 - Company sponsor
+    $sample2 = [
+        'ABC Holdings (Pvt) Ltd',                       // Name
+        'company',                                       // sponsor_type
+        'Corporate Social Responsibility',               // sponsor_occupation
+        '+94112567890',                                  // contact_no
+        'csr@abcholdings.lk',                           // email
+        'No. 100, Bauddhaloka Mawatha, Colombo 04',   // address
+        'Colombo',                                       // city
+        '00400',                                         // zip
+        '1',                                             // country_id
+        '2',                                             // bank_id
+        'Bambalapitiya Branch',                         // sponsor_bank_branch_info
+        '004',                                           // sponsor_bank_branch_number
+        '1234567890',                                    // sponsor_bank_account_no
+        'yearly',                                        // sponsor_frequency
+        '2025-01-01',                                   // membership_start_date
+        '2026-12-31'                                    // membership_end_date
+    ];
+    
+    fputcsv($output, $sample2);
+    
+    fclose($output);
+    exit;
+}
 }

@@ -9,7 +9,7 @@
 
             <div class="row m-b-10">
               <div class="col-md-8">
-                <h4 class="customer-profile-group-heading">
+                <h4 class="customer-profile-group-heading" style="margin-top:54px; margin-left:14px;">
                   <i class="fa fa-credit-card"></i> Sponsor Payments
                 </h4>
               </div>
@@ -21,7 +21,7 @@
             </div>
 
             <!-- Filters (Date range + Search only) -->
-            <form method="get" class="m-b-20">
+            <form method="get" class="m-b-20" style="margin-top:35px;">
               <div class="row">
                 <div class="col-md-2">
                   <label>From</label>

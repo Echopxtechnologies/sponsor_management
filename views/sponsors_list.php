@@ -15,6 +15,15 @@
                             </div>
                             <div class="col-md-6">
                                 <div class="text-right" style="margin-top:15px;">
+
+                                 <!-- Import Button -->
+        <div class="btn-group" role="group" style="margin-right: 5px;">
+            <a href="<?php echo admin_url('student_sponsor_portal/bulk_import_sponsors'); ?>" 
+               class="btn btn-warning btn-sm"
+               title="Import sponsors from Excel/CSV file">
+                <i class="fa fa-upload"></i> Import
+            </a>
+        </div>
                                     <!-- Export Button -->
                                     <div class="btn-group" role="group" style="margin-right: 5px;">
                                         <a href="<?php echo admin_url('student_sponsor_portal/export_sponsors'); ?>" 
