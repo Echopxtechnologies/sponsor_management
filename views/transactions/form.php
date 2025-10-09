@@ -72,7 +72,7 @@
           'USD' => 'US Dollars (USD)',
           'CAD' => 'Canadian Dollars (CAD)',
           'GBP' => 'UK Pounds (GBP)',
-          'NZD' => 'New Zealand Dollars (NZD)'
+          'AUD' => 'Australian Dollars (AUD)'
         ];
         
         // Get current currency (default to LKR)

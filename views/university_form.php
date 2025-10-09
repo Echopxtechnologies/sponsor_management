@@ -8,7 +8,7 @@
           <div class="panel-body university-student-form-wrapper">
             <!-- Header -->
             <div class="row">
-              <div class="col-md-8">
+              <div class="col-md-8" style="margin-top:45px;">
                 <h4 class="customer-profile-group-heading">
                   <i class="fa fa-university"></i>
                   <?php if(isset($is_university_student) && $is_university_student): ?>
@@ -69,13 +69,7 @@
               foreach($all_fields as $field) { if (!empty($student[$field])) $completed++; }
               $completion = round(($completed / count($all_fields)) * 100);
               ?>
-              <div class="alert alert-info" id="profile-completion-wrap">
-                <i class="fa fa-info-circle"></i>
-                Profile Completion: <strong id="profile-completion-value"><?php echo $completion; ?>%</strong>
-                <div class="progress" style="margin-top:5px;">
-                  <div class="progress-bar" id="profile-completion-bar" style="width:<?php echo $completion; ?>%"></div>
-                </div>
-              </div>
+              
             <?php endif; ?>
 
             <!-- Tab Navigation -->
@@ -162,7 +156,7 @@
                             echo html_escape($phone_code);
                           ?>
                         </div>
-                        <input type="text" name="phone" id="phone" class="form-control"
+                        <input type="number" name="phone" id="phone" class="form-control"
                           value="<?php echo isset($student) ? html_escape($student['contact_no'] ?? '') : (isset($old['phone']) ? html_escape($old['phone']) : ''); ?>" 
                           placeholder="Enter phone number">
                       </div>
@@ -254,7 +248,7 @@
                       <div class="col-md-6">
                         <div class="form-group">
                           <label for="city" class="control-label">City / District</label>
-                          <input type="text" name="city" id="city" class="form-control"
+                          <input type="text" pattern="[A-Za-z]+" name="city" id="city" class="form-control"
                             value="<?php echo isset($student) ? html_escape($student['city'] ?? '') : (isset($old['city']) ? html_escape($old['city']) : ''); ?>" 
                             placeholder="City / District">
                         </div>
@@ -262,7 +256,7 @@
                       <div class="col-md-6">
                         <div class="form-group">
                           <label for="postal_code" class="control-label">Postal Code</label>
-                          <input type="text" name="postal_code" id="postal_code" class="form-control"
+                          <input type="number" name="postal_code" id="postal_code" class="form-control"
                             value="<?php echo isset($student) ? html_escape($student['zip'] ?? '') : (isset($old['postal_code']) ? html_escape($old['postal_code']) : ''); ?>" 
                             placeholder="Postal code">
                         </div>
@@ -501,7 +495,7 @@
                     </div>
                     <div class="form-group">
                       <label for="introduced_phone" class="control-label">Introducer's Phone</label>
-                      <input type="text" name="introduced_phone" id="introduced_phone" class="form-control"
+                      <input type="number" name="introduced_phone" id="introduced_phone" class="form-control"
                         value="<?php echo isset($student) ? html_escape($student['university_introducedph'] ?? '') : (isset($old['introduced_phone']) ? html_escape($old['introduced_phone']) : ''); ?>" 
                         placeholder="Contact number">
                     </div>
@@ -539,7 +533,7 @@
 
                     <div class="form-group">
                       <label for="bank_account_number" class="control-label">Bank Account Number</label>
-                      <input type="text" name="bank_account_number" id="bank_account_number" class="form-control"
+                      <input type="number" name="bank_account_number" id="bank_account_number" class="form-control"
                         value="<?php echo isset($student) ? html_escape($student['university_bank_account_no'] ?? '') : (isset($old['bank_account_number']) ? html_escape($old['bank_account_number']) : ''); ?>" 
                         placeholder="Account number">
                     </div>
@@ -548,7 +542,7 @@
                   <div class="col-md-6">
                     <div class="form-group">
                       <label for="bank_branch_number" class="control-label">Bank Branch Number</label>
-                      <input type="text" name="bank_branch_number" id="bank_branch_number" class="form-control"
+                      <input type="number" name="bank_branch_number" id="bank_branch_number" class="form-control"
                         value="<?php echo isset($student) ? html_escape($student['university_bank_branch_number'] ?? '') : (isset($old['bank_branch_number']) ? html_escape($old['bank_branch_number']) : ''); ?>" 
                         placeholder="Branch code/number">
                     </div>

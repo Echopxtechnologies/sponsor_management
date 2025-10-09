@@ -228,9 +228,9 @@
                             </option>
                             <?php endforeach; ?>
                           </select>
-                          <button type="button" class="btn btn-default btn-sm add-new-btn" id="btn-add-bank" title="Add Bank">
-                            <i class="fa fa-plus"></i>
-                          </button>
+<button type="button" class="btn btn-default btn-sm add-new-btn" data-toggle="modal" data-target="#addBankModal" title="Add Bank">
+  <i class="fa fa-plus"></i>
+</button>
                         </div>
                       <?php endif; ?>
                     </div>
@@ -679,32 +679,24 @@
     </div>
   </div>
 </div>
-
 <!-- Add Bank Modal -->
-<div class="modal fade" id="modalAddBank" tabindex="-1" role="dialog" aria-labelledby="addBankLbl">
-  <div class="modal-dialog" role="document">
+<div class="modal fade" id="addBankModal" tabindex="-1" role="dialog">
+  <div class="modal-dialog modal-sm" role="document">
     <div class="modal-content">
       <div class="modal-header">
-        <button type="button" class="close" data-dismiss="modal"><span>&times;</span></button>
-        <h4 class="modal-title" id="addBankLbl"><i class="fa fa-bank"></i> Add Bank</h4>
+        <button type="button" class="close" data-dismiss="modal">&times;</button>
+        <h4 class="modal-title">Add New Bank</h4>
       </div>
       <div class="modal-body">
         <div class="form-group">
-          <label>Bank Name <span class="text-danger">*</span></label>
-          <input type="text" class="form-control" id="nb_name">
+          <label for="modal_bank_name">Bank Name *</label>
+          <input type="text" id="modal_bank_name" class="form-control" required placeholder="Enter bank name">
         </div>
-        <div class="form-group">
-          <label>Branch</label>
-          <input type="text" class="form-control" id="nb_branch">
-        </div>
-        <div class="form-group">
-          <label>IFSC / Code</label>
-          <input type="text" class="form-control" id="nb_ifsc">
-        </div>
+        <small class="text-muted">This will be created instantly.</small>
       </div>
       <div class="modal-footer">
-        <button class="btn btn-default" data-dismiss="modal">Cancel</button>
-        <button class="btn btn-primary" id="nb_save"><i class="fa fa-check"></i> Save</button>
+        <button type="button" class="btn btn-default" data-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-primary" id="btnAddBank" onclick="addBank(); return false;">Add Bank</button>
       </div>
     </div>
   </div>
@@ -1457,5 +1449,130 @@ if (typeof alert_float !== 'function') {
     console.error('❌ Error in diagnostic code:', e.message);
   }
 })();
+
+
+
+/**
+ * Add Bank - Standalone function for modal
+ * Place this OUTSIDE the main jQuery closure
+ */
+function addBank() {
+  console.log('🏦 addBank() called');
+  
+  var $btn = $('#btnAddBank');
+  var bankName = $('#modal_bank_name').val();
+  
+  // Validate
+  if (!bankName || bankName.trim() === '') {
+    alert('Please enter a bank name');
+    $('#modal_bank_name').focus();
+    return false;
+  }
+  
+  bankName = bankName.trim();
+  console.log('Adding bank:', bankName);
+  
+  // Disable button
+  $btn.prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> Adding...');
+  
+  // Prepare data
+  var postData = {
+    name: bankName
+  };
+  
+  // Add CSRF token if available
+  if (typeof csrfData !== 'undefined' && csrfData.token_name && csrfData.hash) {
+    postData[csrfData.token_name] = csrfData.hash;
+  }
+  
+  // AJAX request
+  $.ajax({
+    url: '<?php echo admin_url("student_sponsor_portal/add_bank"); ?>',
+    type: 'POST',
+    data: postData,
+    dataType: 'json',
+    success: function(response) {
+      console.log('✅ Bank add response:', response);
+      
+      // Update CSRF token if provided
+      if (typeof csrfData !== 'undefined' && response[csrfData.token_name]) {
+        csrfData.hash = response[csrfData.token_name];
+      }
+      
+      if (response && response.success) {
+        // Get the new bank ID and name
+        var newBankId = response.id || response.bank_id || '';
+        var newBankName = response.name || response.bank_name || bankName;
+        
+        console.log('New bank created:', {id: newBankId, name: newBankName});
+        
+        // Add to dropdown
+        var $bankSelect = $('#bank_id');
+        var newOption = $('<option></option>')
+          .attr('value', newBankId)
+          .text(newBankName)
+          .prop('selected', true);
+        
+        $bankSelect.append(newOption);
+        
+        // Refresh selectpicker if available
+        if (typeof $.fn.selectpicker !== 'undefined') {
+          $bankSelect.selectpicker('refresh');
+          $bankSelect.selectpicker('val', newBankId);
+        }
+        
+        // Close modal and reset
+        $('#addBankModal').modal('hide');
+        $('#modal_bank_name').val('');
+        
+        // Show success message
+        if (typeof alert_float === 'function') {
+          alert_float('success', response.message || 'Bank added successfully');
+        } else {
+          alert('Bank added successfully: ' + newBankName);
+        }
+        
+      } else {
+        // Handle failure
+        var errorMsg = response.message || 'Failed to add bank';
+        console.error('❌ Bank add failed:', errorMsg);
+        
+        if (typeof alert_float === 'function') {
+          alert_float('danger', errorMsg);
+        } else {
+          alert('Error: ' + errorMsg);
+        }
+      }
+    },
+    error: function(xhr, status, error) {
+      console.error('❌ AJAX error:', {xhr: xhr, status: status, error: error});
+      
+      var errorMsg = 'Network error. Please try again.';
+      
+      // Try to get error message from response
+      try {
+        var responseJson = JSON.parse(xhr.responseText);
+        if (responseJson && responseJson.message) {
+          errorMsg = responseJson.message;
+        }
+      } catch(e) {
+        // Use default error message
+      }
+      
+      if (typeof alert_float === 'function') {
+        alert_float('danger', errorMsg);
+      } else {
+        alert('Error: ' + errorMsg);
+      }
+    },
+    complete: function() {
+      // Re-enable button
+      $btn.prop('disabled', false).html('Add Bank');
+      console.log('🏦 addBank() complete');
+    }
+  });
+  
+  return false; // Prevent any default action
+}
 </script>
 <?php endif; ?>

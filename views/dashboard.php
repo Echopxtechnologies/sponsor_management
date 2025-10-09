@@ -16,17 +16,7 @@
                             </div>
                             <div class="col-md-4">
                                 <div class="text-right" style="margin-top:15px;">
-                                    <div class="btn-group" role="group" style="margin-right: 5px;">
-                                        <button type="button" class="btn btn-success btn-sm dropdown-toggle" 
-                                                data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
-                                            <i class="fa fa-download"></i> Export <span class="caret"></span>
-                                        </button>
-                                        <ul class="dropdown-menu dropdown-menu-right">
-                                            <li><a href="<?php echo admin_url('student_sponsor_portal/export_dashboard_pdf'); ?>"><i class="fa fa-file-pdf-o text-danger"></i> Dashboard PDF</a></li>
-                                            <li><a href="<?php echo admin_url('student_sponsor_portal/export_dashboard_excel'); ?>"><i class="fa fa-file-excel-o text-success"></i> Summary Excel</a></li>
-                                            <li><a href="<?php echo admin_url('student_sponsor_portal/export_all_data'); ?>"><i class="fa fa-file-text-o"></i> All Data CSV</a></li>
-                                        </ul>
-                                    </div>
+                                
                                     <button type="button" onclick="refreshDashboard()" class="btn btn-info btn-sm">
                                         <i class="fa fa-refresh"></i> Refresh
                                     </button>

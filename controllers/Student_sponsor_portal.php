@@ -529,8 +529,7 @@ public function index()
         
         return $cleaned;
     }
-    // Add this method to handle profile photo uploads
-    private function handle_profile_photo_upload($student_id)
+ private function handle_profile_photo_upload($student_id)
 {
     if (!isset($_FILES['profile_photo']) || $_FILES['profile_photo']['error'] !== UPLOAD_ERR_OK) {
         log_message('debug', 'No profile photo uploaded or upload error for student ID: ' . $student_id);
@@ -558,7 +557,7 @@ public function index()
         return false;
     }
     
-    // MIME type detection with multiple fallbacks
+    // MIME type detection WITHOUT fileinfo dependency
     $mime_type = $this->detect_mime_type($file['tmp_name'], $file['type']);
     
     if (!in_array($mime_type, $allowed_types)) {
@@ -576,7 +575,7 @@ public function index()
         return false;
     }
     
-    // Additional image validation using GD library if available
+    // Additional validation using getimagesize (doesn't need fileinfo!)
     if (function_exists('getimagesizefromstring')) {
         $image_info = getimagesizefromstring($image_data);
         if ($image_info === false) {
@@ -704,108 +703,111 @@ private function detect_mime_type_fallback($file_path, $uploaded_type = null)
     return 'application/octet-stream';
 }
 /**
- * Detect MIME type with multiple fallback methods
- * Handles cases where finfo_open() is not available
+ * Detect MIME type with comprehensive fallback (NO fileinfo dependency)
  */
 private function detect_mime_type($file_path, $uploaded_type = null)
 {
-    $mime_type = 'application/octet-stream'; // Default fallback
+    $mime_type = 'application/octet-stream';
     
-    // Method 1: Try finfo (preferred method)
-    if (function_exists('finfo_open')) {
+    // Method 1: Try getimagesize FIRST (works without fileinfo extension)
+    if (function_exists('getimagesize')) {
+        $image_info = @getimagesize($file_path);
+        if ($image_info !== false && isset($image_info['mime'])) {
+            log_message('debug', 'MIME detected via getimagesize: ' . $image_info['mime']);
+            return strtolower($image_info['mime']);
+        }
+    }
+    
+    // Method 2: Try finfo ONLY if extension is available
+    if (extension_loaded('fileinfo') && function_exists('finfo_open')) {
         try {
-            $finfo = finfo_open(FILEINFO_MIME_TYPE);
+            $finfo = @finfo_open(FILEINFO_MIME_TYPE);
             if ($finfo !== false) {
-                $detected_mime = finfo_file($finfo, $file_path);
-                finfo_close($finfo);
-                if ($detected_mime !== false) {
-                    $mime_type = $detected_mime;
-                    log_message('debug', 'MIME type detected using finfo: ' . $mime_type);
-                    return strtolower($mime_type);
+                $detected_mime = @finfo_file($finfo, $file_path);
+                @finfo_close($finfo);
+                if ($detected_mime !== false && $detected_mime !== '') {
+                    log_message('debug', 'MIME detected via finfo: ' . $detected_mime);
+                    return strtolower($detected_mime);
                 }
             }
         } catch (Exception $e) {
-            log_message('warning', 'finfo_open failed: ' . $e->getMessage());
+            log_message('warning', 'finfo failed: ' . $e->getMessage());
         }
     }
     
-    // Method 2: Try getimagesize (for images only)
-    if (function_exists('getimagesize')) {
-        try {
-            $image_info = getimagesize($file_path);
-            if ($image_info !== false && isset($image_info['mime'])) {
-                $mime_type = $image_info['mime'];
-                log_message('debug', 'MIME type detected using getimagesize: ' . $mime_type);
-                return strtolower($mime_type);
-            }
-        } catch (Exception $e) {
-            log_message('warning', 'getimagesize failed: ' . $e->getMessage());
-        }
-    }
-    
-    // Method 3: Try mime_content_type (deprecated but may be available)
+    // Method 3: Try mime_content_type (if available)
     if (function_exists('mime_content_type')) {
         try {
-            $detected_mime = mime_content_type($file_path);
-            if ($detected_mime !== false) {
-                $mime_type = $detected_mime;
-                log_message('debug', 'MIME type detected using mime_content_type: ' . $mime_type);
-                return strtolower($mime_type);
+            $detected_mime = @mime_content_type($file_path);
+            if ($detected_mime !== false && $detected_mime !== '') {
+                log_message('debug', 'MIME detected via mime_content_type: ' . $detected_mime);
+                return strtolower($detected_mime);
             }
         } catch (Exception $e) {
             log_message('warning', 'mime_content_type failed: ' . $e->getMessage());
         }
     }
     
-    // Method 4: Use uploaded type as fallback (with validation)
+    // Method 4: Check file signature (magic bytes) - RELIABLE WITHOUT ANY EXTENSION
+    if (is_readable($file_path)) {
+        $handle = @fopen($file_path, 'rb');
+        if ($handle) {
+            $bytes = fread($handle, 12);
+            fclose($handle);
+            
+            // Check for common image types
+            if (substr($bytes, 0, 3) === "\xFF\xD8\xFF") {
+                log_message('debug', 'MIME detected by signature: image/jpeg');
+                return 'image/jpeg';
+            }
+            if (substr($bytes, 0, 8) === "\x89PNG\r\n\x1a\n") {
+                log_message('debug', 'MIME detected by signature: image/png');
+                return 'image/png';
+            }
+            if (substr($bytes, 0, 3) === "GIF") {
+                log_message('debug', 'MIME detected by signature: image/gif');
+                return 'image/gif';
+            }
+            if (substr($bytes, 8, 4) === "WEBP") {
+                log_message('debug', 'MIME detected by signature: image/webp');
+                return 'image/webp';
+            }
+        }
+    }
+    
+    // Method 5: Use uploaded MIME type as last resort (with validation)
     if (!empty($uploaded_type)) {
         $uploaded_type = strtolower(trim($uploaded_type));
-        $valid_types = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif'];
+        $valid_types = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
         if (in_array($uploaded_type, $valid_types)) {
-            log_message('debug', 'Using uploaded MIME type as fallback: ' . $uploaded_type);
+            log_message('debug', 'Using uploaded MIME type: ' . $uploaded_type);
             return $uploaded_type;
         }
     }
     
-    // Method 5: Guess from file extension (last resort)
-    $file_extension = strtolower(pathinfo($file_path, PATHINFO_EXTENSION));
+    // Method 6: Guess from file extension as absolute fallback
+    $extension = strtolower(pathinfo($file_path, PATHINFO_EXTENSION));
     $extension_map = [
         'jpg'  => 'image/jpeg',
         'jpeg' => 'image/jpeg',
         'png'  => 'image/png',
         'gif'  => 'image/gif',
+        'webp' => 'image/webp',
+        'pdf'  => 'application/pdf',
     ];
     
-    if (isset($extension_map[$file_extension])) {
-        $mime_type = $extension_map[$file_extension];
-        log_message('debug', 'MIME type guessed from extension: ' . $mime_type);
-        return $mime_type;
+    if (isset($extension_map[$extension])) {
+        log_message('debug', 'MIME guessed from extension: ' . $extension_map[$extension]);
+        return $extension_map[$extension];
     }
     
-    // Method 6: Basic file signature detection
-    if (is_readable($file_path)) {
-        $file_content = file_get_contents($file_path, false, null, 0, 10);
-        if ($file_content !== false) {
-            // Check common image signatures
-            if (substr($file_content, 0, 3) === "\xFF\xD8\xFF") {
-                log_message('debug', 'MIME type detected by signature: image/jpeg');
-                return 'image/jpeg';
-            }
-            if (substr($file_content, 0, 4) === "\x89PNG") {
-                log_message('debug', 'MIME type detected by signature: image/png');
-                return 'image/png';
-            }
-            if (substr($file_content, 0, 3) === "GIF") {
-                log_message('debug', 'MIME type detected by signature: image/gif');
-                return 'image/gif';
-            }
-        }
-    }
-    
-    log_message('warning', 'Could not determine MIME type, using fallback: ' . $mime_type);
-    return $mime_type;
+    log_message('warning', 'Could not determine MIME type for: ' . $file_path);
+    return 'application/octet-stream';
 }
 
+/**
+ * REMOVE the detect_mime_type_fallback method - we don't need it anymore
+ */
 
     // Add this method to create new countries
     private function create_new_country($name, $phone_code)
@@ -4036,42 +4038,124 @@ private function get_sponsor_students_by_type($sponsor_id, $type)
             show_error('An error occurred while loading the form: ' . $e->getMessage(), 500);
         }
     }
-    private function handle_university_profile_photo_upload($student_id)
-    {
-        if (!isset($_FILES['profile_photo']) || $_FILES['profile_photo']['error'] !== UPLOAD_ERR_OK) {
-            return false;
-        }
-        
-        $allowed_types = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif'];
-        $max_size = 2 * 1024 * 1024; // 2MB
-        
-        $file = $_FILES['profile_photo'];
-        
-        if ($file['size'] > $max_size) {
-            set_alert('warning', 'Profile photo must be less than 2MB');
-            return false;
-        }
-        
-        $finfo = finfo_open(FILEINFO_MIME_TYPE);
-        $mime_type = finfo_file($finfo, $file['tmp_name']);
-        finfo_close($finfo);
-        
-        if (!in_array($mime_type, $allowed_types)) {
-            set_alert('warning', 'Profile photo must be JPG, PNG, or GIF');
-            return false;
-        }
-        
-        $image_data = file_get_contents($file['tmp_name']);
-        
-        if ($image_data) {
-            $this->db->where('id', (int)$student_id)
-                    ->update(db_prefix() . 'university_students', ['profile_photo' => $image_data]);
-            return true;
-        }
-        
+   private function handle_university_profile_photo_upload($student_id)
+{
+    if (!isset($_FILES['profile_photo']) || $_FILES['profile_photo']['error'] !== UPLOAD_ERR_OK) {
         return false;
     }
     
+    $allowed_types = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif'];
+    $max_size = 2 * 1024 * 1024; // 2MB
+    
+    $file = $_FILES['profile_photo'];
+    
+    // Size validation
+    if ($file['size'] > $max_size) {
+        set_alert('warning', 'Profile photo must be less than 2MB');
+        return false;
+    }
+    
+    // MIME type detection WITHOUT fileinfo
+    $mime_type = $this->detect_mime_type_safe($file['tmp_name'], $file['type'] ?? '');
+    
+    if (!in_array($mime_type, $allowed_types)) {
+        set_alert('warning', 'Profile photo must be JPG, PNG, or GIF');
+        return false;
+    }
+    
+    $image_data = file_get_contents($file['tmp_name']);
+    
+    if ($image_data) {
+        $this->db->where('id', (int)$student_id)
+                ->update(db_prefix() . 'university_students', ['profile_photo' => $image_data]);
+        return true;
+    }
+    
+    return false;
+}
+ /**
+ * Detect MIME type WITHOUT fileinfo extension dependency
+ * Uses multiple fallback methods
+ */
+private function detect_mime_type_safe($file_path, $uploaded_type = '')
+{
+    // Method 1: Use getimagesize (BEST - works without any extension!)
+    if (function_exists('getimagesize')) {
+        $image_info = @getimagesize($file_path);
+        if ($image_info !== false && isset($image_info['mime'])) {
+            log_message('debug', 'MIME detected via getimagesize: ' . $image_info['mime']);
+            return strtolower($image_info['mime']);
+        }
+    }
+    
+    // Method 2: Try mime_content_type if available
+    if (function_exists('mime_content_type')) {
+        try {
+            $detected = @mime_content_type($file_path);
+            if ($detected !== false && $detected !== '') {
+                log_message('debug', 'MIME detected via mime_content_type: ' . $detected);
+                return strtolower($detected);
+            }
+        } catch (Exception $e) {
+            log_message('warning', 'mime_content_type failed: ' . $e->getMessage());
+        }
+    }
+    
+    // Method 3: Check file signature (magic bytes) - RELIABLE
+    if (is_readable($file_path)) {
+        $handle = @fopen($file_path, 'rb');
+        if ($handle) {
+            $bytes = fread($handle, 12);
+            fclose($handle);
+            
+            // Check for common image types
+            if (substr($bytes, 0, 3) === "\xFF\xD8\xFF") {
+                log_message('debug', 'MIME detected by signature: image/jpeg');
+                return 'image/jpeg';
+            }
+            if (substr($bytes, 0, 8) === "\x89PNG\r\n\x1a\n") {
+                log_message('debug', 'MIME detected by signature: image/png');
+                return 'image/png';
+            }
+            if (substr($bytes, 0, 3) === "GIF") {
+                log_message('debug', 'MIME detected by signature: image/gif');
+                return 'image/gif';
+            }
+            if (substr($bytes, 8, 4) === "WEBP") {
+                log_message('debug', 'MIME detected by signature: image/webp');
+                return 'image/webp';
+            }
+        }
+    }
+    
+    // Method 4: Use uploaded MIME type if valid
+    if (!empty($uploaded_type)) {
+        $uploaded_type = strtolower(trim($uploaded_type));
+        $valid_types = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
+        if (in_array($uploaded_type, $valid_types)) {
+            log_message('debug', 'Using uploaded MIME type: ' . $uploaded_type);
+            return $uploaded_type;
+        }
+    }
+    
+    // Method 5: Guess from file extension as absolute fallback
+    $extension = strtolower(pathinfo($file_path, PATHINFO_EXTENSION));
+    $extension_map = [
+        'jpg'  => 'image/jpeg',
+        'jpeg' => 'image/jpeg',
+        'png'  => 'image/png',
+        'gif'  => 'image/gif',
+        'webp' => 'image/webp',
+    ];
+    
+    if (isset($extension_map[$extension])) {
+        log_message('debug', 'MIME guessed from extension: ' . $extension_map[$extension]);
+        return $extension_map[$extension];
+    }
+    
+    log_message('warning', 'Could not determine MIME type for: ' . $file_path);
+    return 'application/octet-stream';
+}   
     public function upload_university_report_card()
     {
         header('Content-Type: application/json');

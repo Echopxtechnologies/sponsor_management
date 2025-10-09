@@ -976,205 +976,398 @@ foreach ($students as &$student) {
 
     /* ----------------- CRUD OPERATIONS ----------------- */
 
-    public function add($data)
-    {
-        try {
-            $grade = $data['grade'] ?? $data['school_grade'] ?? null;
-            $age = $data['calculated_age'] ?? $data['school_age'] ?? null;
-            $grade_mismatch_reason = $data['grade_mismatch_reason'] ?? null;
-            
-            if (!empty($grade) && !empty($age)) {
-                $validation = $this->validate_age_grade($grade, $age, $grade_mismatch_reason);
-                if (!$validation['valid']) {
-                    return ['success' => false, 'message' => $validation['message']];
-                }
+   public function add($data)
+{
+    try {
+        // Log incoming data for debugging
+        log_message('debug', 'School_model::add - Incoming data: ' . json_encode(array_keys($data)));
+
+        // Validate age-grade combination
+        $grade = $data['grade'] ?? $data['school_grade'] ?? null;
+        $age = $data['calculated_age'] ?? $data['school_age'] ?? null;
+        $grade_mismatch_reason = $data['grade_mismatch_reason'] ?? null;
+        
+        if (!empty($grade) && !empty($age)) {
+            $validation = $this->validate_age_grade($grade, $age, $grade_mismatch_reason);
+            if (!$validation['valid']) {
+                return ['success' => false, 'message' => $validation['message']];
             }
-
-            $photo = null;
-            try { 
-                $photo = $this->handle_profile_photo_upload(); 
-            } catch (Exception $e) { 
-                log_message('error','School photo upload: '.$e->getMessage()); 
-            }
-
-            $country_id     = $this->toIntOrNull($data['country_id'] ?? null);
-            $school_name_id = $this->get_or_create_school_name_id($data['school_name'] ?? ($data['school_name_id'] ?? ''));
-
-            $insert = [
-                'school_internal_id'            => $this->generate_internal_id(),
-                'name'                          => $data['name'] ?? '',
-                'profile_photo'                 => $photo,
-                'contact_no'                    => $this->toNullIfEmpty($data['phone'] ?? ''),
-                'email'                         => $this->toNullIfEmpty($data['email'] ?? ''),
-                'address'                       => $this->toNullIfEmpty($data['address'] ?? ''),
-                'city'                          => $this->toNullIfEmpty($data['city'] ?? ''),
-                'zip'                           => $this->toNullIfEmpty($data['postal_code'] ?? ''),
-                'country_id'                    => $country_id,
-                'school_id'                     => $this->toNullIfEmpty($data['school_id'] ?? ''),
-                'school_type'                   => $this->toNullIfEmpty($data['school_type'] ?? ''),
-                'school_name_id'                => $school_name_id,
-                'school_grade_year'             => $this->toIntOrNull($data['school_grade_year'] ?? ''),
-                'school_grade'                  => $this->toNullIfEmpty($data['grade'] ?? ''),
-                'grade_mismatch_reason'         => $this->toNullIfEmpty($grade_mismatch_reason),
-                'school_student_dob'            => $this->toNullIfEmpty($data['dob'] ?? ''),
-                'school_age'                    => $this->calc_age_int($data['dob'] ?? null),
-                'bank_id'                       => $this->toIntOrNull($data['bank_id'] ?? ''),
-                'school_bank_branch_number'     => $this->toNullIfEmpty($data['bank_branch_number'] ?? ''),
-                'school_bank_branch_info'       => $this->toNullIfEmpty($data['bank_branch_info'] ?? ''),
-                'school_bank_account_no'        => $this->toNullIfEmpty($data['bank_account_number'] ?? ''),
-                'school_sponsorship_start_date' => $this->toNullIfEmpty($data['sponsorship_start'] ?? ''),
-                'school_sponsorship_end_date'   => $this->toNullIfEmpty($data['sponsorship_end'] ?? ''),
-                'school_introducedby'           => $this->toNullIfEmpty($data['introduced_by'] ?? ''),
-                'school_introducedph'           => $this->toNullIfEmpty($data['introduced_phone'] ?? ''),
-                'school_father_name'            => $this->toNullIfEmpty($data['father_name'] ?? ''),
-                'school_mother_name'            => $this->toNullIfEmpty($data['mother_name'] ?? ''),
-                'school_guardian_name'          => $this->toNullIfEmpty($data['guardian_name'] ?? ''),
-                'school_father_income'          => $this->toFloatOrNull($data['father_income'] ?? null),
-                'school_mother_income'          => $this->toFloatOrNull($data['mother_income'] ?? null),
-                'school_guardian_income'        => $this->toFloatOrNull($data['guardian_income'] ?? null),
-                'sponsor_id'                    => $this->toIntOrNull($data['sponsor_id'] ?? ''),
-                'background_info'               => $this->toNullIfEmpty($data['background_information'] ?? ''),
-                'internal_comment'              => $this->toNullIfEmpty($data['internal_comment'] ?? ''),
-                'external_comment'              => $this->toNullIfEmpty($data['external_comment'] ?? ''),
-                'created_at'                    => date('Y-m-d H:i:s')
-            ];
-
-            $insert = $this->filter_existing_columns($this->tbl_students, $insert);
-
-            $this->db->insert($this->tbl_students, $insert);
-            $id = (int)$this->db->insert_id();
-            return $id ?: false;
-
-        } catch (Exception $e) {
-            log_message('error','Error adding school student: '.$e->getMessage());
-            return ['success' => false, 'message' => 'Error adding student: ' . $e->getMessage()];
         }
-    }
 
-    public function update($data, $id)
-    {
-        try {
-            $id = (int)$id;
-            if ($id <= 0) {
-                log_message('error', 'School_model::update - Invalid ID: ' . $id);
-                return false;
+        // Handle profile photo upload FIRST
+        $photo = null;
+        try { 
+            $photo = $this->handle_profile_photo_upload();
+            if ($photo !== null) {
+                log_message('debug', 'Profile photo uploaded successfully, size: ' . strlen($photo));
             }
+        } catch (Exception $e) { 
+            log_message('error', 'School photo upload: ' . $e->getMessage()); 
+        }
 
-            // Validate age-grade combination
-            $grade = $data['school_grade'] ?? null;
-            $age = $data['school_age'] ?? null;
-            $grade_mismatch_reason = $data['grade_mismatch_reason'] ?? null;
-            
-            if (!empty($grade) && !empty($age)) {
-                $validation = $this->validate_age_grade($grade, $age, $grade_mismatch_reason);
-                if (!$validation['valid']) {
-                    return ['success' => false, 'message' => $validation['message']];
+        // Complete field mappings (handles multiple input formats)
+        $field_mappings = [
+            'name' => 'name',
+            'phone' => 'contact_no',
+            'contact_no' => 'contact_no',
+            'email' => 'email',
+            'address' => 'address',
+            'city' => 'city',
+            'postal_code' => 'zip',
+            'zip' => 'zip',
+            'country_id' => 'country_id',
+            'school_id' => 'school_id',
+            'school_type' => 'school_type',
+            'school_name' => 'school_name_id',
+            'school_name_id' => 'school_name_id',
+            'grade' => 'school_grade',
+            'school_grade' => 'school_grade',
+            'grade_mismatch_reason' => 'grade_mismatch_reason',
+            'school_grade_year' => 'school_grade_year',
+            'dob' => 'school_student_dob',
+            'school_student_dob' => 'school_student_dob',
+            'bank_name' => 'bank_id',
+            'bank_id' => 'bank_id',
+            'bank_account_number' => 'school_bank_account_no',
+            'school_bank_account_no' => 'school_bank_account_no',
+            'bank_branch_number' => 'school_bank_branch_number',
+            'school_bank_branch_number' => 'school_bank_branch_number',
+            'bank_branch_info' => 'school_bank_branch_info',
+            'school_bank_branch_info' => 'school_bank_branch_info',
+            'sponsorship_start' => 'school_sponsorship_start_date',
+            'school_sponsorship_start_date' => 'school_sponsorship_start_date',
+            'sponsorship_end' => 'school_sponsorship_end_date',
+            'school_sponsorship_end_date' => 'school_sponsorship_end_date',
+            'introduced_by' => 'school_introducedby',
+            'school_introducedby' => 'school_introducedby',
+            'introduced_phone' => 'school_introducedph',
+            'school_introducedph' => 'school_introducedph',
+            'sponsor_id' => 'sponsor_id',
+            'father_name' => 'school_father_name',
+            'school_father_name' => 'school_father_name',
+            'mother_name' => 'school_mother_name',
+            'school_mother_name' => 'school_mother_name',
+            'guardian_name' => 'school_guardian_name',
+            'school_guardian_name' => 'school_guardian_name',
+            'father_income' => 'school_father_income',
+            'school_father_income' => 'school_father_income',
+            'mother_income' => 'school_mother_income',
+            'school_mother_income' => 'school_mother_income',
+            'guardian_income' => 'school_guardian_income',
+            'school_guardian_income' => 'school_guardian_income',
+            'background_information' => 'background_info',
+            'background_info' => 'background_info',
+            'internal_comment' => 'internal_comment',
+            'external_comment' => 'external_comment',
+        ];
+
+        // Process school name and bank FIRST
+        $school_name_id = null;
+        $bank_id = null;
+
+        if (isset($data['school_name']) || isset($data['school_name_id'])) {
+            $school_val = $data['school_name'] ?? ($data['school_name_id'] ?? '');
+            if (!empty($school_val)) {
+                $school_name_id = $this->get_or_create_school_name_id($school_val);
+            }
+        }
+
+        if (isset($data['bank_name']) || isset($data['bank_id'])) {
+            $bank_val = $data['bank_name'] ?? ($data['bank_id'] ?? '');
+            if (!empty($bank_val)) {
+                $bank_id = $this->get_or_create_bank_id($bank_val);
+            }
+        }
+
+        // Build insert array with defaults
+        $insert = [
+            'school_internal_id' => $this->generate_internal_id(),
+            'created_at' => date('Y-m-d H:i:s')
+        ];
+
+        // Add profile photo if uploaded
+        if ($photo !== null) {
+            $insert['profile_photo'] = $photo;
+        }
+
+        // Add processed IDs
+        $insert['school_name_id'] = $school_name_id;
+        $insert['bank_id'] = $bank_id;
+
+        // Process all other fields using field mappings
+        foreach ($field_mappings as $input_field => $db_field) {
+            if (array_key_exists($input_field, $data)) {
+                $value = $data[$input_field];
+                
+                // Skip if already processed
+                if (in_array($db_field, ['school_name_id', 'bank_id'], true)) {
+                    continue;
                 }
-            }
-
-            $update_data = [];
-            try {
-                $photo = $this->handle_profile_photo_upload();
-                if ($photo !== null) {
-                    $update_data['profile_photo'] = $photo;
-                }
-            } catch (Exception $e) {
-                log_message('error', 'School_model::update - Photo upload error: ' . $e->getMessage());
-            }
-
-            $field_mappings = [
-                'name' => 'name',
-                'email' => 'email',
-                'contact_no' => 'contact_no',
-                'address' => 'address',
-                'city' => 'city',
-                'zip' => 'zip',
-                'country_id' => 'country_id',
-                'school_id' => 'school_id',
-                'school_internal_id' => 'school_internal_id',
-                'school_type' => 'school_type',
-                'school_name_id' => 'school_name_id',
-                'school_grade' => 'school_grade',
-                'grade_mismatch_reason' => 'grade_mismatch_reason',
-                'school_student_dob' => 'school_student_dob',
-                'school_age' => 'school_age',
-                'bank_id' => 'bank_id',
-                'school_bank_account_no' => 'school_bank_account_no',
-                'school_bank_branch_number' => 'school_bank_branch_number',
-                'school_bank_branch_info' => 'school_bank_branch_info',
-                'school_sponsorship_start_date' => 'school_sponsorship_start_date',
-                'school_sponsorship_end_date' => 'school_sponsorship_end_date',
-                'school_introducedby' => 'school_introducedby',
-                'school_introducedph' => 'school_introducedph',
-                'school_father_name' => 'school_father_name',
-                'school_mother_name' => 'school_mother_name',
-                'school_guardian_name' => 'school_guardian_name',
-                'school_father_income' => 'school_father_income',
-                'school_mother_income' => 'school_mother_income',
-                'school_guardian_income' => 'school_guardian_income',
-                'background_info' => 'background_info',
-                'internal_comment' => 'internal_comment',
-                'external_comment' => 'external_comment',
-                'sponsor_id' => 'sponsor_id' // Add sponsor_id to field mappings
-            ];
-
-            foreach ($field_mappings as $db_field => $target_field) {
-                if (array_key_exists($db_field, $data)) {
-                    $value = $data[$db_field];
-                    
-                    if (in_array($db_field, ['country_id', 'bank_id', 'school_name_id', 'sponsor_id'], true)) {
-                        if ($value === '' || $value === null) {
-                            $update_data[$target_field] = null;
-                        } else {
-                            $fk_id = (int)$value;
-                            if ($this->validateForeignKey($db_field, $fk_id)) {
-                                $update_data[$target_field] = $fk_id;
-                            } else {
-                                $update_data[$target_field] = null;
-                            }
-                        }
-                    } elseif (in_array($db_field, ['school_father_income', 'school_mother_income', 'school_guardian_income', 'school_age'], true)) {
-                        $update_data[$target_field] = ($value === '' || $value === null) ? null : (is_numeric($value) ? (float)$value : null);
-                    } else {
-                        $update_data[$target_field] = ($value === '' || $value === null) ? null : $value;
+                
+                // Handle special field types
+                if ($db_field === 'school_grade') {
+                    $insert[$db_field] = $this->toNullIfEmpty($value);
+                } elseif ($db_field === 'school_grade_year') {
+                    $insert[$db_field] = $this->toIntOrNull($value);
+                } elseif ($db_field === 'school_student_dob') {
+                    $insert[$db_field] = $this->toNullIfEmpty($value);
+                    // Auto-calculate age from DOB
+                    if (!empty($value)) {
+                        $insert['school_age'] = $this->calc_age_int($value);
                     }
+                } elseif (in_array($db_field, ['school_father_income', 'school_mother_income', 'school_guardian_income'], true)) {
+                    $insert[$db_field] = $this->toFloatOrNull($value);
+                } elseif ($db_field === 'sponsor_id') {
+                    $insert[$db_field] = $this->toIntOrNull($value);
+                } elseif ($db_field === 'country_id') {
+                    $insert[$db_field] = $this->toIntOrNull($value);
+                } else {
+                    $insert[$db_field] = $this->toNullIfEmpty($value);
                 }
             }
+        }
 
-            if (!empty($update_data['school_student_dob']) && !isset($update_data['school_age'])) {
-                try {
-                    $dob = new DateTime($update_data['school_student_dob']);
-                    $now = new DateTime();
-                    $calculated_age = $dob->diff($now)->y;
-                    $update_data['school_age'] = $calculated_age;
-                } catch (Exception $e) {
-                    log_message('error', 'School_model::update - Error calculating age: ' . $e->getMessage());
-                }
-            }
+        // Filter to only existing columns
+        $insert = $this->filter_existing_columns($this->tbl_students, $insert);
 
-            $update_data = $this->filter_existing_columns($this->tbl_students, $update_data);
+        // Log what we're inserting (without binary data)
+        $log_insert = $insert;
+        if (isset($log_insert['profile_photo'])) {
+            $log_insert['profile_photo'] = '[BINARY DATA ' . strlen($insert['profile_photo']) . ' bytes]';
+        }
+        log_message('debug', 'School_model::add - Insert data: ' . json_encode($log_insert));
 
-            if (empty($update_data)) {
-                return true;
-            }
+        // Insert the record
+        $this->db->insert($this->tbl_students, $insert);
+        $id = (int)$this->db->insert_id();
 
-            $this->db->where('id', $id);
-            $result = $this->db->update($this->tbl_students, $update_data);
+        if ($id) {
+            log_message('debug', 'School_model::add - Success! Student ID: ' . $id);
+            return $id;
+        }
 
-            if (!$result) {
-                $error = $this->db->error();
-                log_message('error', 'School_model::update - Database update failed: ' . json_encode($error));
-                return false;
-            }
+        log_message('error', 'School_model::add - Failed to get insert ID');
+        return false;
 
-            return true;
-
-        } catch (Exception $e) {
-            log_message('error', 'School_model::update - Exception: ' . $e->getMessage());
+    } catch (Exception $e) {
+        log_message('error', 'Error adding school student: ' . $e->getMessage());
+        log_message('error', 'Stack trace: ' . $e->getTraceAsString());
+        return ['success' => false, 'message' => 'Error adding student: ' . $e->getMessage()];
+    }
+}
+ public function update($data, $id)
+{
+    try {
+        $id = (int)$id;
+        if ($id <= 0) {
+            log_message('error', 'School_model::update - Invalid ID: ' . $id);
             return false;
         }
-    }
 
+        // Log incoming data for debugging
+        log_message('debug', '=== SCHOOL UPDATE START === Student ID: ' . $id);
+        log_message('debug', 'POST data keys: ' . json_encode(array_keys($data)));
+        log_message('debug', 'FILES data: ' . json_encode(array_keys($_FILES)));
+        
+        // Check if profile photo is being uploaded
+        if (isset($_FILES['profile_photo'])) {
+            log_message('debug', 'Profile photo in FILES - name: ' . $_FILES['profile_photo']['name'] . ', error: ' . $_FILES['profile_photo']['error'] . ', size: ' . $_FILES['profile_photo']['size']);
+        } else {
+            log_message('debug', 'No profile_photo in $_FILES');
+        }
+
+        // Validate age-grade combination
+        $grade = $data['school_grade'] ?? null;
+        $age = $data['school_age'] ?? null;
+        $grade_mismatch_reason = $data['grade_mismatch_reason'] ?? null;
+        
+        if (!empty($grade) && !empty($age)) {
+            $validation = $this->validate_age_grade($grade, $age, $grade_mismatch_reason);
+            if (!$validation['valid']) {
+                return ['success' => false, 'message' => $validation['message']];
+            }
+        }
+
+        // CRITICAL FIX: Remove empty profile_photo from POST data
+        // This prevents the empty string from overriding the uploaded file
+        if (array_key_exists('profile_photo', $data)) {
+            if (empty($data['profile_photo']) || $data['profile_photo'] === '') {
+                unset($data['profile_photo']);
+                log_message('debug', 'Removed empty profile_photo from POST data');
+            }
+        }
+
+        $update_data = [];
+
+        // Handle profile photo upload - THIS MUST BE FIRST
+        $photo_uploaded = false;
+        try {
+            log_message('debug', 'Attempting to handle profile photo upload...');
+            $photo = $this->handle_profile_photo_upload();
+            
+            if ($photo !== null) {
+                $update_data['profile_photo'] = $photo;
+                $photo_uploaded = true;
+                log_message('debug', '✓ Profile photo uploaded successfully! Size: ' . strlen($photo) . ' bytes');
+            } else {
+                log_message('debug', 'No profile photo uploaded (handle_profile_photo_upload returned null)');
+            }
+        } catch (Exception $e) {
+            log_message('error', '✗ Profile photo upload FAILED: ' . $e->getMessage());
+            log_message('error', 'Stack trace: ' . $e->getTraceAsString());
+            // Don't return false - continue with other updates
+        }
+
+        // Complete field mappings (same as add method)
+        $field_mappings = [
+            'name' => 'name',
+            'phone' => 'contact_no',
+            'contact_no' => 'contact_no',
+            'email' => 'email',
+            'address' => 'address',
+            'city' => 'city',
+            'postal_code' => 'zip',
+            'zip' => 'zip',
+            'country_id' => 'country_id',
+            'school_id' => 'school_id',
+            'school_internal_id' => 'school_internal_id',
+            'school_type' => 'school_type',
+            'school_name' => 'school_name_id',
+            'school_name_id' => 'school_name_id',
+            'grade' => 'school_grade',
+            'school_grade' => 'school_grade',
+            'grade_mismatch_reason' => 'grade_mismatch_reason',
+            'school_grade_year' => 'school_grade_year',
+            'dob' => 'school_student_dob',
+            'school_student_dob' => 'school_student_dob',
+            'bank_name' => 'bank_id',
+            'bank_id' => 'bank_id',
+            'bank_account_number' => 'school_bank_account_no',
+            'school_bank_account_no' => 'school_bank_account_no',
+            'bank_branch_number' => 'school_bank_branch_number',
+            'school_bank_branch_number' => 'school_bank_branch_number',
+            'bank_branch_info' => 'school_bank_branch_info',
+            'school_bank_branch_info' => 'school_bank_branch_info',
+            'sponsorship_start' => 'school_sponsorship_start_date',
+            'school_sponsorship_start_date' => 'school_sponsorship_start_date',
+            'sponsorship_end' => 'school_sponsorship_end_date',
+            'school_sponsorship_end_date' => 'school_sponsorship_end_date',
+            'introduced_by' => 'school_introducedby',
+            'school_introducedby' => 'school_introducedby',
+            'introduced_phone' => 'school_introducedph',
+            'school_introducedph' => 'school_introducedph',
+            'sponsor_id' => 'sponsor_id',
+            'father_name' => 'school_father_name',
+            'school_father_name' => 'school_father_name',
+            'mother_name' => 'school_mother_name',
+            'school_mother_name' => 'school_mother_name',
+            'guardian_name' => 'school_guardian_name',
+            'school_guardian_name' => 'school_guardian_name',
+            'father_income' => 'school_father_income',
+            'school_father_income' => 'school_father_income',
+            'mother_income' => 'school_mother_income',
+            'school_mother_income' => 'school_mother_income',
+            'guardian_income' => 'school_guardian_income',
+            'school_guardian_income' => 'school_guardian_income',
+            'background_information' => 'background_info',
+            'background_info' => 'background_info',
+            'internal_comment' => 'internal_comment',
+            'external_comment' => 'external_comment',
+        ];
+
+        // Process school name and bank
+        if (array_key_exists('school_name', $data) || array_key_exists('school_name_id', $data)) {
+            $school_val = $data['school_name'] ?? ($data['school_name_id'] ?? '');
+            if (!empty($school_val)) {
+                $update_data['school_name_id'] = $this->get_or_create_school_name_id($school_val);
+            } else {
+                $update_data['school_name_id'] = null;
+            }
+        }
+
+        if (array_key_exists('bank_name', $data) || array_key_exists('bank_id', $data)) {
+            $bank_val = $data['bank_name'] ?? ($data['bank_id'] ?? '');
+            if (!empty($bank_val)) {
+                $update_data['bank_id'] = $this->get_or_create_bank_id($bank_val);
+            } else {
+                $update_data['bank_id'] = null;
+            }
+        }
+
+        // Map all other fields
+        foreach ($field_mappings as $input_field => $db_field) {
+            if (array_key_exists($input_field, $data)) {
+                $value = $data[$input_field];
+                
+                // Skip if already processed
+                if (in_array($db_field, ['school_name_id', 'bank_id'], true)) {
+                    continue;
+                }
+                
+                // Handle special field types
+                if ($db_field === 'school_grade') {
+                    $update_data[$db_field] = $this->toNullIfEmpty($value);
+                } elseif ($db_field === 'school_grade_year') {
+                    $update_data[$db_field] = $this->toIntOrNull($value);
+                } elseif ($db_field === 'school_student_dob') {
+                    $update_data[$db_field] = $this->toNullIfEmpty($value);
+                    // Also update age if DOB is updated
+                    if (!empty($value)) {
+                        $update_data['school_age'] = $this->calc_age_int($value);
+                    }
+                } elseif (in_array($db_field, ['school_father_income', 'school_mother_income', 'school_guardian_income'], true)) {
+                    $update_data[$db_field] = $this->toFloatOrNull($value);
+                } elseif ($db_field === 'sponsor_id') {
+                    $update_data[$db_field] = $this->toIntOrNull($value);
+                } elseif ($db_field === 'country_id') {
+                    $update_data[$db_field] = $this->toIntOrNull($value);
+                } else {
+                    $update_data[$db_field] = $this->toNullIfEmpty($value);
+                }
+            }
+        }
+
+        // Filter to only existing columns
+        $update_data = $this->filter_existing_columns($this->tbl_students, $update_data);
+
+        if (empty($update_data)) {
+            log_message('debug', 'No data to update');
+            return true;
+        }
+
+        // Log what we're updating (without binary data)
+        $log_update = $update_data;
+        if (isset($log_update['profile_photo'])) {
+            $log_update['profile_photo'] = '[BINARY DATA ' . strlen($update_data['profile_photo']) . ' bytes]';
+        }
+        log_message('debug', 'Fields being updated: ' . json_encode(array_keys($log_update)));
+        log_message('debug', 'Update data (sanitized): ' . json_encode($log_update));
+
+        // Perform the update
+        $this->db->where('id', $id);
+        $result = $this->db->update($this->tbl_students, $update_data);
+
+        if (!$result) {
+            $error = $this->db->error();
+            log_message('error', 'Database update failed: ' . json_encode($error));
+            return false;
+        }
+
+        $affected = $this->db->affected_rows();
+        log_message('debug', '✓ Update successful! Affected rows: ' . $affected);
+        
+        if ($photo_uploaded) {
+            log_message('info', 'Profile photo updated successfully for school student ID: ' . $id);
+        }
+
+        return true;
+
+    } catch (Exception $e) {
+        log_message('error', 'Exception in School_model::update: ' . $e->getMessage());
+        log_message('error', 'Stack trace: ' . $e->getTraceAsString());
+        return false;
+    }
+}
     public function delete($id)
     {
         try {
@@ -1867,6 +2060,25 @@ public function export_sponsored_students()
     $writer = new \PhpOffice\PhpSpreadsheet\Writer\Xlsx($result['spreadsheet']);
     $writer->save('php://output');
     exit;
+}
+
+/**
+ * Get or create bank ID
+ * 
+ * @param string|int $name_or_id Bank name or ID
+ * @return int|null Bank ID
+ */
+private function get_or_create_bank_id($name_or_id)
+{
+    if (!$name_or_id) return null;
+    if (is_numeric($name_or_id)) return (int)$name_or_id;
+
+    $this->db->where('name', $name_or_id);
+    $row = $this->db->get($this->tbl_bank)->row();
+    if ($row) return (int)$row->id;
+
+    $this->db->insert($this->tbl_bank, ['name' => $name_or_id]);
+    return (int)$this->db->insert_id();
 }
 
 /**

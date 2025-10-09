@@ -922,7 +922,10 @@ class University_model extends App_Model
 
     /* ----------------- PHOTO HANDLING ----------------- */
     
-    private function handle_profile_photo_upload()
+ /**
+ * Handle profile photo upload WITHOUT fileinfo dependency
+ */
+private function handle_profile_photo_upload()
 {
     if (!isset($_FILES['profile_photo'])) return null;
     if ($_FILES['profile_photo']['error'] === UPLOAD_ERR_NO_FILE) return null;
@@ -937,25 +940,10 @@ class University_model extends App_Model
         throw new Exception('File size too large. Max 5MB.');
     }
 
-    // Use getimagesize FIRST (doesn't need fileinfo extension)
-    $mime = 'application/octet-stream';
-    if (function_exists('getimagesize')) {
-        $gi = @getimagesize($tmp);
-        if ($gi && !empty($gi['mime'])) {
-            $mime = strtolower($gi['mime']);
-        }
-    }
-
-    // Fallback to finfo only if getimagesize failed
-    if ($mime === 'application/octet-stream' && function_exists('finfo_open')) {
-        $f = @finfo_open(FILEINFO_MIME_TYPE);
-        if ($f) { 
-            $m = @finfo_file($f, $tmp); 
-            if ($m) $mime = strtolower($m); 
-            @finfo_close($f); 
-        }
-    }
-
+    // Detect MIME type using safe method (NO fileinfo needed)
+    $mime = $this->detect_file_mime_safe($tmp, $_FILES['profile_photo']['type'] ?? '');
+    
+    // Validate file type
     $allowed = ['image/jpeg','image/jpg','image/png','image/gif','image/webp'];
     if (!in_array($mime, $allowed, true)) {
         throw new Exception('Invalid file type. Only JPG/PNG/GIF/WebP allowed.');
@@ -965,6 +953,132 @@ class University_model extends App_Model
     if ($bytes === false) throw new Exception('Could not read uploaded file.');
 
     return $bytes;
+}
+
+/**
+ * Detect MIME type WITHOUT fileinfo extension (COPY OF SAFE METHOD)
+ */
+private function detect_file_mime_safe($file_path, $uploaded_type = '')
+{
+    // Method 1: Use getimagesize (NO extension needed!)
+    if (function_exists('getimagesize')) {
+        $image_info = @getimagesize($file_path);
+        if ($image_info !== false && isset($image_info['mime'])) {
+            return strtolower($image_info['mime']);
+        }
+    }
+    
+    // Method 2: Try mime_content_type if available
+    if (function_exists('mime_content_type')) {
+        try {
+            $detected = @mime_content_type($file_path);
+            if ($detected !== false && $detected !== '') {
+                return strtolower($detected);
+            }
+        } catch (Exception $e) {
+            // Continue to next method
+        }
+    }
+    
+    // Method 3: Check file signature (magic bytes)
+    if (is_readable($file_path)) {
+        $handle = @fopen($file_path, 'rb');
+        if ($handle) {
+            $bytes = fread($handle, 12);
+            fclose($handle);
+            
+            if (substr($bytes, 0, 3) === "\xFF\xD8\xFF") return 'image/jpeg';
+            if (substr($bytes, 0, 8) === "\x89PNG\r\n\x1a\n") return 'image/png';
+            if (substr($bytes, 0, 3) === "GIF") return 'image/gif';
+            if (substr($bytes, 8, 4) === "WEBP") return 'image/webp';
+        }
+    }
+    
+    // Method 4: Use uploaded type if valid
+    if (!empty($uploaded_type)) {
+        $uploaded_type = strtolower(trim($uploaded_type));
+        $valid = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
+        if (in_array($uploaded_type, $valid)) {
+            return $uploaded_type;
+        }
+    }
+    
+    // Method 5: Guess from extension
+    $ext = strtolower(pathinfo($file_path, PATHINFO_EXTENSION));
+    $map = [
+        'jpg' => 'image/jpeg',
+        'jpeg' => 'image/jpeg',
+        'png' => 'image/png',
+        'gif' => 'image/gif',
+        'webp' => 'image/webp',
+    ];
+    
+    return $map[$ext] ?? 'application/octet-stream';
+}
+
+/**
+ * Detect MIME type WITHOUT fileinfo extension
+ */
+private function detect_file_mime_type($file_path, $uploaded_type = '')
+{
+    // Method 1: Use getimagesize (NO extension needed!)
+    if (function_exists('getimagesize')) {
+        $image_info = @getimagesize($file_path);
+        if ($image_info !== false && isset($image_info['mime'])) {
+            return strtolower($image_info['mime']);
+        }
+    }
+    
+    // Method 2: Try finfo ONLY if extension is loaded
+    if (extension_loaded('fileinfo') && function_exists('finfo_open')) {
+        try {
+            $finfo = @finfo_open(FILEINFO_MIME_TYPE);
+            if ($finfo !== false) {
+                $detected = @finfo_file($finfo, $file_path);
+                @finfo_close($finfo);
+                if ($detected !== false && $detected !== '') {
+                    return strtolower($detected);
+                }
+            }
+        } catch (Exception $e) {
+            log_message('warning', 'finfo detection failed: ' . $e->getMessage());
+        }
+    }
+    
+    // Method 3: Check file signature (magic bytes)
+    if (is_readable($file_path)) {
+        $handle = @fopen($file_path, 'rb');
+        if ($handle) {
+            $bytes = fread($handle, 12);
+            fclose($handle);
+            
+            if (substr($bytes, 0, 3) === "\xFF\xD8\xFF") return 'image/jpeg';
+            if (substr($bytes, 0, 8) === "\x89PNG\r\n\x1a\n") return 'image/png';
+            if (substr($bytes, 0, 3) === "GIF") return 'image/gif';
+            if (substr($bytes, 8, 4) === "WEBP") return 'image/webp';
+        }
+    }
+    
+    // Method 4: Use uploaded type if valid
+    if (!empty($uploaded_type)) {
+        $uploaded_type = strtolower(trim($uploaded_type));
+        $valid = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
+        if (in_array($uploaded_type, $valid)) {
+            return $uploaded_type;
+        }
+    }
+    
+    // Method 5: Guess from extension
+    $ext = strtolower(pathinfo($file_path, PATHINFO_EXTENSION));
+    $map = [
+        'jpg' => 'image/jpeg',
+        'jpeg' => 'image/jpeg',
+        'png' => 'image/png',
+        'gif' => 'image/gif',
+        'webp' => 'image/webp',
+    ];
+    
+    return $map[$ext] ?? 'application/octet-stream';
 }
     
     public function get_profile_photo($student_id)
@@ -1049,83 +1163,187 @@ class University_model extends App_Model
 
     /* ----------------- CRUD OPERATIONS ----------------- */
 
-    public function add($data)
-    {
-        try {
-            $validation = $this->validate_student_data($data);
-            if (!$validation['valid']) {
-                return ['success' => false, 'message' => implode(', ', $validation['errors'])];
-            }
-
-            $data = $this->process_new_items($data);
-
-            $profile_photo_data = null;
-            try { 
-                $profile_photo_data = $this->handle_profile_photo_upload(); 
-            } catch (Exception $e) { 
-                log_message('error', 'Profile photo upload error: ' . $e->getMessage()); 
-            }
-
-            $university_name_id    = $this->get_or_create_university_name_id($data['university_name'] ?? ($data['university_name_id'] ?? ''));
-            $university_program_id = $this->get_or_create_university_program_id($data['program'] ?? ($data['university_program_id'] ?? ''));
-            $bank_id               = $this->get_or_create_bank_id($data['bank_name'] ?? ($data['bank_id'] ?? ''));
-
-            $country_id = !empty($data['country_id']) ? (int)$data['country_id'] : null;
-
-            $insert = [
-                'entity_type'                       => 'university',
-                'name'                              => $data['name'] ?? '',
-                'profile_photo'                     => $profile_photo_data,
-                'contact_no'                        => $data['phone'] ?? '',
-                'email'                             => $this->toNullIfEmpty($data['email'] ?? ''),
-                'address'                           => $this->toNullIfEmpty($data['address'] ?? ''),
-                'city'                              => $this->toNullIfEmpty($data['city'] ?? ''),
-                'zip'                               => $this->toNullIfEmpty($data['postal_code'] ?? ''),
-                'country_id'                        => $country_id,
-                'university_internal_id'            => $this->generate_internal_id(),
-                'university_id'                     => $this->toNullIfEmpty($data['university_id'] ?? ''),
-                'university_name_id'                => $university_name_id,
-                'university_program_id'             => $university_program_id,
-                'university_year_of_study'          => $this->sanitize_year($data['year_of_study'] ?? null),
-                'university_student_dob'            => $this->toNullIfEmpty($data['dob'] ?? ''),
-                'university_age'                    => $this->calc_age($data['dob'] ?? null),
-                'bank_id'                           => $bank_id,
-                'university_bank_branch_number'     => $this->toNullIfEmpty($data['bank_branch_number'] ?? ''),
-                'university_bank_branch_info'       => $this->toNullIfEmpty($data['bank_branch_info'] ?? ''),
-                'university_bank_account_no'        => $this->toNullIfEmpty($data['bank_account_number'] ?? ''),
-                'university_sponsorship_start_date' => $this->toNullIfEmpty($data['sponsorship_start'] ?? ''),
-                'university_sponsorship_end_date'   => $this->toNullIfEmpty($data['sponsorship_end'] ?? ''),
-                'university_introducedby'           => $this->toNullIfEmpty($data['introduced_by'] ?? ''),
-                'university_introducedph'           => $this->toNullIfEmpty($data['introduced_phone'] ?? ''),
-                'university_father_name'            => $this->toNullIfEmpty($data['father_name'] ?? ''),
-                'university_mother_name'            => $this->toNullIfEmpty($data['mother_name'] ?? ''),
-                'university_father_income'          => $this->toFloatOrNull($data['father_income'] ?? null),
-                'university_mother_income'          => $this->toFloatOrNull($data['mother_income'] ?? null),
-                'university_guardian_name'          => $this->toNullIfEmpty($data['guardian_name'] ?? ''),
-                'university_guardian_income'        => $this->toFloatOrNull($data['guardian_income'] ?? null),
-                'sponsor_id'                        => $this->toIntOrNull($data['sponsor_id'] ?? ''),
-                'background_info'                   => $this->toNullIfEmpty($data['background_information'] ?? ''),
-                'internal_comment'                  => $this->toNullIfEmpty($data['internal_comment'] ?? ''),
-                'external_comment'                  => $this->toNullIfEmpty($data['external_comment'] ?? ''),
-                'created_at'                        => date('Y-m-d H:i:s')
-            ];
-
-            $insert = $this->filter_existing_columns(db_prefix() . 'university_students', $insert);
-
-            $this->db->insert(db_prefix() . 'university_students', $insert);
-            $student_id = (int)$this->db->insert_id();
-
-            if ($student_id) {
-                return $student_id;
-            }
-
-            return false;
-
-        } catch (Exception $e) {
-            log_message('error', 'Error adding university student: ' . $e->getMessage());
-            return ['success' => false, 'message' => 'Error adding student: ' . $e->getMessage()];
+   public function add($data)
+{
+    try {
+        $validation = $this->validate_student_data($data);
+        if (!$validation['valid']) {
+            return ['success' => false, 'message' => implode(', ', $validation['errors'])];
         }
+
+        // Log incoming data for debugging
+        log_message('debug', 'University_model::add - Incoming data: ' . json_encode(array_keys($data)));
+
+        $data = $this->process_new_items($data);
+
+        // Handle profile photo upload FIRST
+        $profile_photo_data = null;
+        try { 
+            $profile_photo_data = $this->handle_profile_photo_upload(); 
+            if ($profile_photo_data !== null) {
+                log_message('debug', 'Profile photo uploaded successfully, size: ' . strlen($profile_photo_data));
+            }
+        } catch (Exception $e) { 
+            log_message('error', 'Profile photo upload error: ' . $e->getMessage()); 
+        }
+
+        // Complete field mappings (handles multiple input formats)
+        $field_mappings = [
+            'name' => 'name',
+            'phone' => 'contact_no',
+            'contact_no' => 'contact_no',
+            'email' => 'email',
+            'address' => 'address',
+            'city' => 'city',
+            'postal_code' => 'zip',
+            'zip' => 'zip',
+            'country_id' => 'country_id',
+            'university_id' => 'university_id',
+            'university_name' => 'university_name_id',
+            'university_name_id' => 'university_name_id',
+            'program' => 'university_program_id',
+            'university_program_id' => 'university_program_id',
+            'year_of_study' => 'university_year_of_study',
+            'university_year_of_study' => 'university_year_of_study',
+            'dob' => 'university_student_dob',
+            'university_student_dob' => 'university_student_dob',
+            'bank_name' => 'bank_id',
+            'bank_id' => 'bank_id',
+            'bank_account_number' => 'university_bank_account_no',
+            'university_bank_account_no' => 'university_bank_account_no',
+            'bank_branch_number' => 'university_bank_branch_number',
+            'university_bank_branch_number' => 'university_bank_branch_number',
+            'bank_branch_info' => 'university_bank_branch_info',
+            'university_bank_branch_info' => 'university_bank_branch_info',
+            'sponsorship_start' => 'university_sponsorship_start_date',
+            'university_sponsorship_start_date' => 'university_sponsorship_start_date',
+            'sponsorship_end' => 'university_sponsorship_end_date',
+            'university_sponsorship_end_date' => 'university_sponsorship_end_date',
+            'introduced_by' => 'university_introducedby',
+            'university_introducedby' => 'university_introducedby',
+            'introduced_phone' => 'university_introducedph',
+            'university_introducedph' => 'university_introducedph',
+            'sponsor_id' => 'sponsor_id',
+            'father_name' => 'university_father_name',
+            'university_father_name' => 'university_father_name',
+            'mother_name' => 'university_mother_name',
+            'university_mother_name' => 'university_mother_name',
+            'guardian_name' => 'university_guardian_name',
+            'university_guardian_name' => 'university_guardian_name',
+            'father_income' => 'university_father_income',
+            'university_father_income' => 'university_father_income',
+            'mother_income' => 'university_mother_income',
+            'university_mother_income' => 'university_mother_income',
+            'guardian_income' => 'university_guardian_income',
+            'university_guardian_income' => 'university_guardian_income',
+            'background_information' => 'background_info',
+            'background_info' => 'background_info',
+            'internal_comment' => 'internal_comment',
+            'external_comment' => 'external_comment',
+        ];
+
+        // Process university name/program/bank FIRST
+        $university_name_id = null;
+        $university_program_id = null;
+        $bank_id = null;
+
+        if (isset($data['university_name']) || isset($data['university_name_id'])) {
+            $name_val = $data['university_name'] ?? ($data['university_name_id'] ?? '');
+            if (!empty($name_val)) {
+                $university_name_id = $this->get_or_create_university_name_id($name_val);
+            }
+        }
+
+        if (isset($data['program']) || isset($data['university_program_id'])) {
+            $prog_val = $data['program'] ?? ($data['university_program_id'] ?? '');
+            if (!empty($prog_val)) {
+                $university_program_id = $this->get_or_create_university_program_id($prog_val);
+            }
+        }
+
+        if (isset($data['bank_name']) || isset($data['bank_id'])) {
+            $bank_val = $data['bank_name'] ?? ($data['bank_id'] ?? '');
+            if (!empty($bank_val)) {
+                $bank_id = $this->get_or_create_bank_id($bank_val);
+            }
+        }
+
+        // Build insert array with defaults
+        $insert = [
+            'entity_type' => 'university',
+            'university_internal_id' => $this->generate_internal_id(),
+            'created_at' => date('Y-m-d H:i:s')
+        ];
+
+        // Add profile photo if uploaded
+        if ($profile_photo_data !== null) {
+            $insert['profile_photo'] = $profile_photo_data;
+        }
+
+        // Add processed IDs
+        $insert['university_name_id'] = $university_name_id;
+        $insert['university_program_id'] = $university_program_id;
+        $insert['bank_id'] = $bank_id;
+
+        // Process all other fields using field mappings
+        foreach ($field_mappings as $input_field => $db_field) {
+            if (array_key_exists($input_field, $data)) {
+                $value = $data[$input_field];
+                
+                // Skip if already processed
+                if (in_array($db_field, ['university_name_id', 'university_program_id', 'bank_id'], true)) {
+                    continue;
+                }
+                
+                // Handle special field types
+                if ($db_field === 'university_year_of_study') {
+                    $insert[$db_field] = $this->sanitize_year($value);
+                } elseif ($db_field === 'university_student_dob') {
+                    $insert[$db_field] = $this->toNullIfEmpty($value);
+                    // Auto-calculate age from DOB
+                    if (!empty($value)) {
+                        $insert['university_age'] = $this->calc_age($value);
+                    }
+                } elseif (in_array($db_field, ['university_father_income', 'university_mother_income', 'university_guardian_income'], true)) {
+                    $insert[$db_field] = $this->toFloatOrNull($value);
+                } elseif ($db_field === 'sponsor_id') {
+                    $insert[$db_field] = $this->toIntOrNull($value);
+                } elseif ($db_field === 'country_id') {
+                    $insert[$db_field] = !empty($value) ? (int)$value : null;
+                } else {
+                    $insert[$db_field] = $this->toNullIfEmpty($value);
+                }
+            }
+        }
+
+        // Filter to only existing columns
+        $insert = $this->filter_existing_columns(db_prefix() . 'university_students', $insert);
+
+        // Log what we're inserting (without binary data)
+        $log_insert = $insert;
+        if (isset($log_insert['profile_photo'])) {
+            $log_insert['profile_photo'] = '[BINARY DATA ' . strlen($insert['profile_photo']) . ' bytes]';
+        }
+        log_message('debug', 'University_model::add - Insert data: ' . json_encode($log_insert));
+
+        // Insert the record
+        $this->db->insert(db_prefix() . 'university_students', $insert);
+        $student_id = (int)$this->db->insert_id();
+
+        if ($student_id) {
+            log_message('debug', 'University_model::add - Success! Student ID: ' . $student_id);
+            return $student_id;
+        }
+
+        log_message('error', 'University_model::add - Failed to get insert ID');
+        return false;
+
+    } catch (Exception $e) {
+        log_message('error', 'Error adding university student: ' . $e->getMessage());
+        log_message('error', 'Stack trace: ' . $e->getTraceAsString());
+        return ['success' => false, 'message' => 'Error adding student: ' . $e->getMessage()];
     }
+}
 
     public function update($data, $id)
     {

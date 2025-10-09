@@ -10,7 +10,7 @@
             <!-- Header Section -->
             <div class="row">
               <div class="col-md-6">
-                <h4 class="customer-profile-group-heading" style="margin-top:20px;">
+                <h4 class="customer-profile-group-heading" style="margin-top:60px;">
                   <i class="fa fa-graduation-cap"></i> <?php echo isset($title) ? $title : 'School Students'; ?>
                 </h4>
               </div>
