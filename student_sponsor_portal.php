@@ -47,7 +47,36 @@ hooks()->add_action('app_admin_head', function () {
 
 /* ---------------- Dashboard Redirect Hook for All Portal Users ---------------- */
 hooks()->add_action('admin_init', 'check_student_dashboard_redirect');
+/* ---------------- Redirect Regular Staff to Module Dashboard on Login ---------------- */
+hooks()->add_action('after_staff_login', 'redirect_regular_staff_to_module');
 
+function redirect_regular_staff_to_module($staff_id) {
+    $CI = &get_instance();
+    
+    // Skip if user is a sponsor
+    $is_sponsor = $CI->db->select('id')->where('staff_id', $staff_id)
+                         ->where('entity_type', 'sponsor')->where('active', 1)
+                         ->limit(1)->get(db_prefix() . 'sponsor_records')->row();
+    if ($is_sponsor) return;
+    
+    // Skip if user is a university student
+    $is_uni_student = $CI->db->select('id')->where('staff_id', $staff_id)
+                             ->where('entity_type', 'university')->where('active', 1)
+                             ->limit(1)->get(db_prefix() . 'university_students')->row();
+    if ($is_uni_student) return;
+    
+    // Skip if user is a school student
+    $is_school_student = $CI->db->select('id')->where('staff_id', $staff_id)
+                                ->where('entity_type', 'school')->where('staff_active', 1)
+                                ->limit(1)->get(db_prefix() . 'school_students')->row();
+    if ($is_school_student) return;
+    
+    // Regular staff with module permission - redirect to module
+    if (has_permission('student_sponsor_portal', '', 'view')) {
+        redirect(admin_url('student_sponsor_portal'));
+        exit;
+    }
+}
 function check_student_dashboard_redirect() {
     if (!is_staff_logged_in()) {
         return;
@@ -103,7 +132,9 @@ function check_student_dashboard_redirect() {
 }
 
 /* ---------------- Simplified Sponsor Menu ---------------- */
+/* ===================== ADMIN MENU - CORRECTED VERSION ===================== */
 hooks()->add_action('admin_init', 'student_sponsor_portal_admin_menu');
+
 function student_sponsor_portal_admin_menu()
 {
     if (!is_staff_logged_in()) {
@@ -113,7 +144,9 @@ function student_sponsor_portal_admin_menu()
     $CI = &get_instance();
     $staff_id = get_staff_user_id();
     
-    // Check if current user is a sponsor first
+    // ========== CHECK USER TYPE AND SHOW APPROPRIATE MENU ==========
+    
+    // 1. Check if user is a SPONSOR
     $is_sponsor = $CI->db->select('id, name')
                          ->where('staff_id', $staff_id)
                          ->where('active', 1)
@@ -121,7 +154,7 @@ function student_sponsor_portal_admin_menu()
                          ->row();
 
     if ($is_sponsor) {
-        // Menu for sponsors - only show profile and sponsored students
+        // Sponsor-only menu items
         $CI->app_menu->add_sidebar_menu_item('sponsor-profile', [
             'name'     => 'My Profile',
             'href'     => admin_url('student_sponsor_portal/sponsor_profile'),
@@ -136,10 +169,10 @@ function student_sponsor_portal_admin_menu()
             'icon'     => 'fa fa-graduation-cap',
         ]);
 
-        return; // Don't show admin menu items for sponsors
+        return; // Stop here - sponsors only see these 2 items
     }
     
-    // Check if current user is a school student
+    // 2. Check if user is a SCHOOL STUDENT
     $is_school_student = $CI->db->select('id, school_internal_id, name')
                                 ->where('staff_id', $staff_id)
                                 ->where('entity_type', 'school')
@@ -154,10 +187,10 @@ function student_sponsor_portal_admin_menu()
             'position' => 1,
             'icon'     => 'fa fa-user-circle',
         ]);
-        return;
+        return; // Stop here - school students only see profile
     }
 
-    // Check if current user is a university student
+    // 3. Check if user is a UNIVERSITY STUDENT
     $is_university_student = $CI->db->select('id, university_internal_id, name')
                                     ->where('staff_id', $staff_id)
                                     ->where('entity_type', 'university')
@@ -172,63 +205,71 @@ function student_sponsor_portal_admin_menu()
             'position' => 1,
             'icon'     => 'fa fa-user-graduate',
         ]);
-        return;
+        return; // Stop here - university students only see profile
     }
 
-    // Regular admin menu (only if user has permissions and is not a portal user)
+    // ========== ADMIN USERS: FULL MODULE ACCESS ==========
+    
+    // Check if user has permission to view the module
     if (!has_permission('student_sponsor_portal', '', 'view')) {
-        return;
+        return; // No permission - don't show any menu
     }
 
-    // Parent menu item for admin users
+    // Add PARENT menu item - NOT directly clickable, just opens submenu
     $CI->app_menu->add_sidebar_menu_item('student-sponsor-portal', [
         'name'     => 'Student Portal',
-        'href'     => admin_url('student_sponsor_portal'),
-        'position' => 36,
+        'href'     => '#', // KEY CHANGE: No direct navigation, just toggle submenu
+        'position' => 10,
         'icon'     => 'fa fa-graduation-cap',
     ]);
 
-    // Children menu items for admin users
+    // Add CHILD menu items in correct order
+    
+    // Child 1: Dashboard (position 1) - NOW WILL APPEAR!
     $CI->app_menu->add_sidebar_children_item('student-sponsor-portal', [
         'slug'     => 'ssp-dashboard',
         'name'     => 'Dashboard',
-        'href'     => admin_url('student_sponsor_portal/dashboard'),
+        'href'     => admin_url('student_sponsor_portal'), // Your dashboard URL
         'position' => 1,
     ]);
 
-    $CI->app_menu->add_sidebar_children_item('student-sponsor-portal', [
-        'slug'     => 'ssp-school',
-        'name'     => 'School Students',
-        'href'     => admin_url('student_sponsor_portal/school_students'),
-        'position' => 2,
-    ]);
-    
-
-    $CI->app_menu->add_sidebar_children_item('student-sponsor-portal', [
-        'slug'     => 'ssp-university',
-        'name'     => 'University Students',
-        'href'     => admin_url('student_sponsor_portal/university_students'),
-        'position' => 3,
-    ]);
-
-    $CI->app_menu->add_sidebar_children_item('student-sponsor-portal', [
-        'slug'     => 'ssp-sponsors',
-        'name'     => 'Sponsors',
-        'href'     => admin_url('student_sponsor_portal/sponsors'),
-        'position' => 4,
-    ]);
-
+    // Child 2: Transactions (position 2)
     $CI->app_menu->add_sidebar_children_item('student-sponsor-portal', [
         'slug'     => 'ssp-transactions',
         'name'     => 'Transactions',
         'href'     => admin_url('student_sponsor_portal/transactions'),
-        'position' => 5,
+        'position' => 2,
     ]);
 
+    // Child 3: Payments (position 3)
     $CI->app_menu->add_sidebar_children_item('student-sponsor-portal', [
         'slug'     => 'ssp-payments',
         'name'     => 'Payments',
         'href'     => admin_url('student_sponsor_portal/payments'),
+        'position' => 3,
+    ]);
+
+    // Child 4: School Students (position 4)
+    $CI->app_menu->add_sidebar_children_item('student-sponsor-portal', [
+        'slug'     => 'ssp-school',
+        'name'     => 'School Students',
+        'href'     => admin_url('student_sponsor_portal/school_students'),
+        'position' => 4,
+    ]);
+    
+    // Child 5: University Students (position 5)
+    $CI->app_menu->add_sidebar_children_item('student-sponsor-portal', [
+        'slug'     => 'ssp-university',
+        'name'     => 'University Students',
+        'href'     => admin_url('student_sponsor_portal/university_students'),
+        'position' => 5,
+    ]);
+
+    // Child 6: Sponsors (position 6)
+    $CI->app_menu->add_sidebar_children_item('student-sponsor-portal', [
+        'slug'     => 'ssp-sponsors',
+        'name'     => 'Sponsors',
+        'href'     => admin_url('student_sponsor_portal/sponsors'),
         'position' => 6,
     ]);
 }

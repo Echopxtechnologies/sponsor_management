@@ -6801,7 +6801,7 @@ public function send_payment_email($payment_id)
         <table style="width: 100%; border-collapse: collapse; margin: 20px 0; background-color: #f9f9f9;">
             <thead>
                 <tr style="background-color: #e8e8e8;">
-                    <th style="border: 1px solid #ddd; padding: 12px; text-align: left; font-weight: bold;">Transaction ID</th>
+                    
                     <th style="border: 1px solid #ddd; padding: 12px; text-align: left; font-weight: bold;">Payment Amount</th>
                     <th style="border: 1px solid #ddd; padding: 12px; text-align: left; font-weight: bold;">Remaining Amount</th>
                     <th style="border: 1px solid #ddd; padding: 12px; text-align: left; font-weight: bold;">Payment Date</th>

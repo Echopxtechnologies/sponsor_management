@@ -9,7 +9,7 @@
 
             <!-- Header -->
             <div class="row">
-              <div class="col-md-8">
+              <div class="col-md-8" style="margin-top:44px;">
                 <h4 class="customer-profile-group-heading">
                   <i class="fa fa-user-plus"></i>
                   <?php if(isset($is_sponsor) && $is_sponsor): ?>

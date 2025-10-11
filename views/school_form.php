@@ -9,7 +9,7 @@
             <!-- Header -->
             <div class="row">
               <div class="col-md-8">
-                <h4 class="customer-profile-group-heading">
+                <h4 class="customer-profile-group-heading" style="margin-top:55px;">
                   <i class="fa fa-graduation-cap"></i>
                   <?php if(isset($is_school_student) && $is_school_student): ?>
                     My Profile

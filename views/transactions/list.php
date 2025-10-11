@@ -2,14 +2,14 @@
 <?php init_head(); ?>
 <div id="wrapper"><div class="content"><div class="row"><div class="col-md-12">
 <div class="panel_s"><div class="panel-body">
-  <div class="row m-b-10">
+  <div class="row m-b-10" >
     
-    <div class="col-md-6"><h4 class="customer-profile-group-heading"><i class="fa fa-exchange"></i> <?php echo html_escape($title); ?></h4></div>
+    <div class="col-md-6" style="margin-top:40px;"><h4 class="customer-profile-group-heading"><i class="fa fa-exchange"></i> <?php echo html_escape($title); ?></h4></div>
     <div class="col-md-6 text-right">
       <a href="<?php echo admin_url('student_sponsor_portal/transaction'); ?>" class="btn btn-primary"><i class="fa fa-plus"></i> Add Transaction</a>
     </div>
   </div>
-  <div class="table-responsive">
+  <div class="table-responsive" style="margin-top:25px;">
     <table class="table table-striped dt-table">
       <thead><tr>
         <th>ID</th><th>Sponsor</th><th>Student</th><th>Total</th><th>Paid</th><th>Balance</th><th>Next Due</th><th>Type</th><th>Updated</th><th></th>
