@@ -1108,14 +1108,24 @@ private function create_column_mapping($headers)
     ];
     
     // Map headers to database columns
-    foreach ($headers as $index => $header) {
-        $clean_header = strtolower(trim(str_replace([' ', '_'], '_', $header)));
-        
-        if (isset($field_mappings[$clean_header])) {
-            $db_column = $field_mappings[$clean_header];
-            $mapping[$db_column] = $index;
-            log_message('debug', "School Import: Mapped '{$header}' to '{$db_column}'");
-        }
+   foreach ($headers as $index => $header) {
+    // CRITICAL FIX #1: Remove UTF-8 BOM (invisible character Excel adds)
+    $header = str_replace("\xEF\xBB\xBF", '', $header);
+    
+    // CRITICAL FIX #2: Normalize to underscore-separated lowercase (matching field_mappings keys)
+    $clean_header = strtolower(trim($header));
+    $clean_header = preg_replace('/[\s\-]+/', '_', $clean_header); // Convert spaces/hyphens to underscores
+    $clean_header = preg_replace('/[^\w]/', '', $clean_header);     // Remove non-word chars (except underscore)
+
+    if (isset($field_mappings[$clean_header])) {
+        $db_column = $field_mappings[$clean_header];
+        $mapping[$db_column] = $index;
+        log_message('debug', "School Import: ✓ Mapped '{$header}' (cleaned: '{$clean_header}') to '{$db_column}' at INDEX {$index}");
+    } else {
+        // Log unmapped headers for debugging
+        log_message('debug', "School Import: ✗ UNMAPPED header '{$header}' (cleaned: '{$clean_header}') at INDEX {$index}");
+    }
+
     }
     
     return $mapping;
@@ -1664,7 +1674,9 @@ private function map_csv_row_to_student_data($row, $mapping, $headers)
             case 'age':
                 $data[$field] = is_numeric($value) ? (float)$value : null;
                 break;
-                
+            case 'grade':
+    $data[$field] = $this->normalize_grade($value);
+    break;
             case 'sponsorship_start':
             case 'sponsorship_end':
                 if ($value && $value !== '') {
@@ -1747,6 +1759,12 @@ private function validate_csv_row_data($data, $row_number)
     return ['valid' => true];
 }
 
+
+private function normalize_grade($grade)
+{
+    $map = ['11' => 'O/L', '12' => 'A/L1', '13' => 'A/L2'];
+    return $map[trim($grade)] ?? trim($grade);
+}
 /**
  * Find existing student by email or internal ID for import
  */
@@ -4934,61 +4952,115 @@ private function process_university_import_file($file_path, $file_ext)
 }
 
 /**
- * Create column mapping for university students
+ * Create column mapping from headers for university students
  */
 private function create_university_column_mapping($headers)
 {
     $mapping = [];
-    
-    // Comprehensive field mappings for university students
+
+    // Log incoming headers
+    log_message('debug', 'University Import: Processing headers - count: ' . count($headers));
+
+    // Direct field mappings - header name => database column
     $field_mappings = [
-        'name' => ['name', 'student_name', 'full_name', 'student name', 'full name'],
-        'email' => ['email', 'email_address', 'email address'],
-        'phone' => ['phone', 'contact_no', 'phone_number', 'contact_number', 'mobile', 'phone number'],
-        'dob' => ['dob', 'date_of_birth', 'birth_date', 'date of birth', 'birth date'],
-        'address' => ['address', 'home_address', 'home address'],
-        'city' => ['city', 'district', 'location'],
-        'postal_code' => ['postal_code', 'zip', 'zip_code', 'postal code', 'zip code'],
-        'country_name' => ['country', 'country_name', 'country name'],
-        'university_id' => ['university_id', 'student_id', 'university student id', 'student id'],
-        'university_internal_id' => ['internal_id', 'university_internal_id', 'internal id', 'university internal id'],
-        'university_name' => ['university', 'university_name', 'university name'],
-        'program_name' => ['program', 'program_name', 'program name', 'degree', 'course'],
-        'year_of_study' => ['year_of_study', 'year', 'semester', 'year of study'],
-        'bank_name' => ['bank', 'bank_name', 'bank name'],
-        'bank_account_number' => ['account_number', 'bank_account', 'account number', 'bank account', 'bank_account_number'],
-        'bank_branch_number' => ['branch_number', 'branch_code', 'branch number', 'branch code'],
-        'bank_branch_info' => ['branch_info', 'branch_information', 'branch info', 'branch information'],
-        'father_name' => ['father_name', 'father name', 'father'],
-        'father_income' => ['father_income', 'father income'],
-        'mother_name' => ['mother_name', 'mother name', 'mother'],
-        'mother_income' => ['mother_income', 'mother income'],
-        'guardian_name' => ['guardian_name', 'guardian name', 'guardian'],
-        'guardian_income' => ['guardian_income', 'guardian income'],
-        'background_information' => ['background', 'background_info', 'background_information', 'background information'],
-        'sponsorship_start' => ['sponsorship_start', 'sponsorship_start_date', 'sponsorship start', 'sponsorship start date'],
-        'sponsorship_end' => ['sponsorship_end', 'sponsorship_end_date', 'sponsorship end', 'sponsorship end date'],
-        'introduced_by' => ['introduced_by', 'introduced by', 'introducer'],
-        'introduced_phone' => ['introduced_phone', 'introducer_phone', 'introduced phone', 'introducer phone'],
-        'internal_comment' => ['internal_comment', 'internal comment', 'admin_notes', 'admin notes'],
-        'external_comment' => ['external_comment', 'external comment', 'public_notes', 'public notes'],
+        // Basic Information
+        'name' => 'name',
+        'email' => 'email',
+        'phone' => 'contact_no',
+        'contact_no' => 'contact_no',
+        'phone_number' => 'contact_no',
+
+        // Personal Details
+        'date_of_birth' => 'university_student_dob',
+        'dob' => 'university_student_dob',
+        'birth_date' => 'university_student_dob',
+        'age' => 'university_age',
+
+        // Address Information
+        'address' => 'address',
+        'city' => 'city',
+        'postal_code' => 'zip',
+        'zip_code' => 'zip',
+        'zip' => 'zip',
+        'country' => 'country_name',
+
+        // University Information
+        'university_id' => 'university_id',
+        'student_id' => 'university_id',
+        'internal_id' => 'university_internal_id',
+        'university_internal_id' => 'university_internal_id',
+        'university' => 'university_name',
+        'university_name' => 'university_name',
+        'program' => 'university_program',
+        'course' => 'university_program',
+        'year_of_study' => 'university_year_of_study',
+        'year' => 'university_year_of_study',
+        'study_year' => 'university_year_of_study',
+
+        // Bank Information
+        'bank' => 'bank_name',
+        'bank_name' => 'bank_name',
+        'account_number' => 'university_bank_account_no',
+        'bank_account_number' => 'university_bank_account_no',
+        'bank_account_no' => 'university_bank_account_no',
+        'branch_number' => 'university_bank_branch_number',
+        'branch_code' => 'university_bank_branch_number',
+        'branch_info' => 'university_bank_branch_info',
+        'bank_branch_info' => 'university_bank_branch_info',
+
+        // Family Information
+        'father_name' => 'university_father_name',
+        'father' => 'university_father_name',
+        'father_income' => 'university_father_income',
+        'mother_name' => 'university_mother_name',
+        'mother' => 'university_mother_name',
+        'mother_income' => 'university_mother_income',
+        'guardian_name' => 'university_guardian_name',
+        'guardian' => 'university_guardian_name',
+        'guardian_income' => 'university_guardian_income',
+
+        // Sponsorship Information
+        'sponsorship_start' => 'university_sponsorship_start_date',
+        'sponsorship_start_date' => 'university_sponsorship_start_date',
+        'sponsorship_end' => 'university_sponsorship_end_date',
+        'sponsorship_end_date' => 'university_sponsorship_end_date',
+        'introduced_by' => 'university_introducedby',
+        'introducer' => 'university_introducedby',
+        'introduced_phone' => 'university_introducedph',
+        'introducer_phone' => 'university_introducedph',
+
+        // Comments
+        'background_information' => 'background_info',
+        'background' => 'background_info',
+        'background_info' => 'background_info',
+        'internal_comment' => 'internal_comment',
+        'admin_notes' => 'internal_comment',
+        'external_comment' => 'external_comment',
+        'public_notes' => 'external_comment',
     ];
-    
+
+    // Map headers to database columns
     foreach ($headers as $index => $header) {
-        $header = strtolower(trim($header));
+        // CRITICAL FIX #1: Remove UTF-8 BOM (invisible character Excel adds)
+        $header = str_replace("\xEF\xBB\xBF", '', $header);
         
-        foreach ($field_mappings as $field => $possible_names) {
-            if (in_array($header, $possible_names)) {
-                $mapping[$field] = $index;
-                log_message('debug', "University Import: Mapped column '{$headers[$index]}' to field '{$field}'");
-                break;
-            }
+        // CRITICAL FIX #2: Normalize to underscore-separated lowercase
+        $clean_header = strtolower(trim($header));
+        $clean_header = preg_replace('/[\s\-]+/', '_', $clean_header); // spaces/hyphens → underscores
+        $clean_header = preg_replace('/[^\w]/', '', $clean_header);     // remove other special chars
+
+        if (isset($field_mappings[$clean_header])) {
+            $db_column = $field_mappings[$clean_header];
+            $mapping[$db_column] = $index;
+            log_message('debug', "University Import: ✓ Mapped '{$header}' (cleaned: '{$clean_header}') to '{$db_column}' at INDEX {$index}");
+        } else {
+            log_message('debug', "University Import: ✗ UNMAPPED header '{$header}' (cleaned: '{$clean_header}') at INDEX {$index}");
         }
     }
-    
+
+    log_message('debug', 'University Import: Column mapping complete: ' . json_encode($mapping));
     return $mapping;
 }
-
 /**
  * Map row data for university students
  */
