@@ -309,10 +309,13 @@ if(!empty($countries)):
                                          (isset($old['grade']) && (string)$old['grade'] === 'A/L1');
                           $al2_selected = (isset($student) && (string)($student['school_grade'] ?? '') === 'A/L2') ||
                                          (isset($old['grade']) && (string)$old['grade'] === 'A/L2');
+                          $al_final_selected = (isset($student) && (string)($student['school_grade'] ?? '') === 'A/L Final') ||
+                                         (isset($old['grade']) && (string)$old['grade'] === 'A/L Final');
                         ?>
                         <option value="O/L" <?php echo $ol_selected ? 'selected' : ''; ?>>O/L (Grade 11)</option>
                         <option value="A/L1" <?php echo $al1_selected ? 'selected' : ''; ?>>A/L1 (Grade 12)</option>
                         <option value="A/L2" <?php echo $al2_selected ? 'selected' : ''; ?>>A/L2 (Grade 13)</option>
+                        <option value="A/L Final" <?php echo $al_final_selected ? 'selected' : ''; ?>>A/L Final (Grade 14)</option>
                       </select>
                     </div>
 
@@ -1209,7 +1212,8 @@ if (typeof alert_float !== 'function') { window.alert_float = function(type, mes
     // O/L and A/L students don't have age restrictions
     'O/L': {min: 0, max: 99, name: 'O/L (Grade 11)'},
     'A/L1': {min: 0, max: 99, name: 'A/L1 (Grade 12)'},
-    'A/L2': {min: 0, max: 99, name: 'A/L2 (Grade 13)'}
+    'A/L2': {min: 0, max: 99, name: 'A/L2 (Grade 13)'},
+    'A/L Final': {min: 0, max: 99, name: 'A/L Final (Grade 14)'}
   };
 
   function validateAgeGrade() {
@@ -1230,7 +1234,7 @@ if (typeof alert_float !== 'function') { window.alert_float = function(type, mes
     }
 
     // No validation for O/L and A/L grades
-    if (grade === 'O/L' || grade === 'A/L1' || grade === 'A/L2') {
+    if (grade === 'O/L' || grade === 'A/L1' || grade === 'A/L2' || grade === 'A/L Final') {
       return true;
     }
 

@@ -25,6 +25,7 @@ class School_model extends App_Model
         11 => ['min' => 15, 'max' => 16], // O/L
         12 => ['min' => 16, 'max' => 17], // A/L1
         13 => ['min' => 17, 'max' => 18], // A/L2
+        14 => ['min' => 18, 'max' => 19], // A/L Final
     ];
 
     public function __construct()
@@ -642,7 +643,7 @@ foreach ($students as &$student) {
         $age = (int)$age;
 
         // No validation for grades above 10 (O/L and A/L students)
-        if (in_array($grade_str, ['O/L', 'A/L1', 'A/L2'], true)) {
+        if (in_array($grade_str, ['O/L', 'A/L1', 'A/L2', 'A/L Final'], true)) {
             return ['valid' => true];
         }
 
@@ -1990,6 +1991,7 @@ foreach ($students as &$student) {
                 WHEN school_grade = "O/L" THEN 11
                 WHEN school_grade = "A/L1" THEN 12  
                 WHEN school_grade = "A/L2" THEN 13
+                WHEN school_grade = "A/L Final" THEN 14
                 ELSE 999
             END
         ');

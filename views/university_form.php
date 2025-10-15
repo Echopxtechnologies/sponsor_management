@@ -542,7 +542,7 @@
                   <div class="col-md-6">
                     <div class="form-group">
                       <label for="bank_branch_number" class="control-label">Bank Branch Number</label>
-                      <input type="number" name="bank_branch_number" id="bank_branch_number" class="form-control"
+                      <input type="text" name="bank_branch_number" id="bank_branch_number" class="form-control"
                         value="<?php echo isset($student) ? html_escape($student['university_bank_branch_number'] ?? '') : (isset($old['bank_branch_number']) ? html_escape($old['bank_branch_number']) : ''); ?>" 
                         placeholder="Branch code/number">
                     </div>

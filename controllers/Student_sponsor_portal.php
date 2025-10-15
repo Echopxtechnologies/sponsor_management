@@ -1342,7 +1342,7 @@ public function download_school_students_template()
         ['- Email: Student\'s email address'],
         ['- Phone: Contact number'],
         ['- Date of Birth: Format YYYY-MM-DD (e.g., 2010-01-15)'],
-        ['- Grade: 1-10, O/L, A/L1, A/L2'],
+        ['- Grade: 1-10, O/L, A/L1, A/L2, A/L Final'],
         ['- All other fields are optional'],
         [''],
         ['NOTES:'],
@@ -1750,7 +1750,7 @@ private function validate_csv_row_data($data, $row_number)
     
     // Validate grade if provided
     if (!empty($data['grade'])) {
-        $valid_grades = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'O/L', 'A/L1', 'A/L2'];
+        $valid_grades = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'O/L', 'A/L1', 'A/L2', 'A/L Final'];
         if (!in_array($data['grade'], $valid_grades)) {
             return ['valid' => false, 'message' => 'Invalid grade: ' . $data['grade']];
         }
@@ -1762,7 +1762,7 @@ private function validate_csv_row_data($data, $row_number)
 
 private function normalize_grade($grade)
 {
-    $map = ['11' => 'O/L', '12' => 'A/L1', '13' => 'A/L2'];
+    $map = ['11' => 'O/L', '12' => 'A/L1', '13' => 'A/L2', '14' => 'A/L Final'];
     return $map[trim($grade)] ?? trim($grade);
 }
 /**
@@ -2212,7 +2212,7 @@ private function generate_csv_template()
     fputcsv($output, ['1. Fill in your student data starting from row 3']);
     fputcsv($output, ['2. Name column is required, others are optional']);
     fputcsv($output, ['3. Dates should be in YYYY-MM-DD format']);
-    fputcsv($output, ['4. Grades: 1-10, O/L, A/L1, A/L2']);
+    fputcsv($output, ['4. Grades: 1-10, O/L, A/L1, A/L2, A/L Final']);
     fputcsv($output, ['5. Schools and banks will be created if they don\'t exist']);
     fputcsv($output, ['6. Students with existing email/internal ID will be updated']);
     
