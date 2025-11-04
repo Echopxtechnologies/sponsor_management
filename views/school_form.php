@@ -7,9 +7,9 @@
         <div class="panel_s">
           <div class="panel-body school-student-form-wrapper">
             <!-- Header -->
-            <div class="row">
+            <div class="row" style = "margin-top: 1%; margin-bottom: 1%;">
               <div class="col-md-8">
-                <h4 class="customer-profile-group-heading" style="margin-top:55px;">
+                <h4 class="customer-profile-group-heading" style="margin-top: 12%; margin-left: 2%;">
                   <i class="fa fa-graduation-cap"></i>
                   <?php if(isset($is_school_student) && $is_school_student): ?>
                     My Profile
@@ -21,7 +21,7 @@
                   <p class="text-muted"><i class="fa fa-info-circle"></i> Update your personal information below</p>
                 <?php endif; ?>
               </div>
-              <div class="col-md-4 text-right">
+              <div class="col-md-4 text-right" style = "margin-top: 5%;">
                 <?php if(!isset($is_school_student) || !$is_school_student): ?>
                   <a href="<?php echo admin_url('student_sponsor_portal/school_students'); ?>" class="btn btn-default">
                     <i class="fa fa-arrow-left"></i> Back to List
@@ -151,8 +151,8 @@
                     </div>
 
                     <div class="form-group">
-                      <label for="dob" class="control-label">Date of Birth</label>
-                      <input type="date" name="dob" id="dob" class="form-control"
+                      <label for="dob" class="control-label">Date of Birth *</label>
+                      <input type="date" name="dob" id="dob" required class="form-control"
                         value="<?php echo isset($student) ? ($student['school_student_dob'] ?? '') : (isset($old['dob']) ? $old['dob'] : ''); ?>">
                     </div>
 
@@ -1209,11 +1209,10 @@ if (typeof alert_float !== 'function') { window.alert_float = function(type, mes
     '8': {min: 12, max: 13, name: 'Grade 8'},
     '9': {min: 13, max: 14, name: 'Grade 9'},
     '10': {min: 14, max: 15, name: 'Grade 10'},
-    // O/L and A/L students don't have age restrictions
-    'O/L': {min: 0, max: 99, name: 'O/L (Grade 11)'},
-    'A/L1': {min: 0, max: 99, name: 'A/L1 (Grade 12)'},
-    'A/L2': {min: 0, max: 99, name: 'A/L2 (Grade 13)'},
-    'A/L Final': {min: 0, max: 99, name: 'A/L Final (Grade 14)'}
+    'O/L': {min: 15, max: 16, name: 'O/L (Grade 11)'},
+    'A/L1': {min: 16, max: 17, name: 'A/L1 (Grade 12)'},
+    'A/L2': {min: 17, max: 18, name: 'A/L2 (Grade 13)'},
+    'A/L Final': {min: 18, max: 19, name: 'A/L Final (Grade 14)'}
   };
 
   function validateAgeGrade() {
@@ -1233,10 +1232,6 @@ if (typeof alert_float !== 'function') { window.alert_float = function(type, mes
       return true; // Allow if no grade or age specified
     }
 
-    // No validation for O/L and A/L grades
-    if (grade === 'O/L' || grade === 'A/L1' || grade === 'A/L2' || grade === 'A/L Final') {
-      return true;
-    }
 
     // Check if we have expected ages for this grade
     if (!gradeAgeMapping[grade]) {
