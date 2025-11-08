@@ -277,7 +277,7 @@ if(!empty($countries)):
                     <?php if(!isset($is_school_student) || !$is_school_student): ?>
                       <!-- Admin can still edit internal ID if needed -->
                       <div class="form-group">
-                        <label for="school_internal_id" class="control-label">Edit Internal Student ID</label>
+                        <label for="school_internal_id" class="control-label">Edit Internal Student ID</label> 
                         <input type="text" name="school_internal_id" id="school_internal_id" class="form-control"
                           value="<?php echo isset($student) ? html_escape($student['school_internal_id'] ?? '') : (isset($old['school_internal_id']) ? html_escape($old['school_internal_id']) : ''); ?>" 
                           placeholder="Internal tracking ID">

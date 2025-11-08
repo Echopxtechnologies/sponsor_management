@@ -1082,7 +1082,7 @@ foreach ($students as &$student) {
 
         // Build insert array with defaults
         $insert = [
-            'school_internal_id' => $this->generate_internal_id(),
+            'school_internal_id' => $data['school_internal_id'],
             'created_at' => date('Y-m-d H:i:s')
         ];
 
@@ -1527,14 +1527,14 @@ foreach ($students as &$student) {
         return (int)$this->db->insert_id();
     }
 
-    private function generate_internal_id()
-    {
-        $row = $this->db->select('MAX(CAST(SUBSTRING(school_internal_id, 4) AS UNSIGNED)) AS m', false)
-                        ->like('school_internal_id', 'SCH', 'after')
-                        ->get($this->tbl_students)->row();
-        $next = ($row && $row->m) ? ((int)$row->m + 1) : 1;
-        return 'SCH' . str_pad((string)$next, 3, '0', STR_PAD_LEFT);
-    }
+    // private function generate_internal_id()
+    // {
+    //     $row = $this->db->select('MAX(CAST(SUBSTRING(school_internal_id, 4) AS UNSIGNED)) AS m', false)
+    //                     ->like('school_internal_id', 'SCH', 'after')
+    //                     ->get($this->tbl_students)->row();
+    //     $next = ($row && $row->m) ? ((int)$row->m + 1) : 1;
+    //     return 'SCH' . str_pad((string)$next, 3, '0', STR_PAD_LEFT);
+    // }
 
     public function get_or_create_school_name_id($name_or_id)
     {

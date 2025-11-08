@@ -1271,9 +1271,10 @@ private function detect_file_mime_type($file_path, $uploaded_type = '')
         // Build insert array with defaults
         $insert = [
             'entity_type' => 'university',
-            'university_internal_id' => $this->generate_internal_id(),
+            'university_internal_id' => $data['university_internal_id'],
             'created_at' => date('Y-m-d H:i:s')
         ];
+        // $insert['contact_no'] = $data['phone'];
 
         // Add profile photo if uploaded
         if ($profile_photo_data !== null) {
@@ -1703,14 +1704,14 @@ private function detect_file_mime_type($file_path, $uploaded_type = '')
         return ['table' => null, 'id' => null, 'name' => null, 'phone' => null, 'is_custom' => null];
     }
 
-    private function generate_internal_id()
-    {
-        $this->db->select('MAX(CAST(SUBSTRING(university_internal_id, 4) AS UNSIGNED)) as max_id');
-        $this->db->like('university_internal_id', 'UNI', 'after');
-        $row = $this->db->get(db_prefix() . 'university_students')->row();
-        $next = ($row && $row->max_id) ? ((int)$row->max_id + 1) : 1;
-        return 'UNI' . str_pad($next, 3, '0', STR_PAD_LEFT);
-    }
+    // private function generate_internal_id()
+    // {
+    //     $this->db->select('MAX(CAST(SUBSTRING(university_internal_id, 4) AS UNSIGNED)) as max_id');
+    //     $this->db->like('university_internal_id', 'UNI', 'after');
+    //     $row = $this->db->get(db_prefix() . 'university_students')->row();
+    //     $next = ($row && $row->max_id) ? ((int)$row->max_id + 1) : 1;
+    //     return 'UNI' . str_pad($next, 3, '0', STR_PAD_LEFT);
+    // }
 
     private function filter_existing_columns($table, array $payload)
     {

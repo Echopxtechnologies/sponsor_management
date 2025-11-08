@@ -272,7 +272,7 @@ public function index()
             $this->session->set_flashdata('old_input', $post);
 
             if ($isCreate) {
-                $res = $this->school_model->add($cleaned_data);
+                $res = $this->school_model->add($cleaned_data); 
                 
                 // Handle both old format (just ID) and new format (array with success flag)
                 if (is_array($res)) {
