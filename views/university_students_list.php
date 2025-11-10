@@ -179,7 +179,7 @@
                                    onerror="showInitials(<?php echo $sid; ?>)"
                                    style="display: none;">
                             </div>
-                          </div>
+                          </div>  
                           <div class="media-body">
                             <strong>
                               <a href="<?php echo admin_url('student_sponsor_portal/university_student_form/' . $sid); ?>">
