@@ -5727,62 +5727,186 @@ private function download_university_csv_template()
         }
     }
 
-    public function display_profile_photo($student_id)
-    {
-        if (!has_permission('student_sponsor_portal', '', 'view')) {
-            access_denied('student_sponsor_portal');
+public function display_s_profile_photo($student_id)
+{
+    $student_id = (int) $student_id;
+
+    $photo_data = $this->school_model->get_profile_photo($student_id);
+    
+    if ($photo_data && strlen($photo_data) > 0) {
+        // Detect MIME type
+        $mime_type = 'image/jpeg'; // Default
+        
+        if (class_exists('finfo')) {
+            try {
+                $finfo = new finfo(FILEINFO_MIME_TYPE);
+                $detected_mime = $finfo->buffer($photo_data);
+                if ($detected_mime) {
+                    $mime_type = $detected_mime;
+                }
+            } catch (Exception $e) {
+                // Use fallback
+            }
+        }
+        elseif (function_exists('getimagesizefromstring')) {
+            try {
+                $image_info = getimagesizefromstring($photo_data);
+                if ($image_info && isset($image_info['mime'])) {
+                    $mime_type = $image_info['mime'];
+                }
+            } catch (Exception $e) {
+                // Use fallback
+            }
+        }
+        else {
+            // Detect by signature
+            $signature = substr($photo_data, 0, 4);
+            if (substr($signature, 0, 3) === "\xFF\xD8\xFF") {
+                $mime_type = 'image/jpeg';
+            } elseif ($signature === "\x89PNG") {
+                $mime_type = 'image/png';
+            } elseif (substr($signature, 0, 3) === "GIF") {
+                $mime_type = 'image/gif';
+            } elseif (substr($signature, 0, 2) === "BM") {
+                $mime_type = 'image/bmp';
+            }
         }
         
-        $photo_data = $this->university_model->get_profile_photo((int)$student_id);
+        // Output the photo
+        header('Content-Type: ' . $mime_type);
+        header('Content-Length: ' . strlen($photo_data));
+        header('Cache-Control: max-age=3600');
+        header('Pragma: public');
         
-        if ($photo_data) {
-            $mime_type = 'image/jpeg';
-            
-            if (class_exists('finfo')) {
-                try {
-                    $finfo = new finfo(FILEINFO_MIME_TYPE);
-                    $detected_mime = $finfo->buffer($photo_data);
-                    if ($detected_mime) {
-                        $mime_type = $detected_mime;
-                    }
-                } catch (Exception $e) {
-                    // Use fallback
-                }
-            }
-            elseif (function_exists('getimagesizefromstring')) {
-                try {
-                    $image_info = getimagesizefromstring($photo_data);
-                    if ($image_info && isset($image_info['mime'])) {
-                        $mime_type = $image_info['mime'];
-                    }
-                } catch (Exception $e) {
-                    // Use fallback
-                }
-            }
-            else {
-                $signature = substr($photo_data, 0, 4);
-                if (substr($signature, 0, 3) === "\xFF\xD8\xFF") {
-                    $mime_type = 'image/jpeg';
-                } elseif ($signature === "\x89PNG") {
-                    $mime_type = 'image/png';
-                } elseif (substr($signature, 0, 3) === "GIF") {
-                    $mime_type = 'image/gif';
-                } elseif (substr($signature, 0, 2) === "BM") {
-                    $mime_type = 'image/bmp';
-                }
-            }
-            
-            header('Content-Type: ' . $mime_type);
-            header('Content-Length: ' . strlen($photo_data));
-            header('Cache-Control: max-age=3600');
-            header('Pragma: public');
-            
-            echo $photo_data;
-        } else {
-            header('HTTP/1.0 404 Not Found');
-            exit('Photo not found');
-        }
+        echo $photo_data;
     }
+    // NO PHOTO FOUND - Generate initial avatar with first letter
+    // $this->generate_initial_avatar($student_id);
+    exit;
+}
+
+
+
+
+    /**
+ * Display profile photo for university student
+ * Returns transparent pixel if photo not found (no 404 error)
+ */
+public function display_profile_photo($student_id)
+{
+    $student_id = (int)$student_id;
+    $photo_data = $this->university_model->get_profile_photo($student_id);
+    
+    if ($photo_data && strlen($photo_data) > 0) {
+        // Detect MIME type
+        $mime_type = 'image/jpeg'; // Default
+        
+        if (class_exists('finfo')) {
+            try {
+                $finfo = new finfo(FILEINFO_MIME_TYPE);
+                $detected_mime = $finfo->buffer($photo_data);
+                if ($detected_mime) {
+                    $mime_type = $detected_mime;
+                }
+            } catch (Exception $e) {
+                // Use fallback
+            }
+        }
+        elseif (function_exists('getimagesizefromstring')) {
+            try {
+                $image_info = getimagesizefromstring($photo_data);
+                if ($image_info && isset($image_info['mime'])) {
+                    $mime_type = $image_info['mime'];
+                }
+            } catch (Exception $e) {
+                // Use fallback
+            }
+        }
+        else {
+            // Detect by signature
+            $signature = substr($photo_data, 0, 4);
+            if (substr($signature, 0, 3) === "\xFF\xD8\xFF") {
+                $mime_type = 'image/jpeg';
+            } elseif ($signature === "\x89PNG") {
+                $mime_type = 'image/png';
+            } elseif (substr($signature, 0, 3) === "GIF") {
+                $mime_type = 'image/gif';
+            } elseif (substr($signature, 0, 2) === "BM") {
+                $mime_type = 'image/bmp';
+            }
+        }
+        
+        // Output the photo
+        header('Content-Type: ' . $mime_type);
+        header('Content-Length: ' . strlen($photo_data));
+        header('Cache-Control: max-age=3600');
+        header('Pragma: public');
+        
+        echo $photo_data;
+        exit;
+    }
+    
+    // NO PHOTO FOUND - Generate initial avatar with first letter
+    // $this->generate_initial_avatar($student_id);
+    exit;
+}
+
+    // public function display_profile_photo($student_id)
+    // {
+    //     if (!has_permission('student_sponsor_portal', '', 'view')) {
+    //         access_denied('student_sponsor_portal');
+    //     }
+        
+    //     $photo_data = $this->university_model->get_profile_photo((int)$student_id);
+        
+    //     if ($photo_data) {
+    //         $mime_type = 'image/jpeg';
+            
+    //         if (class_exists('finfo')) {
+    //             try {
+    //                 $finfo = new finfo(FILEINFO_MIME_TYPE);
+    //                 $detected_mime = $finfo->buffer($photo_data);
+    //                 if ($detected_mime) {
+    //                     $mime_type = $detected_mime;
+    //                 }
+    //             } catch (Exception $e) {
+    //                 // Use fallback
+    //             }
+    //         }
+    //         elseif (function_exists('getimagesizefromstring')) {
+    //             try {
+    //                 $image_info = getimagesizefromstring($photo_data);
+    //                 if ($image_info && isset($image_info['mime'])) {
+    //                     $mime_type = $image_info['mime'];
+    //                 }
+    //             } catch (Exception $e) {
+    //                 // Use fallback
+    //             }
+    //         }
+    //         else {
+    //             $signature = substr($photo_data, 0, 4);
+    //             if (substr($signature, 0, 3) === "\xFF\xD8\xFF") {
+    //                 $mime_type = 'image/jpeg';
+    //             } elseif ($signature === "\x89PNG") {
+    //                 $mime_type = 'image/png';
+    //             } elseif (substr($signature, 0, 3) === "GIF") {
+    //                 $mime_type = 'image/gif';
+    //             } elseif (substr($signature, 0, 2) === "BM") {
+    //                 $mime_type = 'image/bmp';
+    //             }
+    //         }
+            
+    //         header('Content-Type: ' . $mime_type);
+    //         header('Content-Length: ' . strlen($photo_data));
+    //         header('Cache-Control: max-age=3600');
+    //         header('Pragma: public');
+            
+    //         echo $photo_data;
+    //     } else {
+    //         header('HTTP/1.0 404 Not Found');
+    //         exit('Photo not found');
+    //     }
+    // }
 
     public function add_country_ajax()
     {

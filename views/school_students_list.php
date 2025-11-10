@@ -1,5 +1,34 @@
 <?php defined('BASEPATH') or exit('No direct script access allowed'); ?>
 <?php init_head(); ?>
+
+<!-- CRITICAL: Define Avatar Functions BEFORE HTML that uses them -->
+<script>
+// Avatar Management Functions - Defined Early
+function hideInitials(studentId) {
+  var avatar = document.getElementById('avatar-' + studentId);
+  var initials = document.getElementById('initials-' + studentId);
+  var image = document.getElementById('avatar-img-' + studentId);
+  
+  if (avatar && initials && image) {
+    avatar.classList.add('avatar--has-image');
+    initials.style.display = 'none';
+    image.style.display = 'block';
+  }
+}
+
+function showInitials(studentId) {
+  var avatar = document.getElementById('avatar-' + studentId);
+  var initials = document.getElementById('initials-' + studentId);
+  var image = document.getElementById('avatar-img-' + studentId);
+  
+  if (avatar && initials && image) {
+    avatar.classList.remove('avatar--has-image');
+    initials.style.display = 'block';
+    image.style.display = 'none';
+  }
+}
+</script>
+
 <div id="wrapper">
   <div class="content">
     <div class="row">
@@ -51,7 +80,7 @@
 
             <hr class="hr-panel-heading">
 
-            <!-- Statistics Summary (Optional) -->
+            <!-- Statistics Summary -->
             <?php if(!empty($school_students) && count($school_students) > 0): ?>
             <div class="row" style="margin-bottom: 15px;">
               <div class="col-md-12">
@@ -68,7 +97,7 @@
 
             <!-- Students Table -->
             <div class="table-responsive">
-              <table class="table table-hover students-table" id="school-students-table">
+              <table class="table table-hover students-table dt-table" id="school-students-table" width="100%">
                 <thead>
                   <tr>
                     <th width="5%">#</th>
@@ -133,7 +162,8 @@
                         }
                       }
 
-                      $photoUrl = admin_url('student_sponsor_portal/display_school_photo/' . $sid);
+                      // Photo URL
+                      $photoUrl = admin_url('student_sponsor_portal/display_s_profile_photo/' . $sid);
                     ?>
                     <tr class="student-row"
                         id="student-row-<?php echo $sid; ?>"
@@ -151,16 +181,18 @@
                         <div class="media">
                           <div class="media-left">
                             <div class="avatar" id="avatar-<?php echo $sid; ?>">
-                                <span class="avatar__initials" id="initials-<?php echo $sid; ?>">
-                                    <?php echo $initials !== '' ? html_escape($initials) : '•'; ?>
-                                </span>
-                                <img src="<?php echo $photoUrl; ?>" 
-                                     alt="<?php echo html_escape($name); ?>" 
-                                     class="avatar__image"
-                                     id="avatar-img-<?php echo $sid; ?>"
-                                     onload="hideInitials(<?php echo $sid; ?>)"
-                                     onerror="showInitials(<?php echo $sid; ?>)"
-                                     style="display: none;">
+                              <span class="avatar__initials" id="initials-<?php echo $sid; ?>">
+                                <?php echo $initials !== '' ? html_escape($initials) : '•'; ?>
+                              </span>
+                              
+                              <img data-src="<?php echo $photoUrl; ?>"
+                              alt="<?php echo html_escape($name); ?>"
+                              class="avatar__image"
+                              id="avatar-img-<?php echo $sid; ?>"
+                              onload="hideInitials(<?php echo $sid; ?>)"
+                              onerror="showInitials(<?php echo $sid; ?>)"
+                              style="display:none;">
+
                             </div>
                           </div>
                           <div class="media-body">
@@ -310,6 +342,115 @@
 </div>
 
 <style>
+/* DataTables Custom Styling - FIXED VERSION */
+.dataTables_wrapper {
+  padding: 0;
+  margin-top: 15px;
+}
+
+.dataTables_wrapper .dataTables_length {
+  float: left;
+  margin-bottom: 15px;
+}
+
+.dataTables_wrapper .dataTables_length select {
+  padding: 5px;
+  border: 1px solid #ddd;
+  border-radius: 3px;
+  margin: 0 5px;
+}
+
+.dataTables_wrapper .dataTables_filter {
+  float: right;
+  margin-bottom: 15px;
+  text-align: right;
+}
+
+.dataTables_wrapper .dataTables_filter label {
+  font-weight: normal;
+  margin-bottom: 0;
+}
+
+.dataTables_wrapper .dataTables_filter input {
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  padding: 6px 12px;
+  margin-left: 8px;
+  width: 250px;
+  display: inline-block;
+}
+
+.dataTables_wrapper .dataTables_info {
+  float: left;
+  padding-top: 8px;
+  font-size: 13px;
+  color: #666;
+}
+
+.dataTables_wrapper .dataTables_paginate {
+  float: right;
+  text-align: right;
+  padding-top: 0;
+  margin: 0;
+}
+
+/* Pagination Buttons - FIXED STYLING */
+.dataTables_wrapper .dataTables_paginate .paginate_button {
+  box-sizing: border-box;
+  display: inline-block;
+  min-width: 32px;
+  padding: 6px 12px;
+  margin-left: 2px;
+  margin-right: 2px;
+  text-align: center;
+  text-decoration: none !important;
+  cursor: pointer;
+  color: #333 !important;
+  border: 1px solid #ddd;
+  background-color: #fff;
+  border-radius: 3px;
+  transition: all 0.2s ease;
+  font-size: 13px;
+  line-height: 1.42857143;
+}
+
+.dataTables_wrapper .dataTables_paginate .paginate_button:hover {
+  background-color: #f5f5f5;
+  border-color: #ccc;
+  color: #333 !important;
+}
+
+.dataTables_wrapper .dataTables_paginate .paginate_button.current,
+.dataTables_wrapper .dataTables_paginate .paginate_button.current:hover {
+  background-color: #007bff;
+  color: #fff !important;
+  border-color: #007bff;
+}
+
+.dataTables_wrapper .dataTables_paginate .paginate_button.disabled,
+.dataTables_wrapper .dataTables_paginate .paginate_button.disabled:hover,
+.dataTables_wrapper .dataTables_paginate .paginate_button.disabled:active {
+  cursor: not-allowed;
+  color: #999 !important;
+  border-color: #ddd;
+  background-color: #fff;
+  opacity: 0.5;
+}
+
+.dataTables_wrapper .dataTables_paginate .ellipsis {
+  padding: 0 10px;
+  color: #999;
+}
+
+/* Clear floats after pagination */
+.dataTables_wrapper:after {
+  visibility: hidden;
+  display: block;
+  content: "";
+  clear: both;
+  height: 0;
+}
+
 /* Main Table Styling */
 .students-table {
   border: 1px solid #e9ecef;
@@ -455,6 +596,7 @@
   top: 0;
   left: 0;
   z-index: 2;
+  display: none;
 }
 
 .avatar__initials {
@@ -465,10 +607,15 @@
   text-align: center;
   z-index: 1;
   font-weight: 600;
+  display: block;
 }
 
 .avatar--has-image .avatar__initials {
-  display: none;
+  display: none !important;
+}
+
+.avatar--has-image .avatar__image {
+  display: block !important;
 }
 
 .media-left { 
@@ -484,11 +631,6 @@
 
 /* Responsive Adjustments */
 @media (max-width: 768px) {
-  .btn-toolbar {
-    flex-direction: column;
-    gap: 10px;
-  }
-  
   .text-right {
     text-align: left !important;
   }
@@ -496,147 +638,207 @@
   .table-responsive {
     font-size: 12px;
   }
+  
+  .dataTables_wrapper .dataTables_filter input {
+    width: 150px;
+  }
+  
+  .dataTables_wrapper .dataTables_length,
+  .dataTables_wrapper .dataTables_filter {
+    float: none;
+    text-align: left;
+  }
+  
+  .dataTables_wrapper .dataTables_info,
+  .dataTables_wrapper .dataTables_paginate {
+    float: none;
+    text-align: center;
+    margin-top: 10px;
+  }
 }
 </style>
-
 <script>
-var table;
-
-// Avatar Management Functions
-function hideInitials(studentId) {
-  var avatar = document.getElementById('avatar-' + studentId);
-  var initials = document.getElementById('initials-' + studentId);
-  var image = document.getElementById('avatar-img-' + studentId);
-  
-  if (avatar && initials && image) {
-    avatar.classList.add('avatar--has-image');
-    initials.style.display = 'none';
-    image.style.display = 'block';
-  }
-}
-
-function showInitials(studentId) {
-  var avatar = document.getElementById('avatar-' + studentId);
-  var initials = document.getElementById('initials-' + studentId);
-  var image = document.getElementById('avatar-img-' + studentId);
-  
-  if (avatar && initials && image) {
-    avatar.classList.remove('avatar--has-image');
-    initials.style.display = 'block';
-    image.style.display = 'none';
-  }
-}
-
-// View Student Details
-function viewStudent(id) {
-  $('#studentViewModal').modal('show');
-
-  $.post('<?php echo admin_url("student_sponsor_portal/get_school_student"); ?>', {
-    student_id: id,
-    action: 'view'
-  }, function(resp) {
-    if (resp && resp.success) {
-      $('#studentViewContent').html(resp.html);
-      $('#editStudentBtn').attr('href', '<?php echo admin_url("student_sponsor_portal/school_student_form/"); ?>' + id);
-    } else {
-      $('#studentViewContent').html(
-        '<div class="alert alert-danger">' + 
-        (resp.message || 'Error loading student') + 
-        '</div>'
-      );
-    }
-  }, 'json').fail(function() {
-    $('#studentViewContent').html(
-      '<div class="alert alert-danger">Error loading student details</div>'
-    );
-  });
-}
-
-// Delete Student
-function deleteStudent(id) {
-  if (!confirm('Are you sure you want to delete this student? This action cannot be undone.')) {
-    return;
+(function waitForjQuery() {
+  if (typeof window.jQuery === 'undefined') {
+    return setTimeout(waitForjQuery, 50);
   }
 
-  var row = $('#student-row-' + id).css('opacity', '0.5');
+  (function($) {
 
-  $.post('<?php echo admin_url("student_sponsor_portal/delete_school_student"); ?>', {
-    student_id: id
-  }, function(response) {
-    if (response && response.success) {
-      // Remove row from DataTable
-      if (table) {
-        table.row('#student-row-' + id).remove().draw();
-      } else {
-        $('#student-row-' + id).remove();
+    // expose avatar helpers because HTML uses onload/onerror
+    window.hideInitials = function(studentId) {
+      var avatar = document.getElementById('avatar-' + studentId);
+      var initials = document.getElementById('initials-' + studentId);
+      var image = document.getElementById('avatar-img-' + studentId);
+      if (avatar && initials && image) {
+        avatar.classList.add('avatar--has-image');
+        initials.style.display = 'none';
+        image.style.display = 'block';
       }
-      
-      // Show success message
-      if (typeof alert_float === 'function') {
-        alert_float('success', response.message || 'Student deleted successfully');
-      } else {
-        alert('Student deleted successfully');
+    };
+
+    window.showInitials = function(studentId) {
+      var avatar = document.getElementById('avatar-' + studentId);
+      var initials = document.getElementById('initials-' + studentId);
+      var image = document.getElementById('avatar-img-' + studentId);
+      if (avatar && initials && image) {
+        avatar.classList.remove('avatar--has-image');
+        initials.style.display = 'block';
+        image.style.display = 'none';
       }
-    } else {
-      row.css('opacity', '1');
-      var msg = (response && response.message) || 'Error deleting student';
-      if (typeof alert_float === 'function') {
-        alert_float('danger', msg);
-      } else {
-        alert('Error: ' + msg);
+    };
+
+    // view & delete (these can stay)
+    window.viewStudent = function(id) {
+      $('#studentViewModal').modal('show');
+
+      $.post('<?php echo admin_url("student_sponsor_portal/get_school_student"); ?>', {
+        student_id: id,
+        action: 'view'
+      }, function(resp) {
+        if (resp && resp.success) {
+          $('#studentViewContent').html(resp.html);
+          $('#editStudentBtn').attr('href', '<?php echo admin_url("student_sponsor_portal/school_student_form/"); ?>' + id);
+        } else {
+          $('#studentViewContent').html('<div class="alert alert-danger">' + (resp.message || 'Error loading student') + '</div>');
+        }
+      }, 'json').fail(function() {
+        $('#studentViewContent').html('<div class="alert alert-danger">Error loading student details</div>');
+      });
+    };
+
+    window.deleteStudent = function(id) {
+      if (!confirm('Are you sure you want to delete this student? This action cannot be undone.')) return;
+
+      var $row = $('#student-row-' + id).css('opacity', '0.5');
+
+      $.post('<?php echo admin_url("student_sponsor_portal/delete_school_student"); ?>', {
+        student_id: id
+      }, function(response) {
+        if (response && response.success) {
+          // when DT is ready we’ll remove via API; if not, just remove row
+          var table = $.fn.DataTable && $.fn.DataTable.isDataTable('#school-students-table')
+            ? $('#school-students-table').DataTable()
+            : null;
+
+          if (table) {
+            table.row('#student-row-' + id).remove().draw();
+          } else {
+            $('#student-row-' + id).remove();
+          }
+
+          if (typeof alert_float === 'function') {
+            alert_float('success', response.message || 'Student deleted successfully');
+          } else {
+            alert('Student deleted successfully');
+          }
+        } else {
+          $row.css('opacity', '1');
+          var msg = (response && response.message) || 'Error deleting student';
+          if (typeof alert_float === 'function') {
+            alert_float('danger', msg);
+          } else {
+            alert('Error: ' + msg);
+          }
+        }
+      }, 'json').fail(function() {
+        $row.css('opacity', '1');
+        if (typeof alert_float === 'function') {
+          alert_float('danger', 'Error deleting student');
+        } else {
+          alert('Error deleting student');
+        }
+      });
+    };
+
+    // -------------------------
+    // IMPORTANT PART:
+    // wait for Perfex to init DataTable, then hook into it
+    // -------------------------
+    var tries = 0;
+    (function waitForPerfexDT() {
+      var $tbl = $('#school-students-table');
+
+      // table exists AND DataTables plugin is there AND Perfex already initialized it
+      if ($tbl.length && $.fn.DataTable && $.fn.DataTable.isDataTable($tbl)) {
+        var schoolTable = $tbl.DataTable();
+        console.log('✅ hooked into existing School Students DataTable');
+          function loadVisibleAvatars(table) {
+            table.rows({page: 'current'}).every(function () {
+              var node = this.node();
+              var img = $(node).find('.avatar__image')[0];
+              if (img && !img.src) {
+                var realSrc = img.getAttribute('data-src');
+                if (realSrc) img.src = realSrc;
+              }
+            });
+          }
+
+
+            // initial
+            loadVisibleAvatars(schoolTable);
+
+            // also on every draw
+            schoolTable.on('draw', function () {
+              // ... your serial number code ...
+              loadVisibleAvatars(schoolTable);
+            });
+
+
+        // fix serial numbers on draw
+        schoolTable.on('draw', function() {
+          var api = schoolTable;
+          var startIndex = api.context[0]._iDisplayStart;
+          api.column(0, { page: 'current' }).nodes().each(function(cell, i) {
+            cell.innerHTML = '<strong>' + (startIndex + i + 1) + '</strong>';
+          });
+
+          // re-evaluate avatars
+          $('.avatar__image').each(function() {
+            var img = this;
+            var studentId = img.id.replace('avatar-img-', '');
+            if (img.complete && img.naturalHeight !== 0) {
+              window.hideInitials(studentId);
+            } else {
+              window.showInitials(studentId);
+            }
+          });
+        });
+
+        // row hover actions
+        $(document).on('mouseenter', '.student-row', function() {
+          $(this).find('.row-options').show();
+        }).on('mouseleave', '.student-row', function() {
+          $(this).find('.row-options').hide();
+        });
+
+        // focus search shortcut
+        $(document).on('keydown', function(e) {
+          if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
+            e.preventDefault();
+            $('.dataTables_filter input').focus();
+          }
+        });
+
+        return;
       }
-    }
-  }, 'json').fail(function() {
-    row.css('opacity', '1');
-    if (typeof alert_float === 'function') {
-      alert_float('danger', 'Error deleting student');
-    } else {
-      alert('Error deleting student');
-    }
-  });
-}
 
-// Document Ready
-$(document).ready(function() {
-  // Initialize avatar states
-  $('.avatar__image').each(function() {
-    var img = this;
-    var studentId = img.id.replace('avatar-img-', '');
-    
-    if (img.complete && img.naturalHeight !== 0) {
-      hideInitials(studentId);
-    } else {
-      showInitials(studentId);
-    }
-  });
+      // not ready yet → try again
+      if (tries < 120) {    // ~12 seconds total
+        tries++;
+        return setTimeout(waitForPerfexDT, 100);
+      } else {
+        console.warn('DataTable on #school-students-table was not initialized by Perfex.');
+      }
+    })();
 
-  // Initialize DataTable
-  table = $('#school-students-table').DataTable({
-    responsive: true,
-    pageLength: 25,
-    order: [[0, "desc"]],
-    columnDefs: [
-      { orderable: false, targets: [1, 5, 6] }, // Name, Sponsor, Contact
-      { searchable: false, targets: [0] }       // ID column
-    ],
-    language: {
-      emptyTable: "No school students found",
-      zeroRecords: "No matching students found",
-      info: "Showing _START_ to _END_ of _TOTAL_ students",
-      infoEmpty: "Showing 0 to 0 of 0 students",
-      infoFiltered: "(filtered from _MAX_ total students)",
-      search: "Search students:",
-      lengthMenu: "Show _MENU_ students per page"
-    }
-  });
+  })(window.jQuery);
 
-  // Row hover effects
-  $(document).on('mouseenter', '.student-row', function(){ 
-    $(this).find('.row-options').show(); 
-  }).on('mouseleave', '.student-row', function(){ 
-    $(this).find('.row-options').hide(); 
-  });
-});
+})();
 </script>
+
+
+
+
 
 <?php init_tail(); ?>

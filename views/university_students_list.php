@@ -10,7 +10,7 @@
             <!-- Header Section -->
             <div class="row">
               <div class="col-md-6">
-                <h4 class="customer-profile-group-heading" style="margin-top:60px;  margin-left:13px;">
+                <h4 class="customer-profile-group-heading" style="margin-top:60px; margin-left:13px;">
                   <i class="fa fa-university"></i> <?php echo isset($title) ? $title : 'University Students'; ?>
                 </h4>
               </div>
@@ -51,7 +51,7 @@
 
             <hr class="hr-panel-heading">
 
-            <!-- Statistics Summary (Optional) -->
+            <!-- Statistics Summary -->
             <?php if(!empty($students) && count($students) > 0): ?>
             <div class="row" style="margin-bottom: 15px;">
               <div class="col-md-12">
@@ -68,7 +68,7 @@
 
             <!-- Students Table -->
             <div class="table-responsive">
-              <table class="table table-hover students-table" id="university-students-table">
+              <table class="table table-hover students-table dt-table" id="university-students-table" width="100%">
                 <thead>
                   <tr>
                     <th width="5%">#</th>
@@ -168,16 +168,16 @@
                         <div class="media">
                           <div class="media-left">
                             <div class="avatar" id="avatar-<?php echo $sid; ?>">
-                                <span class="avatar__initials" id="initials-<?php echo $sid; ?>">
-                                    <?php echo $initials !== '' ? html_escape($initials) : '•'; ?>
-                                </span>
-                                <img src="<?php echo $photoUrl; ?>" 
-                                     alt="<?php echo html_escape($name); ?>" 
-                                     class="avatar__image"
-                                     id="avatar-img-<?php echo $sid; ?>"
-                                     onload="hideInitials(<?php echo $sid; ?>)"
-                                     onerror="showInitials(<?php echo $sid; ?>)"
-                                     style="display: none;">
+                              <span class="avatar__initials" id="initials-<?php echo $sid; ?>">
+                                <?php echo $initials !== '' ? html_escape($initials) : '•'; ?>
+                              </span>
+                              <img src="<?php echo $photoUrl; ?>" 
+                                   alt="<?php echo html_escape($name); ?>" 
+                                   class="avatar__image"
+                                   id="avatar-img-<?php echo $sid; ?>"
+                                   onload="hideInitials(<?php echo $sid; ?>)"
+                                   onerror="showInitials(<?php echo $sid; ?>)"
+                                   style="display: none;">
                             </div>
                           </div>
                           <div class="media-body">
@@ -189,7 +189,6 @@
                             <br><small class="text-muted">ID: <?php echo $sid; ?></small>
                             <div class="row-options" style="display:none;">
                               <a href="<?php echo admin_url('student_sponsor_portal/university_student_form/' . $sid); ?>">Edit</a> |
-                             
                               <a href="#" onclick="deleteStudent(<?php echo $sid; ?>); return false;" class="text-danger">Delete</a>
                             </div>
                           </div>
@@ -328,6 +327,115 @@
 </div>
 
 <style>
+/* DataTables Custom Styling - FIXED VERSION */
+.dataTables_wrapper {
+  padding: 0;
+  margin-top: 15px;
+}
+
+.dataTables_wrapper .dataTables_length {
+  float: left;
+  margin-bottom: 15px;
+}
+
+.dataTables_wrapper .dataTables_length select {
+  padding: 5px;
+  border: 1px solid #ddd;
+  border-radius: 3px;
+  margin: 0 5px;
+}
+
+.dataTables_wrapper .dataTables_filter {
+  float: right;
+  margin-bottom: 15px;
+  text-align: right;
+}
+
+.dataTables_wrapper .dataTables_filter label {
+  font-weight: normal;
+  margin-bottom: 0;
+}
+
+.dataTables_wrapper .dataTables_filter input {
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  padding: 6px 12px;
+  margin-left: 8px;
+  width: 250px;
+  display: inline-block;
+}
+
+.dataTables_wrapper .dataTables_info {
+  float: left;
+  padding-top: 8px;
+  font-size: 13px;
+  color: #666;
+}
+
+.dataTables_wrapper .dataTables_paginate {
+  float: right;
+  text-align: right;
+  padding-top: 0;
+  margin: 0;
+}
+
+/* Pagination Buttons - FIXED STYLING */
+.dataTables_wrapper .dataTables_paginate .paginate_button {
+  box-sizing: border-box;
+  display: inline-block;
+  min-width: 32px;
+  padding: 6px 12px;
+  margin-left: 2px;
+  margin-right: 2px;
+  text-align: center;
+  text-decoration: none !important;
+  cursor: pointer;
+  color: #333 !important;
+  border: 1px solid #ddd;
+  background-color: #fff;
+  border-radius: 3px;
+  transition: all 0.2s ease;
+  font-size: 13px;
+  line-height: 1.42857143;
+}
+
+.dataTables_wrapper .dataTables_paginate .paginate_button:hover {
+  background-color: #f5f5f5;
+  border-color: #ccc;
+  color: #333 !important;
+}
+
+.dataTables_wrapper .dataTables_paginate .paginate_button.current,
+.dataTables_wrapper .dataTables_paginate .paginate_button.current:hover {
+  background-color: #007bff;
+  color: #fff !important;
+  border-color: #007bff;
+}
+
+.dataTables_wrapper .dataTables_paginate .paginate_button.disabled,
+.dataTables_wrapper .dataTables_paginate .paginate_button.disabled:hover,
+.dataTables_wrapper .dataTables_paginate .paginate_button.disabled:active {
+  cursor: not-allowed;
+  color: #999 !important;
+  border-color: #ddd;
+  background-color: #fff;
+  opacity: 0.5;
+}
+
+.dataTables_wrapper .dataTables_paginate .ellipsis {
+  padding: 0 10px;
+  color: #999;
+}
+
+/* Clear floats after pagination */
+.dataTables_wrapper:after {
+  visibility: hidden;
+  display: block;
+  content: "";
+  clear: both;
+  height: 0;
+}
+
 /* Main Table Styling */
 .students-table {
   border: 1px solid #e9ecef;
@@ -473,6 +581,7 @@
   top: 0;
   left: 0;
   z-index: 2;
+  display: none;
 }
 
 .avatar__initials {
@@ -483,10 +592,15 @@
   text-align: center;
   z-index: 1;
   font-weight: 600;
+  display: block;
 }
 
 .avatar--has-image .avatar__initials {
-  display: none;
+  display: none !important;
+}
+
+.avatar--has-image .avatar__image {
+  display: block !important;
 }
 
 .media-left { 
@@ -509,11 +623,28 @@
   .table-responsive {
     font-size: 12px;
   }
+  
+  .dataTables_wrapper .dataTables_filter input {
+    width: 150px;
+  }
+  
+  .dataTables_wrapper .dataTables_length,
+  .dataTables_wrapper .dataTables_filter {
+    float: none;
+    text-align: left;
+  }
+  
+  .dataTables_wrapper .dataTables_info,
+  .dataTables_wrapper .dataTables_paginate {
+    float: none;
+    text-align: center;
+    margin-top: 10px;
+  }
 }
 </style>
 
 <script>
-var table;
+var universityTable;
 
 // Avatar Management Functions
 function hideInitials(studentId) {
@@ -577,12 +708,14 @@ function deleteStudent(id) {
     student_id: id
   }, function(response) {
     if (response && response.success) {
-      if (table) {
-        table.row('#student-row-' + id).remove().draw();
+      // Remove row from DataTable
+      if (universityTable) {
+        universityTable.row('#student-row-' + id).remove().draw();
       } else {
         $('#student-row-' + id).remove();
       }
       
+      // Show success message
       if (typeof alert_float === 'function') {
         alert_float('success', response.message || 'Student deleted successfully');
       } else {
@@ -607,46 +740,126 @@ function deleteStudent(id) {
   });
 }
 
-// Document Ready
-$(document).ready(function() {
-  // Initialize avatar states
-  $('.avatar__image').each(function() {
-    var img = this;
-    var studentId = img.id.replace('avatar-img-', '');
+// Initialize DataTable
+jQuery(document).ready(function($) {
+    'use strict';
     
-    if (img.complete && img.naturalHeight !== 0) {
-      hideInitials(studentId);
-    } else {
-      showInitials(studentId);
-    }
-  });
+    // Initialize avatar states first
+    $('.avatar__image').each(function() {
+      var img = this;
+      var studentId = img.id.replace('avatar-img-', '');
+      
+      // Check if image is already loaded
+      if (img.complete) {
+        if (img.naturalHeight !== 0) {
+          hideInitials(studentId);
+        } else {
+          showInitials(studentId);
+        }
+      } else {
+        // Image not loaded yet, show initials
+        showInitials(studentId);
+      }
+    });
+    
+    // Initialize DataTable with full configuration
+    universityTable = $('#university-students-table').DataTable({
+        // Display options
+        responsive: true,
+        pageLength: 25,
+        lengthMenu: [[10, 25, 50, 100, -1], [10, 25, 50, 100, "All"]],
+        
+        // Ordering
+        order: [[1, "asc"]], // Sort by student name
+        
+        // Column definitions
+        columnDefs: [
+            { 
+                orderable: false, 
+                targets: [0] // Serial number column
+            },
+            { 
+                searchable: false, 
+                targets: [0] // Serial number column
+            }
+        ],
+        
+        // Language customization
+        language: {
+            emptyTable: "No university students found",
+            zeroRecords: "No matching students found",
+            info: "Showing _START_ to _END_ of _TOTAL_ students",
+            infoEmpty: "Showing 0 to 0 of 0 students",
+            infoFiltered: "(filtered from _MAX_ total students)",
+            search: "<i class='fa fa-search'></i> Search:",
+            searchPlaceholder: "Search by name, university, program...",
+            lengthMenu: "Show _MENU_ students",
+            paginate: {
+                first: "First",
+                last: "Last",
+                next: "Next <i class='fa fa-angle-right'></i>",
+                previous: "<i class='fa fa-angle-left'></i> Previous"
+            }
+        },
+        
+        // DOM positioning
+        dom: "<'row'<'col-sm-6'l><'col-sm-6'f>>" +
+             "<'row'<'col-sm-12'tr>>" +
+             "<'row'<'col-sm-5'i><'col-sm-7'p>>",
+        
+        // Enable state saving (remembers page, search, etc.)
+        stateSave: true,
+        stateDuration: 60 * 60 * 24, // 24 hours
+        
+        // Callbacks
+        drawCallback: function(settings) {
+            // Update serial numbers after each draw
+            var api = this.api();
+            var startIndex = api.context[0]._iDisplayStart;
+            api.column(0, {page: 'current'}).nodes().each(function(cell, i) {
+                cell.innerHTML = '<strong>' + (startIndex + i + 1) + '</strong>';
+            });
+            
+            // Re-check avatar images after redraw
+            $('.avatar__image').each(function() {
+              var img = this;
+              var studentId = img.id.replace('avatar-img-', '');
+              
+              if (img.complete && img.naturalHeight !== 0) {
+                hideInitials(studentId);
+              } else {
+                showInitials(studentId);
+              }
+            });
+        },
+        
+        initComplete: function() {
+            console.log('University Students DataTable initialized successfully');
+        }
+    });
 
-  // Initialize DataTable
-  table = $('#university-students-table').DataTable({
-    responsive: true,
-    pageLength: 25,
-    order: [[0, "desc"]],
-    columnDefs: [
-      { orderable: false, targets: [1, 6, 7] }, // Name, Sponsor, Contact
-      { searchable: false, targets: [0] }       // ID column
-    ],
-    language: {
-      emptyTable: "No university students found",
-      zeroRecords: "No matching students found",
-      info: "Showing _START_ to _END_ of _TOTAL_ students",
-      infoEmpty: "Showing 0 to 0 of 0 students",
-      infoFiltered: "(filtered from _MAX_ total students)",
-      search: "Search students:",
-      lengthMenu: "Show _MENU_ students per page"
-    }
-  });
+    // Custom search highlighting (optional enhancement)
+    universityTable.on('search.dt', function() {
+        var value = $('.dataTables_filter input').val();
+        if (value) {
+            console.log('Searching university students for: ' + value);
+        }
+    });
 
-  // Row hover effects
-  $(document).on('mouseenter', '.student-row', function(){ 
-    $(this).find('.row-options').show(); 
-  }).on('mouseleave', '.student-row', function(){ 
-    $(this).find('.row-options').hide(); 
-  });
+    // Row hover effects for action links
+    $(document).on('mouseenter', '.student-row', function() { 
+        $(this).find('.row-options').show(); 
+    }).on('mouseleave', '.student-row', function() { 
+        $(this).find('.row-options').hide(); 
+    });
+
+    // Focus on search box with keyboard shortcut (Ctrl+F or Cmd+F)
+    $(document).on('keydown', function(e) {
+        if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
+            e.preventDefault();
+            $('.dataTables_filter input').focus();
+        }
+    });
 });
 </script>
 

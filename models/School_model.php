@@ -239,14 +239,17 @@ class School_model extends App_Model
      * 
      * @return array Students with sponsor data
      */
-   public function get_all()
+public function get_all()
 {
     $c = $this->country_schema();
 
     $this->db->select('
         ss.*,
         sn.name AS school_name,
-        b.name  AS bank_name' .
+        b.name  AS bank_name,
+        sr.name as sponsor_name,
+        sr.sponsor_type,
+        sr.email as sponsor_email' .
         ($c['table'] ? ', c.' . $c['name'] . ' AS country_name' : ', NULL AS country_name')
     , false);
 
@@ -258,57 +261,10 @@ class School_model extends App_Model
     }
 
     $this->db->join($this->tbl_bank.' b', 'b.id = ss.bank_id', 'left');
+    $this->db->join($this->tbl_sponsor.' sr', 'sr.id = ss.sponsor_id', 'left');
     $this->db->order_by('ss.id', 'DESC');
     
-    $students = $this->db->get()->result_array();
-    
-    // Enhance each student with complete sponsor information
-    foreach ($students as &$student) {
-        $sponsors = $this->get_student_sponsors_history($student['id']);
-        
-        if (!empty($sponsors)) {
-            // Get the primary/latest sponsor
-            $primary_sponsor = $sponsors[0];
-            $student['sponsor_id'] = $primary_sponsor['sponsor_id'];
-            $student['sponsor_name'] = $primary_sponsor['sponsor_name'];
-            $student['sponsor_type'] = $primary_sponsor['sponsor_type'];
-            $student['sponsor_email'] = $primary_sponsor['sponsor_email'];
-            $student['sponsor_relationship_type'] = $primary_sponsor['relationship_type'];
-            
-            // Add all sponsors information for display
-            $sponsor_names = [];
-            $sponsor_types = [];
-            foreach ($sponsors as $sponsor) {
-                $sponsor_names[] = $sponsor['sponsor_name'];
-                if (!empty($sponsor['sponsor_type'])) {
-                    $sponsor_types[] = $sponsor['sponsor_type'];
-                }
-            }
-            
-            // For multiple sponsors, create combined display
-            if (count($sponsors) > 1) {
-                $student['all_sponsor_names'] = implode(', ', array_unique($sponsor_names));
-                $student['all_sponsor_types'] = implode(', ', array_unique($sponsor_types));
-                $student['sponsor_count'] = count($sponsors);
-            } else {
-                $student['all_sponsor_names'] = $student['sponsor_name'];
-                $student['all_sponsor_types'] = $student['sponsor_type'];
-                $student['sponsor_count'] = 1;
-            }
-        } else {
-            // No sponsors
-            $student['sponsor_id'] = null;
-            $student['sponsor_name'] = '';
-            $student['sponsor_type'] = '';
-            $student['sponsor_email'] = '';
-            $student['sponsor_relationship_type'] = '';
-            $student['all_sponsor_names'] = '';
-            $student['all_sponsor_types'] = '';
-            $student['sponsor_count'] = 0;
-        }
-    }
-    
-    return $students;
+    return $this->db->get()->result_array();
 }
 
     /**
