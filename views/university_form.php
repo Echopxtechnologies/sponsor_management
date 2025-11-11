@@ -112,7 +112,7 @@
               <?php if(!isset($is_university_student) || !$is_university_student): ?>
                 <li role="presentation">
                   <a href="#tab_staff" data-toggle="tab">
-                    <i class="fa fa-user-circle"></i> Staff Account
+                    <i class="fa fa-user-circle"></i> Student Access
                   </a>
                 </li>
               <?php endif; ?>
@@ -738,7 +738,7 @@
               <div class="tab-pane" id="tab_staff">
                 <div class="checkbox checkbox-primary">
                   <input type="checkbox" id="create_staff" name="create_staff" value="1" <?php echo (!empty($student['staff_id']) || isset($old['create_staff'])) ? 'checked' : ''; ?>>
-                  <label for="create_staff">Create a Staff login</label>
+                  <label for="create_staff">Create a Student login</label>
                 </div>
                 <div class="row">
                   <div class="col-md-4">

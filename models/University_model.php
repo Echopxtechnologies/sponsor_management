@@ -1481,6 +1481,7 @@ private function detect_file_mime_type($file_path, $uploaded_type = '')
 
         $this->db->select('
             us.*,
+            us.university_internal_id,
             un.name AS university_name,
             up.name AS program_name,
             b.name  AS bank_name' .
@@ -1496,7 +1497,7 @@ private function detect_file_mime_type($file_path, $uploaded_type = '')
         }
 
         $this->db->join(db_prefix() . 'bank b', 'b.id = us.bank_id', 'left');
-        $this->db->order_by('us.id', 'DESC');
+        $this->db->order_by('us.university_name_id', 'ASC');
         
         $students = $this->db->get()->result_array();
         

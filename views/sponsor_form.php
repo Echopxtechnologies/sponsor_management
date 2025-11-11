@@ -66,7 +66,7 @@
                 <?php endif; ?>
                 <?php if(!isset($is_sponsor) || !$is_sponsor): ?>
                   <li><a href="#tab_sponsorship" data-toggle="tab"><i class="fa fa-calendar"></i> Sponsorship</a></li>
-                  <li><a href="#tab_staff" data-toggle="tab"><i class="fa fa-user-circle"></i> Staff Account</a></li>
+                  <li><a href="#tab_staff" data-toggle="tab"><i class="fa fa-user-circle"></i> Sponsor Access</a></li>
                 <?php endif; ?>
               </ul>
             </div>
@@ -581,7 +581,7 @@
               <div class="tab-pane" id="tab_staff">
                 <div class="checkbox checkbox-primary">
                   <input type="checkbox" id="create_staff" name="create_staff" value="1" <?= !empty($sponsor['staff_id']) ? 'checked' : ''; ?>>
-                  <label for="create_staff">Create a Staff login</label>
+                  <label for="create_staff">Create a Sponsor login</label>
                 </div>
 
                 <div class="row">

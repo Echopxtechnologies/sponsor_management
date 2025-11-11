@@ -436,99 +436,107 @@ public function index()
     // Add this new method to clean and map form data to database fields
     // Updated clean_school_post_data method in Student_sponsor_portal.php
     private function clean_school_post_data($data, $is_school_student = false)
-    {
-        $cleaned = [];
-        
-        // Field mappings from form names to database column names (ONLY ACTUAL DB FIELDS)
-        $field_mappings = [
-            'name' => 'name',
-            'email' => 'email', 
-            'phone' => 'contact_no',
-            'dob' => 'school_student_dob',
-            'calculated_age' => 'school_age',
-            'country_id' => 'country_id',
-            'address' => 'address',
-            'city' => 'city',
-            'postal_code' => 'zip',
-            'grade' => 'school_grade',
-            'bank_id' => 'bank_id',
-            'bank_account_number' => 'school_bank_account_no',
-            'bank_branch_number' => 'school_bank_branch_number',
-            'bank_branch_info' => 'school_bank_branch_info',
-            'father_name' => 'school_father_name',
-            'father_income' => 'school_father_income',
-            'mother_name' => 'school_mother_name', 
-            'mother_income' => 'school_mother_income',
-            'guardian_name' => 'school_guardian_name',
-            'guardian_income' => 'school_guardian_income',
-            'background_information' => 'background_info',
-            'school_id' => 'school_id',
-            'school_internal_id' => 'school_internal_id',
-            'school_type' => 'school_type',
-            'grade_mismatch_reason' => 'grade_mismatch_reason', 
-            'school_name_id' => 'school_name_id',
-        ];
+{
+    $cleaned = [];
+    
+    // Field mappings from form names to database column names (ONLY ACTUAL DB FIELDS)
+    $field_mappings = [
+        'name' => 'name',
+        'email' => 'email', 
+        'phone' => 'contact_no',
+        'dob' => 'school_student_dob',
+        'calculated_age' => 'school_age',
+        'country_id' => 'country_id',
+        'address' => 'address',
+        'city' => 'city',
+        'postal_code' => 'zip',
+        'grade' => 'school_grade',
+        'bank_id' => 'bank_id',
+        'bank_account_number' => 'school_bank_account_no',
+        'bank_branch_number' => 'school_bank_branch_number',
+        'bank_branch_info' => 'school_bank_branch_info',
+        'father_name' => 'school_father_name',
+        'father_income' => 'school_father_income',
+        'mother_name' => 'school_mother_name', 
+        'mother_income' => 'school_mother_income',
+        'guardian_name' => 'school_guardian_name',
+        'guardian_income' => 'school_guardian_income',
+        'background_information' => 'background_info',
+        'school_id' => 'school_id',
+        'school_internal_id' => 'school_internal_id',
+        'school_type' => 'school_type',
+        'grade_mismatch_reason' => 'grade_mismatch_reason', 
+        'school_name_id' => 'school_name_id',
+        'school_grade_year' => 'school_grade_year',  // Added this mapping
+    ];
 
-        // Admin-only fields (students CANNOT edit these)
-        $admin_only_fields = [
-            'sponsorship_start' => 'school_sponsorship_start_date',
-            'sponsorship_end' => 'school_sponsorship_end_date',
-            'introduced_by' => 'school_introducedby',
-            'introduced_phone' => 'school_introducedph',
-            'internal_comment' => 'internal_comment',
-            'external_comment' => 'external_comment'
-        ];
+    // Admin-only fields (students CANNOT edit these)
+    $admin_only_fields = [
+        'sponsorship_start' => 'school_sponsorship_start_date',
+        'sponsorship_end' => 'school_sponsorship_end_date',
+        'introduced_by' => 'school_introducedby',
+        'introduced_phone' => 'school_introducedph',
+        'internal_comment' => 'internal_comment',
+        'external_comment' => 'external_comment'
+    ];
 
-        // Add admin-only fields to mappings only if user is admin
-        if (!$is_school_student) {
-            $field_mappings = array_merge($field_mappings, $admin_only_fields);
-        }
-        
-        foreach ($field_mappings as $form_field => $db_field) {
-            if (isset($data[$form_field])) {
-                $value = is_string($data[$form_field]) ? trim($data[$form_field]) : $data[$form_field];
-                
-                // Handle different data types
-                if ($value === '' || $value === null) {
-                    $cleaned[$db_field] = ($value === '') ? '' : null;
-                } elseif (in_array($form_field, ['father_income', 'mother_income', 'guardian_income'])) {
-                    $cleaned[$db_field] = is_numeric($value) ? (float)$value : null;
-                } elseif (in_array($form_field, ['country_id', 'bank_id', 'school_name_id', 'calculated_age'])) {
-                    $cleaned[$db_field] = is_numeric($value) ? (int)$value : null;
-                } else {
-                    $cleaned[$db_field] = $value;
-                }
-            }
-        }
-        
-        // Calculate age if DOB is provided and age not already calculated
-        if (!empty($cleaned['school_student_dob']) && empty($cleaned['school_age'])) {
-            try {
-                $dob = new DateTime($cleaned['school_student_dob']);
-                $now = new DateTime();
-                $cleaned['school_age'] = $dob->diff($now)->y;
-            } catch (Exception $e) {
-                log_message('error', 'Error calculating age: ' . $e->getMessage());
-            }
-        }
-        
-        // IMPORTANT: Don't set entity_type for student updates to avoid conflicts
-        if (!$is_school_student) {
-            $cleaned['entity_type'] = 'school';
-        }
-        
-        // Handle new country creation (admin only)
-        if (!$is_school_student && !empty($data['new_country_name']) && !empty($data['new_country_phone_code'])) {
-            $country_id = $this->create_new_country($data['new_country_name'], $data['new_country_phone_code']);
-            if ($country_id) {
-                $cleaned['country_id'] = $country_id;
-            }
-        }
-        
-        log_message('debug', 'Cleaned school student data: ' . json_encode($cleaned));
-        
-        return $cleaned;
+    // Add admin-only fields to mappings only if user is admin
+    if (!$is_school_student) {
+        $field_mappings = array_merge($field_mappings, $admin_only_fields);
     }
+
+    // Loop through all the field mappings and clean data
+    foreach ($field_mappings as $form_field => $db_field) {
+        if (isset($data[$form_field])) {
+            $value = is_string($data[$form_field]) ? trim($data[$form_field]) : $data[$form_field];
+            
+            // Handle different data types
+            if ($value === '' || $value === null) {
+                $cleaned[$db_field] = ($value === '') ? '' : null;
+            } elseif (in_array($form_field, ['father_income', 'mother_income', 'guardian_income'])) {
+                $cleaned[$db_field] = is_numeric($value) ? (float)$value : null;
+            } elseif (in_array($form_field, ['country_id', 'bank_id', 'school_name_id', 'calculated_age'])) {
+                $cleaned[$db_field] = is_numeric($value) ? (int)$value : null;
+            } else {
+                $cleaned[$db_field] = $value;
+            }
+        }
+    }
+    
+    // Calculate age if DOB is provided and age not already calculated
+    if (!empty($cleaned['school_student_dob']) && empty($cleaned['school_age'])) {
+        try {
+            $dob = new DateTime($cleaned['school_student_dob']);
+            $now = new DateTime();
+            $cleaned['school_age'] = $dob->diff($now)->y;
+        } catch (Exception $e) {
+            log_message('error', 'Error calculating age: ' . $e->getMessage());
+        }
+    }
+    
+    // IMPORTANT: Don't set entity_type for student updates to avoid conflicts
+    if (!$is_school_student) {
+        $cleaned['entity_type'] = 'school';
+    }
+    
+    // Handle new country creation (admin only)
+    if (!$is_school_student && !empty($data['new_country_name']) && !empty($data['new_country_phone_code'])) {
+        $country_id = $this->create_new_country($data['new_country_name'], $data['new_country_phone_code']);
+        if ($country_id) {
+            $cleaned['country_id'] = $country_id;
+        }
+    }
+
+    // Handle the 'created_on' field, set it to the current timestamp if not present
+    if (!isset($cleaned['created_on'])) {
+        $cleaned['created_on'] = date('Y-m-d H:i:s'); // Set current timestamp
+    }
+
+    log_message('debug', 'Cleaned school student data: ' . json_encode($cleaned));
+    
+    return $cleaned;
+}
+
  private function handle_profile_photo_upload($student_id)
 {
     if (!isset($_FILES['profile_photo']) || $_FILES['profile_photo']['error'] !== UPLOAD_ERR_OK) {
@@ -1904,25 +1912,35 @@ private function map_csv_row_data($row, $mapping)
         $country_id = $this->get_or_create_country_id($data['country_name']);
         if ($country_id) {
             $data['country_id'] = $country_id;
+        } else {
+            log_message('error', 'Failed to create country for ' . $data['country_name']);
+            return null;  // Skip this row if the country can't be created
         }
         unset($data['country_name']);
     }
     
     if (!empty($data['school_name'])) {
-        $school_id = $this->school_model->get_or_create_school_name_id($data['school_name']);
-        if ($school_id) {
-            $data['school_name_id'] = $school_id;
-        }
-        unset($data['school_name']);
+    $school_id = $this->school_model->get_or_create_school_name_id($data['school_name']);
+    if ($school_id) {
+        $data['school_name_id'] = $school_id;
+    } else {
+        log_message('error', 'Failed to create school for ' . $data['school_name']);
+        return null;  // Skip this row if the school can't be created
     }
+    unset($data['school_name']);
+}
     
-    if (!empty($data['bank_name'])) {
-        $bank_id = $this->get_or_create_bank_id($data['bank_name']);
-        if ($bank_id) {
-            $data['bank_id'] = $bank_id;
-        }
-        unset($data['bank_name']);
+    // Handle bank_name
+if (!empty($data['bank_name'])) {
+    $bank_id = $this->get_or_create_bank_id($data['bank_name']);
+    if ($bank_id) {
+        $data['bank_id'] = $bank_id;
+    } else {
+        log_message('error', 'Failed to create bank for ' . $data['bank_name']);
+        return null;  // Skip this row if the bank can't be created
     }
+    unset($data['bank_name']);
+}
     
     return $data;
 }
@@ -2012,6 +2030,12 @@ private function process_school_students_import($file_path)
                 
                 // Map row data to our format
                 $student_data = $this->map_row_data($row, $column_mapping);
+                    if ($student_data === null) {
+                        $errors++;
+                        $error_details[] = "Row {$row_number}: Missing required foreign keys (e.g., country, school, bank)";
+                        continue;
+                    }
+
                 
                 // Validate required fields
                 $validation_result = $this->validate_import_row($student_data, $actual_row);
@@ -2138,18 +2162,24 @@ private function validate_import_row($data, $row_number)
         return ['valid' => false, 'message' => 'Invalid email format'];
     }
     
-    // Validate age-grade combination if both are provided
-    if (!empty($data['grade']) && !empty($data['dob'])) {
-        try {
-            $dob = new DateTime($data['dob']);
-            $age = $dob->diff(new DateTime())->y;
-            
-            $validation = $this->school_model->validate_age_grade($data['grade'], $age);
-            if (!$validation['valid']) {
-                return ['valid' => false, 'message' => $validation['message']];
-            }
-        } catch (Exception $e) {
-            // Skip age validation if DOB is invalid
+    // Validate that the foreign keys exist
+    if (empty($data['country_id'])) {
+        return ['valid' => false, 'message' => 'Invalid country'];
+    }
+    
+    if (empty($data['school_name_id'])) {
+        return ['valid' => false, 'message' => 'Invalid school'];
+    }
+    
+    if (empty($data['bank_id'])) {
+        return ['valid' => false, 'message' => 'Invalid bank'];
+    }
+    
+    // Validate grade if provided
+    if (!empty($data['grade'])) {
+        $valid_grades = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'O/L', 'A/L1', 'A/L2', 'A/L Final'];
+        if (!in_array($data['grade'], $valid_grades)) {
+            return ['valid' => false, 'message' => 'Invalid grade: ' . $data['grade']];
         }
     }
     
@@ -4491,126 +4521,168 @@ private function detect_mime_type_safe($file_path, $uploaded_type = '')
     // Update your clean_university_post_data method in Student_sponsor_portal.php controller
 
     private function clean_university_post_data($data, $is_university_student = false)
-    {
-        $cleaned = [];
-        
-        // Field mappings from form names to database column names (ONLY ACTUAL DB FIELDS)
-        $field_mappings = [
-            'name' => 'name',
-            'email' => 'email', 
-            'phone' => 'contact_no',
-            'dob' => 'university_student_dob',
-            'calculated_age' => 'university_age',
-            'country_id' => 'country_id',
-            'address' => 'address',
-            'city' => 'city',
-            'postal_code' => 'zip',
-            'university_id' => 'university_id',
-            'university_internal_id' => 'university_internal_id',
-            'university_name_id' => 'university_name_id',
-            'university_program_id' => 'university_program_id',
-            'year_of_study' => 'university_year_of_study',
-            'bank_id' => 'bank_id',
-            'bank_account_number' => 'university_bank_account_no',
-            'bank_branch_number' => 'university_bank_branch_number',
-            'bank_branch_info' => 'university_bank_branch_info',
-            'father_name' => 'university_father_name',
-            'father_income' => 'university_father_income',
-            'mother_name' => 'university_mother_name', 
-            'mother_income' => 'university_mother_income',
-            'guardian_name' => 'university_guardian_name',
-            'guardian_income' => 'university_guardian_income',
-            'background_information' => 'background_info',
-        ];
+{
+    $cleaned = [];
+    
+    // Form-style field mappings (what your form sends)
+    $field_mappings = [
+        'name' => 'name',
+        'email' => 'email', 
+        'phone' => 'contact_no',
+        'dob' => 'university_student_dob',
+        'calculated_age' => 'university_age',
+        'country_id' => 'country_id',
+        'address' => 'address',
+        'city' => 'city',
+        'postal_code' => 'zip',
+        'university_id' => 'university_id',
+        'university_internal_id' => 'university_internal_id',
+        'university_name_id' => 'university_name_id',
+        'university_program_id' => 'university_program_id',
+        'year_of_study' => 'university_year_of_study',
+        'bank_id' => 'bank_id',
+        'bank_account_number' => 'university_bank_account_no',
+        'bank_branch_number' => 'university_bank_branch_number',
+        'bank_branch_info' => 'university_bank_branch_info',
+        'father_name' => 'university_father_name',
+        'father_income' => 'university_father_income',
+        'mother_name' => 'university_mother_name', 
+        'mother_income' => 'university_mother_income',
+        'guardian_name' => 'university_guardian_name',
+        'guardian_income' => 'university_guardian_income',
+        'background_information' => 'background_info',
+    ];
 
-        // Admin-only fields (university students CANNOT edit these)
-        $admin_only_fields = [
-            'sponsorship_start' => 'university_sponsorship_start_date',
-            'sponsorship_end' => 'university_sponsorship_end_date',
-            'introduced_by' => 'university_introducedby',
-            'introduced_phone' => 'university_introducedph',
-            'sponsor_id' => 'sponsor_id',
-            'internal_comment' => 'internal_comment',
-            'external_comment' => 'external_comment'
-        ];
+    // Extra: support importer-style keys (already DB names)
+    // This is the exact problem you are facing.
+    $importer_db_keys = [
+        'contact_no'                  => 'contact_no',
+        'zip'                         => 'zip',
+        'university_year_of_study'    => 'university_year_of_study',
+        'university_student_dob'      => 'university_student_dob',
+        'university_age'              => 'university_age',
+        'university_bank_account_no'  => 'university_bank_account_no',
+        'university_bank_branch_info' => 'university_bank_branch_info',
+        'university_bank_branch_number' => 'university_bank_branch_number',
+        'university_father_name'      => 'university_father_name',
+        'university_mother_name'      => 'university_mother_name',
+        'university_father_income'    => 'university_father_income',
+        'university_mother_income'    => 'university_mother_income',
+        'university_guardian_name'    => 'university_guardian_name',
+        'university_guardian_income'  => 'university_guardian_income',
+        'background_info'             => 'background_info',
+    ];
 
-        // Add admin-only fields to mappings only if user is admin
-        if (!$is_university_student) {
-            $field_mappings = array_merge($field_mappings, $admin_only_fields);
-        }
-        
-        foreach ($field_mappings as $form_field => $db_field) {
-            if (isset($data[$form_field])) {
-                $value = is_string($data[$form_field]) ? trim($data[$form_field]) : $data[$form_field];
-                
-                // Handle different data types
-                if ($value === '' || $value === null) {
-                    $cleaned[$db_field] = ($value === '') ? '' : null;
-                } elseif (in_array($form_field, ['father_income', 'mother_income', 'guardian_income'])) {
-                    $cleaned[$db_field] = is_numeric($value) ? (float)$value : null;
-                } elseif (in_array($form_field, ['country_id', 'bank_id', 'university_name_id', 'university_program_id', 'sponsor_id', 'calculated_age'])) {
-                    $cleaned[$db_field] = is_numeric($value) ? (int)$value : null;
-                } else {
-                    $cleaned[$db_field] = $value;
-                }
-            }
-        }
-        
-        // Calculate age if DOB is provided and age not already calculated
-        if (!empty($cleaned['university_student_dob']) && empty($cleaned['university_age'])) {
-            try {
-                $dob = new DateTime($cleaned['university_student_dob']);
-                $now = new DateTime();
-                $cleaned['university_age'] = $dob->diff($now)->y;
-            } catch (Exception $e) {
-                log_message('error', 'Error calculating age: ' . $e->getMessage());
-            }
-        }
-        
-        // IMPORTANT: Don't set entity_type for student updates to avoid conflicts
-        if (!$is_university_student) {
-            $cleaned['entity_type'] = 'university';
-        }
-        
-        // Handle new item creation (admin only)
-        if (!$is_university_student) {
-            // Handle new country creation
-            if (!empty($data['new_country_name']) && !empty($data['new_country_phone_code'])) {
-                $country_id = $this->create_new_country($data['new_country_name'], $data['new_country_phone_code']);
-                if ($country_id) {
-                    $cleaned['country_id'] = $country_id;
-                }
-            }
-            
-            // Handle new university creation
-            if (!empty($data['new_university_name'])) {
-                $university_id = $this->create_new_university($data['new_university_name']);
-                if ($university_id) {
-                    $cleaned['university_name_id'] = $university_id;
-                }
-            }
-            
-            // Handle new program creation
-            if (!empty($data['new_program_name'])) {
-                $program_id = $this->create_new_program($data['new_program_name']);
-                if ($program_id) {
-                    $cleaned['university_program_id'] = $program_id;
-                }
-            }
-            
-            // Handle new bank creation
-            if (!empty($data['new_bank_name'])) {
-                $bank_id = $this->create_new_bank($data['new_bank_name']);
-                if ($bank_id) {
-                    $cleaned['bank_id'] = $bank_id;
-                }
-            }
-        }
-        
-        log_message('debug', 'Cleaned university student data: ' . json_encode($cleaned));
-        
-        return $cleaned;
+    // Admin-only fields
+    $admin_only_fields = [
+        'sponsorship_start' => 'university_sponsorship_start_date',
+        'sponsorship_end' => 'university_sponsorship_end_date',
+        'introduced_by' => 'university_introducedby',
+        'introduced_phone' => 'university_introducedph',
+        'sponsor_id' => 'sponsor_id',
+        'internal_comment' => 'internal_comment',
+        'external_comment' => 'external_comment'
+    ];
+
+    if (!$is_university_student) {
+        $field_mappings = array_merge($field_mappings, $admin_only_fields);
+        // importer may also send these already in DB format, so add them too
+        $importer_db_keys = array_merge($importer_db_keys, [
+            'university_sponsorship_start_date' => 'university_sponsorship_start_date',
+            'university_sponsorship_end_date'   => 'university_sponsorship_end_date',
+            'university_introducedby'           => 'university_introducedby',
+            'university_introducedph'           => 'university_introducedph',
+            'sponsor_id'                        => 'sponsor_id',
+            'internal_comment'                  => 'internal_comment',
+            'external_comment'                  => 'external_comment',
+        ]);
     }
+    
+    // 1) handle form-style keys
+    foreach ($field_mappings as $form_field => $db_field) {
+        if (isset($data[$form_field])) {
+            $value = is_string($data[$form_field]) ? trim($data[$form_field]) : $data[$form_field];
+
+            if ($value === '' || $value === null) {
+                $cleaned[$db_field] = ($value === '') ? '' : null;
+            } elseif (in_array($form_field, ['father_income', 'mother_income', 'guardian_income'])) {
+                $cleaned[$db_field] = is_numeric($value) ? (float)$value : null;
+            } elseif (in_array($form_field, ['country_id', 'bank_id', 'university_name_id', 'university_program_id', 'sponsor_id', 'calculated_age'])) {
+                $cleaned[$db_field] = is_numeric($value) ? (int)$value : null;
+            } else {
+                $cleaned[$db_field] = $value;
+            }
+        }
+    }
+
+    // 2) handle importer-style keys (already DB names)
+    foreach ($importer_db_keys as $db_key => $final_key) {
+        if (isset($data[$db_key])) {
+            $value = is_string($data[$db_key]) ? trim($data[$db_key]) : $data[$db_key];
+
+            if ($value === '' || $value === null) {
+                $cleaned[$final_key] = ($value === '') ? '' : null;
+            } elseif (in_array($db_key, ['university_father_income', 'university_mother_income', 'university_guardian_income'])) {
+                $cleaned[$final_key] = is_numeric($value) ? (float)$value : null;
+            } elseif (in_array($db_key, ['country_id', 'bank_id', 'university_name_id', 'university_program_id', 'sponsor_id', 'university_age'])) {
+                $cleaned[$final_key] = is_numeric($value) ? (int)$value : null;
+            } else {
+                $cleaned[$final_key] = $value;
+            }
+        }
+    }
+    
+    // auto age
+    if (!empty($cleaned['university_student_dob']) && empty($cleaned['university_age'])) {
+        try {
+            $dob = new DateTime($cleaned['university_student_dob']);
+            $now = new DateTime();
+            $cleaned['university_age'] = $dob->diff($now)->y;
+        } catch (Exception $e) {
+            log_message('error', 'Error calculating age: ' . $e->getMessage());
+        }
+    }
+    
+    if (!$is_university_student) {
+        $cleaned['entity_type'] = 'university';
+    }
+
+    // your create_new_* logic stays the same
+    if (!$is_university_student) {
+        if (!empty($data['new_country_name']) && !empty($data['new_country_phone_code'])) {
+            $country_id = $this->create_new_country($data['new_country_name'], $data['new_country_phone_code']);
+            if ($country_id) {
+                $cleaned['country_id'] = $country_id;
+            }
+        }
+
+        if (!empty($data['new_university_name'])) {
+            $university_id = $this->create_new_university($data['new_university_name']);
+            if ($university_id) {
+                $cleaned['university_name_id'] = $university_id;
+            }
+        }
+
+        if (!empty($data['new_program_name'])) {
+            $program_id = $this->create_new_program($data['new_program_name']);
+            if ($program_id) {
+                $cleaned['university_program_id'] = $program_id;
+            }
+        }
+
+        if (!empty($data['new_bank_name'])) {
+            $bank_id = $this->create_new_bank($data['new_bank_name']);
+            if ($bank_id) {
+                $cleaned['bank_id'] = $bank_id;
+            }
+        }
+    }
+    
+    log_message('debug', 'Cleaned university student data: ' . json_encode($cleaned));
+    
+    return $cleaned;
+}
+
 
     private function create_new_university($name)
     {
@@ -4958,96 +5030,171 @@ private function create_university_column_mapping($headers)
 {
     $mapping = [];
 
-    // Log incoming headers
     log_message('debug', 'University Import: Processing headers - count: ' . count($headers));
+    log_message('debug', 'University Import: Raw headers: ' . json_encode($headers));
 
-    // Direct field mappings - header name => database column
+    // **COMPREHENSIVE field mappings - covers ALL database columns**
     $field_mappings = [
         // Basic Information
         'name' => 'name',
+        'student_name' => 'name',
+        'full_name' => 'name',
+        
         'email' => 'email',
+        'email_address' => 'email',
+        
         'phone' => 'contact_no',
         'contact_no' => 'contact_no',
         'phone_number' => 'contact_no',
+        'contact_number' => 'contact_no',
+        'mobile' => 'contact_no',
 
         // Personal Details
         'date_of_birth' => 'university_student_dob',
         'dob' => 'university_student_dob',
         'birth_date' => 'university_student_dob',
+        'university_student_dob' => 'university_student_dob',
+        
         'age' => 'university_age',
+        'university_age' => 'university_age',
+        'student_age' => 'university_age',
 
         // Address Information
         'address' => 'address',
+        'street_address' => 'address',
+        'home_address' => 'address',
+        
         'city' => 'city',
+        'town' => 'city',
+        'district' => 'city',
+        
         'postal_code' => 'zip',
         'zip_code' => 'zip',
         'zip' => 'zip',
+        'postcode' => 'zip',
+        
         'country' => 'country_name',
+        'country_name' => 'country_name',
+        'country_id' => 'country_id',
 
         // University Information
         'university_id' => 'university_id',
         'student_id' => 'university_id',
+        'student_number' => 'university_id',
+        
         'internal_id' => 'university_internal_id',
         'university_internal_id' => 'university_internal_id',
+        'internal_student_id' => 'university_internal_id',
+        
         'university' => 'university_name',
         'university_name' => 'university_name',
+        'institution' => 'university_name',
+        'university_name_id' => 'university_name_id',
+        
         'program' => 'university_program',
         'course' => 'university_program',
+        'degree' => 'university_program',
+        'program_name' => 'university_program',
+        'university_program' => 'university_program',
+        'university_program_id' => 'university_program_id',
+        
         'year_of_study' => 'university_year_of_study',
+        'university_year_of_study' => 'university_year_of_study',
         'year' => 'university_year_of_study',
         'study_year' => 'university_year_of_study',
+        'current_year' => 'university_year_of_study',
 
         // Bank Information
         'bank' => 'bank_name',
         'bank_name' => 'bank_name',
+        'bank_id' => 'bank_id',
+        
         'account_number' => 'university_bank_account_no',
         'bank_account_number' => 'university_bank_account_no',
         'bank_account_no' => 'university_bank_account_no',
+        'university_bank_account_no' => 'university_bank_account_no',
+        
         'branch_number' => 'university_bank_branch_number',
         'branch_code' => 'university_bank_branch_number',
+        'bank_branch_number' => 'university_bank_branch_number',
+        'university_bank_branch_number' => 'university_bank_branch_number',
+        
         'branch_info' => 'university_bank_branch_info',
+        'branch_information' => 'university_bank_branch_info',
         'bank_branch_info' => 'university_bank_branch_info',
+        'university_bank_branch_info' => 'university_bank_branch_info',
+        'branch' => 'university_bank_branch_info',
 
         // Family Information
         'father_name' => 'university_father_name',
         'father' => 'university_father_name',
+        'university_father_name' => 'university_father_name',
+        
         'father_income' => 'university_father_income',
+        'university_father_income' => 'university_father_income',
+        
         'mother_name' => 'university_mother_name',
         'mother' => 'university_mother_name',
+        'university_mother_name' => 'university_mother_name',
+        
         'mother_income' => 'university_mother_income',
+        'university_mother_income' => 'university_mother_income',
+        
         'guardian_name' => 'university_guardian_name',
         'guardian' => 'university_guardian_name',
+        'university_guardian_name' => 'university_guardian_name',
+        
         'guardian_income' => 'university_guardian_income',
+        'university_guardian_income' => 'university_guardian_income',
 
         // Sponsorship Information
         'sponsorship_start' => 'university_sponsorship_start_date',
         'sponsorship_start_date' => 'university_sponsorship_start_date',
+        'university_sponsorship_start_date' => 'university_sponsorship_start_date',
+        'start_date' => 'university_sponsorship_start_date',
+        
         'sponsorship_end' => 'university_sponsorship_end_date',
         'sponsorship_end_date' => 'university_sponsorship_end_date',
+        'university_sponsorship_end_date' => 'university_sponsorship_end_date',
+        'end_date' => 'university_sponsorship_end_date',
+        
         'introduced_by' => 'university_introducedby',
         'introducer' => 'university_introducedby',
+        'university_introducedby' => 'university_introducedby',
+        'introduced_by_name' => 'university_introducedby',
+        
         'introduced_phone' => 'university_introducedph',
         'introducer_phone' => 'university_introducedph',
+        'university_introducedph' => 'university_introducedph',
+        'introducer_contact' => 'university_introducedph',
+        
+        'sponsor_id' => 'sponsor_id',
+        'sponsor' => 'sponsor_id',
 
-        // Comments
+        // Comments/Notes
         'background_information' => 'background_info',
         'background' => 'background_info',
         'background_info' => 'background_info',
+        'notes' => 'background_info',
+        
         'internal_comment' => 'internal_comment',
         'admin_notes' => 'internal_comment',
+        'internal_notes' => 'internal_comment',
+        
         'external_comment' => 'external_comment',
         'public_notes' => 'external_comment',
+        'external_notes' => 'external_comment',
     ];
 
     // Map headers to database columns
     foreach ($headers as $index => $header) {
-        // CRITICAL FIX #1: Remove UTF-8 BOM (invisible character Excel adds)
+        // CRITICAL FIX: Remove UTF-8 BOM and normalize
         $header = str_replace("\xEF\xBB\xBF", '', $header);
         
-        // CRITICAL FIX #2: Normalize to underscore-separated lowercase
+        // Normalize: lowercase, spaces/hyphens to underscores, remove special chars
         $clean_header = strtolower(trim($header));
-        $clean_header = preg_replace('/[\s\-]+/', '_', $clean_header); // spaces/hyphens → underscores
-        $clean_header = preg_replace('/[^\w]/', '', $clean_header);     // remove other special chars
+        $clean_header = preg_replace('/[\s\-]+/', '_', $clean_header);
+        $clean_header = preg_replace('/[^\w]/', '', $clean_header);
 
         if (isset($field_mappings[$clean_header])) {
             $db_column = $field_mappings[$clean_header];
@@ -5058,7 +5205,9 @@ private function create_university_column_mapping($headers)
         }
     }
 
-    log_message('debug', 'University Import: Column mapping complete: ' . json_encode($mapping));
+    log_message('debug', 'University Import: Final mapping count: ' . count($mapping));
+    log_message('debug', 'University Import: Column mapping: ' . json_encode($mapping));
+    
     return $mapping;
 }
 /**
@@ -5068,12 +5217,18 @@ private function map_university_row_data($row, $mapping)
 {
     $data = [];
     
+    log_message('debug', 'University Import: Mapping row with ' . count($row) . ' columns');
+    
     foreach ($mapping as $field => $column_index) {
         $value = isset($row[$column_index]) ? trim($row[$column_index]) : '';
         
+        // **CRITICAL: Don't skip empty values - let database handle them**
+        
         // Handle special field transformations
         switch ($field) {
-            case 'dob':
+            case 'university_student_dob':
+            case 'university_sponsorship_start_date':
+            case 'university_sponsorship_end_date':
                 if ($value && $value !== '') {
                     try {
                         // Handle Excel date serial numbers
@@ -5084,88 +5239,103 @@ private function map_university_row_data($row, $mapping)
                             $date = new DateTime($value);
                             $data[$field] = $date->format('Y-m-d');
                         }
+                        log_message('debug', "University Import: Converted date '{$value}' to '{$data[$field]}' for field '{$field}'");
                     } catch (Exception $e) {
-                        $data[$field] = '';
-                        log_message('debug', "University Import: Invalid date format for field {$field}: {$value}");
+                        $data[$field] = null;
+                        log_message('warning', "University Import: Invalid date format for field {$field}: {$value}");
                     }
+                } else {
+                    $data[$field] = null;
                 }
                 break;
                 
-            case 'father_income':
-            case 'mother_income':
-            case 'guardian_income':
-                $data[$field] = is_numeric($value) ? (float)$value : null;
+            case 'university_father_income':
+            case 'university_mother_income':
+            case 'university_guardian_income':
+                $data[$field] = ($value !== '' && is_numeric($value)) ? (float)$value : null;
+                log_message('debug', "University Import: Income field '{$field}' = " . var_export($data[$field], true));
                 break;
                 
-            case 'sponsorship_start':
-            case 'sponsorship_end':
+            case 'university_age':
+            case 'sponsor_id':
+                $data[$field] = ($value !== '' && is_numeric($value)) ? (int)$value : null;
+                log_message('debug', "University Import: Integer field '{$field}' = " . var_export($data[$field], true));
+                break;
+                
+            case 'university_year_of_study':
+                // Normalize year values
                 if ($value && $value !== '') {
-                    try {
-                        if (is_numeric($value) && class_exists('\PhpOffice\PhpSpreadsheet\Shared\Date')) {
-                            $date = \PhpOffice\PhpSpreadsheet\Shared\Date::excelToDateTimeObject($value);
-                            $data[$field] = $date->format('Y-m-d');
-                        } else {
-                            $date = new DateTime($value);
-                            $data[$field] = $date->format('Y-m-d');
-                        }
-                    } catch (Exception $e) {
-                        $data[$field] = '';
-                        log_message('debug', "University Import: Invalid date format for field {$field}: {$value}");
-                    }
+                    $year_map = [
+                        '1' => '1Y1S', 'year 1' => '1Y1S', '1st year' => '1Y1S', 'first year' => '1Y1S',
+                        '2' => '2Y1S', 'year 2' => '2Y1S', '2nd year' => '2Y1S', 'second year' => '2Y1S',
+                        '3' => '3Y1S', 'year 3' => '3Y1S', '3rd year' => '3Y1S', 'third year' => '3Y1S',
+                        '4' => '4Y1S', 'year 4' => '4Y1S', '4th year' => '4Y1S', 'fourth year' => '4Y1S',
+                        '5' => '5Y1S', 'year 5' => '5Y1S', '5th year' => '5Y1S', 'fifth year' => '5Y1S',
+                    ];
+                    $normalized = strtolower(trim($value));
+                    $data[$field] = $year_map[$normalized] ?? $value;
+                } else {
+                    $data[$field] = null;
                 }
-                break;
-                
-            case 'year_of_study':
-                // Map common year formats to our enum values
-                $year_map = [
-                    '1' => '1Y1S', 'year 1' => '1Y1S', '1st year' => '1Y1S',
-                    '2' => '2Y1S', 'year 2' => '2Y1S', '2nd year' => '2Y1S',
-                    '3' => '3Y1S', 'year 3' => '3Y1S', '3rd year' => '3Y1S',
-                    '4' => '4Y1S', 'year 4' => '4Y1S', '4th year' => '4Y1S',
-                    '5' => '5Y1S', 'year 5' => '5Y1S', '5th year' => '5Y1S',
-                ];
-                $normalized = strtolower($value);
-                $data[$field] = $year_map[$normalized] ?? $value;
+                log_message('debug', "University Import: Year field '{$field}' = '{$data[$field]}'");
                 break;
                 
             default:
+                // All other fields - preserve value (even empty strings)
                 $data[$field] = $value !== '' ? $value : null;
+                if ($value !== '') {
+                    log_message('debug', "University Import: Field '{$field}' = '{$value}'");
+                }
                 break;
         }
     }
     
-    // Handle foreign key lookups
+    // Handle foreign key lookups AFTER all fields are mapped
+    
+    // Country lookup
     if (!empty($data['country_name'])) {
         $country_id = $this->get_or_create_country_id($data['country_name']);
         if ($country_id) {
             $data['country_id'] = $country_id;
+            log_message('debug', "University Import: Country '{$data['country_name']}' resolved to ID: {$country_id}");
         }
         unset($data['country_name']);
     }
     
+    // University lookup
     if (!empty($data['university_name'])) {
         $university_id = $this->university_model->get_or_create_university_name_id($data['university_name']);
         if ($university_id) {
             $data['university_name_id'] = $university_id;
+            log_message('debug', "University Import: University '{$data['university_name']}' resolved to ID: {$university_id}");
         }
         unset($data['university_name']);
     }
     
-    if (!empty($data['program_name'])) {
-        $program_id = $this->university_model->get_or_create_university_program_id($data['program_name']);
+    // Program lookup
+    if (!empty($data['university_program'])) {
+        $program_id = $this->university_model->get_or_create_university_program_id($data['university_program']);
         if ($program_id) {
             $data['university_program_id'] = $program_id;
+            log_message('debug', "University Import: Program '{$data['university_program']}' resolved to ID: {$program_id}");
         }
-        unset($data['program_name']);
+        unset($data['university_program']);
     }
     
+    // Bank lookup
     if (!empty($data['bank_name'])) {
         $bank_id = $this->get_or_create_bank_id($data['bank_name']);
         if ($bank_id) {
             $data['bank_id'] = $bank_id;
+            log_message('debug', "University Import: Bank '{$data['bank_name']}' resolved to ID: {$bank_id}");
         }
         unset($data['bank_name']);
     }
+    
+    // Set entity_type
+    $data['entity_type'] = 'university';
+    
+    log_message('debug', 'University Import: Final mapped data: ' . json_encode($data));
     
     return $data;
 }
@@ -5206,25 +5376,76 @@ public function download_university_students_template()
     
     // Set headers
     $headers = [
-        'Name', 'Email', 'Phone', 'Date of Birth', 'Address', 'City', 'Postal Code', 'Country',
-        'University ID', 'Internal ID', 'University', 'Program', 'Year of Study',
-        'Bank Name', 'Account Number', 'Branch Number', 'Branch Info',
-        'Father Name', 'Father Income', 'Mother Name', 'Mother Income', 
-        'Guardian Name', 'Guardian Income', 'Background Information',
-        'Sponsorship Start', 'Sponsorship End', 'Introduced By', 'Introducer Phone',
-        'Internal Comment', 'External Comment'
+        'Name',                          // name
+        'Email',                         // email
+        'Phone',                         // contact_no
+        'Date of Birth',                 // university_student_dob (YYYY-MM-DD)
+        'Age',                           // university_age
+        'Address',                       // address
+        'City',                          // city
+        'Postal Code',                   // zip
+        'Country',                       // country_name
+        'University ID',                 // university_id
+        'Internal ID',                   // university_internal_id
+        'University',                    // university_name
+        'Program',                       // university_program
+        'Year of Study',                 // university_year_of_study
+        'Bank Name',                     // bank_name
+        'Account Number',                // university_bank_account_no
+        'Branch Number',                 // university_bank_branch_number
+        'Branch Info',                   // university_bank_branch_info
+        'Father Name',                   // university_father_name
+        'Father Income',                 // university_father_income
+        'Mother Name',                   // university_mother_name
+        'Mother Income',                 // university_mother_income
+        'Guardian Name',                 // university_guardian_name
+        'Guardian Income',               // university_guardian_income
+        'Background Information',        // background_info
+        'Sponsorship Start',             // university_sponsorship_start_date (YYYY-MM-DD)
+        'Sponsorship End',               // university_sponsorship_end_date (YYYY-MM-DD)
+        'Introduced By',                 // university_introducedby
+        'Introducer Phone',              // university_introducedph
+        'Sponsor ID',                    // sponsor_id
+        'Internal Comment',              // internal_comment
+        'External Comment'               // external_comment
     ];
     
     $sheet->fromArray($headers, null, 'A1');
     
     // Add sample data
     $sampleData = [
-        'Jane Doe', 'jane.doe@university.edu', '+94771234567', '2000-01-15', '123 University Avenue',
-        'Colombo', '00100', 'Sri Lanka', 'UNI001', 'UNIV001', 'University of Colombo', 'Computer Science',
-        '2Y1S', 'Bank of Ceylon', '1234567890', '001', 'Colombo Branch',
-        'Father Name', 50000, 'Mother Name', 30000, 'Guardian Name', 40000,
-        'Student background information', '2024-01-01', '2026-12-31', 'Professor Name', '+94771234568',
-        'Internal notes', 'External notes'
+        'Jane Doe',                      // Name
+        'jane.doe@university.edu',       // Email
+        '+94771234567',                  // Phone
+        '2000-01-15',                    // Date of Birth
+        '24',                            // Age
+        '123 University Avenue',         // Address
+        'Colombo',                       // City
+        '00100',                         // Postal Code
+        'Sri Lanka',                     // Country
+        'UNI001',                        // University ID
+        'UNIV001',                       // Internal ID
+        'University of Colombo',         // University
+        'Computer Science',              // Program
+        '2Y1S',                          // Year of Study
+        'Bank of Ceylon',                // Bank Name
+        '1234567890',                    // Account Number
+        '001',                           // Branch Number
+        'Colombo Branch',                // Branch Info
+        'Father Name',                   // Father Name
+        '50000',                         // Father Income
+        'Mother Name',                   // Mother Name
+        '30000',                         // Mother Income
+        'Guardian Name',                 // Guardian Name
+        '40000',                         // Guardian Income
+        'Student background info',       // Background Information
+        '2024-01-01',                    // Sponsorship Start
+        '2026-12-31',                    // Sponsorship End
+        'Professor Name',                // Introduced By
+        '+94771234568',                  // Introducer Phone
+        '1',                             // Sponsor ID
+        'Internal notes',                // Internal Comment
+        'External notes'                 // External Comment
     ];
     
     $sheet->fromArray($sampleData, null, 'A2');
@@ -7437,6 +7658,7 @@ private function process_import_file($file_path, $file_ext)
     log_message('debug', 'School Import: Processing file: ' . $file_path . ' (.' . $file_ext . ')');
     
     if (!file_exists($file_path) || !is_readable($file_path)) {
+        log_message('error', 'School Import: Cannot read upload file: ' . $file_path);
         return ['success' => false, 'message' => 'Cannot read upload file'];
     }
     
@@ -7454,17 +7676,30 @@ private function process_import_file($file_path, $file_ext)
         }
         
         if (empty($rows)) {
+            log_message('error', 'School Import: No data found in file: ' . $file_path);
             return ['success' => false, 'message' => 'No data found in file'];
         }
         
         // Get headers and create mapping
         $headers = array_shift($rows);
         if (empty($headers)) {
+            log_message('error', 'School Import: No headers found in file: ' . $file_path);
             return ['success' => false, 'message' => 'No headers found in file'];
         }
         
+        log_message('debug', 'School Import: Headers found - ' . json_encode($headers));
+        
+        // Clean and normalize headers
+        $headers = array_map(function($h) {
+            return trim(strtolower(str_replace([' ', '_', '-'], '_', $h)));
+        }, $headers);
+        
+        log_message('debug', 'School Import: Cleaned Headers: ' . json_encode($headers));
+        
+        // Map headers to database fields
         $column_mapping = $this->create_column_mapping($headers);
         if (empty($column_mapping)) {
+            log_message('error', 'School Import: No valid columns found in file: ' . $file_path);
             return ['success' => false, 'message' => 'No valid columns found. Please check your headers.'];
         }
         
@@ -7479,16 +7714,21 @@ private function process_import_file($file_path, $file_ext)
             try {
                 // Skip empty rows
                 if (empty(array_filter($row))) {
+                    log_message('debug', "School Import: Row {$row_number}: Skipping empty row");
                     continue;
                 }
                 
+                log_message('debug', "School Import: Row {$row_number}: Processing: " . json_encode(array_slice($row, 0, 3)));
+                
                 // Map the row data
                 $student_data = $this->map_row_data($row, $column_mapping);
+                log_message('debug', "School Import: Row {$row_number}: Mapped data: " . json_encode($student_data));
                 
                 // Validate required fields
                 if (empty($student_data['name'])) {
                     $errors++;
                     $error_details[] = "Row {$row_number}: Name is required";
+                    log_message('warning', "School Import: Row {$row_number}: Validation failed: Name is required");
                     continue;
                 }
                 
@@ -7503,6 +7743,7 @@ private function process_import_file($file_path, $file_ext)
                     if (!$validation['valid']) {
                         $errors++;
                         $error_details[] = "Row {$row_number}: " . $validation['message'];
+                        log_message('warning', "School Import: Row {$row_number}: Validation failed: " . $validation['message']);
                         continue;
                     }
                 }
@@ -7512,35 +7753,43 @@ private function process_import_file($file_path, $file_ext)
                 
                 if ($existing_student) {
                     // Update existing student
+                    log_message('debug', "School Import: Row {$row_number}: Updating existing student ID: " . $existing_student['id']);
+                    
                     $result = $this->school_model->update($student_data, $existing_student['id']);
                     
                     if ($result) {
                         $updated++;
+                        log_message('debug', "School Import: Row {$row_number}: Successfully updated student");
                     } else {
                         $errors++;
                         $error_details[] = "Row {$row_number}: Failed to update student";
+                        log_message('error', "School Import: Row {$row_number}: Failed to update student");
                     }
                 } else {
                     // Add new student
+                    log_message('debug', "School Import: Row {$row_number}: Creating new student");
+                    
                     $result = $this->school_model->add($student_data);
                     
                     if ($result && !is_array($result)) {
                         $added++;
+                        log_message('debug', "School Import: Row {$row_number}: Successfully added student with ID: " . $result);
                     } else {
                         $errors++;
                         $message = is_array($result) ? ($result['message'] ?? 'Unknown error') : 'Failed to add student';
                         $error_details[] = "Row {$row_number}: {$message}";
+                        log_message('error', "School Import: Row {$row_number}: Failed to add student: " . $message);
                     }
                 }
                 
             } catch (Exception $e) {
                 $errors++;
                 $error_details[] = "Row {$row_number}: " . $e->getMessage();
-                log_message('error', 'School Import: Row error: ' . $e->getMessage());
+                log_message('error', "School Import: Row {$row_number} exception: " . $e->getMessage());
             }
         }
         
-        log_message('info', "School import completed. Added: {$added}, Updated: {$updated}, Errors: {$errors}");
+        log_message('info', "School Import completed. Added: {$added}, Updated: {$updated}, Errors: {$errors}");
         
         return [
             'success' => true,
@@ -7551,10 +7800,11 @@ private function process_import_file($file_path, $file_ext)
         ];
         
     } catch (Exception $e) {
-        log_message('error', 'School import processing error: ' . $e->getMessage());
+        log_message('error', 'School Import processing error: ' . $e->getMessage());
         return ['success' => false, 'message' => 'Processing error: ' . $e->getMessage()];
     }
 }
+
 /**
  * Load Excel file data - FIXED VERSION
  */
@@ -7647,24 +7897,27 @@ private function get_or_create_country_id($country_name)
         return null;
     }
     
-    // Try to find existing country
+    // Try to find existing country by short name
     $country = $this->db->where('short_name', $country_name)
                        ->get(db_prefix() . 'countries')
                        ->row_array();
     
+    // If country exists, return its ID
     if ($country) {
         return (int)$country['country_id'];
     }
     
-    // Create new country
+    // If country does not exist, create a new country
     $data = [
         'short_name' => $country_name,
-        'calling_code' => '+1' // Default phone code
+        'calling_code' => '+1' // Default phone code, you might want to adjust this
     ];
     
+    // Insert new country into the database
     $this->db->insert(db_prefix() . 'countries', $data);
-    return (int)$this->db->insert_id();
+    return (int)$this->db->insert_id(); // Return the ID of the newly inserted country
 }
+
 
 /**
  * Get or create bank ID - simplified version
@@ -7675,19 +7928,21 @@ private function get_or_create_bank_id($bank_name)
         return null;
     }
     
-    // Try to find existing bank
+    // Try to find existing bank by name
     $bank = $this->db->where('name', $bank_name)
                     ->get(db_prefix() . 'bank')
                     ->row_array();
     
+    // If bank exists, return its ID
     if ($bank) {
         return (int)$bank['id'];
     }
     
-    // Create new bank
+    // If bank does not exist, create a new bank
     $this->db->insert(db_prefix() . 'bank', ['name' => $bank_name]);
-    return (int)$this->db->insert_id();
+    return (int)$this->db->insert_id(); // Return the ID of the newly inserted bank
 }
+
 
 
 

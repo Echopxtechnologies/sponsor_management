@@ -245,6 +245,7 @@ public function get_all()
 
     $this->db->select('
         ss.*,
+        ss.school_internal_id,
         sn.name AS school_name,
         b.name  AS bank_name,
         sr.name as sponsor_name,
@@ -262,7 +263,7 @@ public function get_all()
 
     $this->db->join($this->tbl_bank.' b', 'b.id = ss.bank_id', 'left');
     $this->db->join($this->tbl_sponsor.' sr', 'sr.id = ss.sponsor_id', 'left');
-    $this->db->order_by('ss.id', 'DESC');
+    $this->db->order_by('ss.school_name_id', 'ASC');
     
     return $this->db->get()->result_array();
 }
@@ -1492,17 +1493,30 @@ foreach ($students as &$student) {
     //     return 'SCH' . str_pad((string)$next, 3, '0', STR_PAD_LEFT);
     // }
 
-    public function get_or_create_school_name_id($name_or_id)
-    {
-        if (!$name_or_id) return null;
-        if (is_numeric($name_or_id)) return (int)$name_or_id;
-
-        $row = $this->db->get_where($this->tbl_sname, ['name'=>$name_or_id])->row();
-        if ($row) return (int)$row->id;
-
-        $this->db->insert($this->tbl_sname, ['name'=>$name_or_id]);
-        return (int)$this->db->insert_id();
+public function get_or_create_school_name_id($name_or_id)
+{
+    if (empty($name_or_id)) {
+        return null; // Return null if the input is empty
     }
+    
+    // If the input is numeric, return it as an ID (assumed to be an existing school ID)
+    if (is_numeric($name_or_id)) {
+        return (int)$name_or_id;
+    }
+
+    // Try to find existing school by name
+    $row = $this->db->get_where($this->tbl_sname, ['name' => $name_or_id])->row();
+    
+    // If school exists, return its ID
+    if ($row) {
+        return (int)$row->id;
+    }
+    
+    // If school does not exist, create a new school
+    $this->db->insert($this->tbl_sname, ['name' => $name_or_id]);
+    return (int)$this->db->insert_id(); // Return the ID of the newly inserted school
+}
+
 
     private function filter_existing_columns($table, array $payload)
     {

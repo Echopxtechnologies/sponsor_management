@@ -98,6 +98,9 @@
                       $phone  = (string)($s['contact_no'] ?? '');
                       $staff_id = $s['staff_id'] ?? null;
                       $active = (int)($s['active'] ?? 0);
+                      $university_internal_id = isset($s['university_internal_id']) && $s['university_internal_id'] !== '' && $s['university_internal_id'] !== 0 
+                        ? $s['university_internal_id'] 
+                        : 'Not Set';
 
                       // Sponsor information
                       $sponsor_name = (string)($s['sponsor_name'] ?? '');
@@ -186,7 +189,7 @@
                                 <?php echo html_escape($name); ?>
                               </a>
                             </strong>
-                            <br><small class="text-muted">ID: <?php echo $sid; ?></small>
+                            <br><small class="text-muted">ID: <?php echo $university_internal_id; ?></small>
                             <div class="row-options" style="display:none;">
                               <a href="<?php echo admin_url('student_sponsor_portal/university_student_form/' . $sid); ?>">Edit</a> |
                               <a href="#" onclick="deleteStudent(<?php echo $sid; ?>); return false;" class="text-danger">Delete</a>

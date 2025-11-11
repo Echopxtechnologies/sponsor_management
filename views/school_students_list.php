@@ -125,6 +125,9 @@ function showInitials(studentId) {
                       $phone  = (string)($s['contact_no'] ?? '');
                       $staff_id = $s['staff_id'] ?? null;
                       $staff_active = (int)($s['staff_active'] ?? 0);
+                      $school_internal_id = isset($s['school_internal_id']) && $s['school_internal_id'] !== '' && $s['school_internal_id'] !== 0 
+                        ? $s['school_internal_id'] 
+                        : 'Not Set';
 
                       // Sponsor information
                       $sponsor_name = (string)($s['sponsor_name'] ?? '');
@@ -201,7 +204,7 @@ function showInitials(studentId) {
                                 <?php echo html_escape($name); ?>
                               </a>
                             </strong>
-                            <br><small class="text-muted">ID: <?php echo $sid; ?></small>
+                            <br><small class="text-muted">ID: <?php echo $school_internal_id; ?></small>
                             <div class="row-options" style="display:none;">
                               <a href="<?php echo admin_url('student_sponsor_portal/school_student_form/' . $sid); ?>">Edit</a> |
                               <a href="#" onclick="deleteStudent(<?php echo $sid; ?>); return false;" class="text-danger">Delete</a>
