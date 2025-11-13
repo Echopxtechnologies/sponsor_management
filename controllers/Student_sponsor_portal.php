@@ -1,4 +1,4 @@
-    <?php defined('BASEPATH') or exit('No direct script access allowed');
+<?php defined('BASEPATH') or exit('No direct script access allowed');
 
     /* (Optional) add permissions on install */
     hooks()->add_action('after_module_activation', function($module){
