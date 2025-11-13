@@ -265,7 +265,54 @@ public function get_all()
     $this->db->join($this->tbl_sponsor.' sr', 'sr.id = ss.sponsor_id', 'left');
     $this->db->order_by('ss.school_name_id', 'ASC');
     
-    return $this->db->get()->result_array();
+
+    $students = $this->db->get()->result_array();
+    foreach ($students as &$student) {
+            $sponsors = $this->get_student_sponsors_history($student['id']);
+            
+            if (!empty($sponsors)) {
+                // Get the primary/latest sponsor
+                $primary_sponsor = $sponsors[0];
+                $student['sponsor_id'] = $primary_sponsor['sponsor_id'];
+                $student['sponsor_name'] = $primary_sponsor['sponsor_name'];
+                $student['sponsor_type'] = $primary_sponsor['sponsor_type'];
+                $student['sponsor_email'] = $primary_sponsor['sponsor_email'];
+                $student['sponsor_relationship_type'] = $primary_sponsor['relationship_type'];
+                
+                // Add all sponsors information for display
+                $sponsor_names = [];
+                $sponsor_types = [];
+                foreach ($sponsors as $sponsor) {
+                    $sponsor_names[] = $sponsor['sponsor_name'];
+                    if (!empty($sponsor['sponsor_type'])) {
+                        $sponsor_types[] = $sponsor['sponsor_type'];
+                    }
+                }
+                
+                // For multiple sponsors, create combined display
+                if (count($sponsors) > 1) {
+                    $student['all_sponsor_names'] = implode(', ', array_unique($sponsor_names));
+                    $student['all_sponsor_types'] = implode(', ', array_unique($sponsor_types));
+                    $student['sponsor_count'] = count($sponsors);
+                } else {
+                    $student['all_sponsor_names'] = $student['sponsor_name'];
+                    $student['all_sponsor_types'] = $student['sponsor_type'];
+                    $student['sponsor_count'] = 1;
+                }
+            } else {
+                // No sponsors
+                $student['sponsor_id'] = null;
+                $student['sponsor_name'] = '';
+                $student['sponsor_type'] = '';
+                $student['sponsor_email'] = '';
+                $student['sponsor_relationship_type'] = '';
+                $student['all_sponsor_names'] = '';
+                $student['all_sponsor_types'] = '';
+                $student['sponsor_count'] = 0;
+            }
+        }
+        
+        return $students;
 }
 
     /**
@@ -934,6 +981,33 @@ foreach ($students as &$student) {
 
     /* ----------------- CRUD OPERATIONS ----------------- */
 
+    public function normalize_grade($grade) {
+    // Remove any whitespace and convert to string
+    $grade = trim((string)$grade);
+    
+    // Log the input value
+    log_message('debug', "Normalize Grade - Input: '{$grade}' (Type: " . gettype($grade) . ")");
+    
+    // Mapping array
+    $map = [
+        '11' => 'O/L',
+        '12' => 'A/L1',
+        '13' => 'A/L2',
+        '14' => 'A/L Final'
+    ];
+    
+    // Return mapped value if exists, otherwise return original grade
+    if (isset($map[$grade])) {
+        $result = $map[$grade];
+        log_message('debug', "Normalize Grade - Output: '{$result}' (Mapped)");
+        return $result;
+    }
+    
+    // For grades 1-10, return as-is
+    log_message('debug', "Normalize Grade - Output: '{$grade}' (Unchanged)");
+    return $grade;
+}
+
    public function add($data)
 {
     try {
@@ -944,7 +1018,7 @@ foreach ($students as &$student) {
         $grade = $data['grade'] ?? $data['school_grade'] ?? null;
         $age = $data['calculated_age'] ?? $data['school_age'] ?? null;
         $grade_mismatch_reason = $data['grade_mismatch_reason'] ?? null;
-        
+
         if (!empty($grade) && !empty($age)) {
             $validation = $this->validate_age_grade($grade, $age, $grade_mismatch_reason);
             if (!$validation['valid']) {
@@ -954,13 +1028,18 @@ foreach ($students as &$student) {
 
         // Handle profile photo upload FIRST
         $photo = null;
-        try { 
+        try {
             $photo = $this->handle_profile_photo_upload();
             if ($photo !== null) {
                 log_message('debug', 'Profile photo uploaded successfully, size: ' . strlen($photo));
             }
-        } catch (Exception $e) { 
-            log_message('error', 'School photo upload: ' . $e->getMessage()); 
+        } catch (Exception $e) {
+            log_message('error', 'School photo upload: ' . $e->getMessage());
+        }
+
+        // Normalize the grade before mapping
+        if (isset($data['school_grade'])) {
+            $data['school_grade'] = $this->normalize_grade($data['school_grade']);
         }
 
         // Complete field mappings (handles multiple input formats)
@@ -1113,6 +1192,7 @@ foreach ($students as &$student) {
         return ['success' => false, 'message' => 'Error adding student: ' . $e->getMessage()];
     }
 }
+
  public function update($data, $id)
 {
     try {
@@ -1169,12 +1249,17 @@ foreach ($students as &$student) {
                 log_message('debug', '✓ Profile photo uploaded successfully! Size: ' . strlen($photo) . ' bytes');
             } else {
                 log_message('debug', 'No profile photo uploaded (handle_profile_photo_upload returned null)');
-            }
+            }   
         } catch (Exception $e) {
             log_message('error', '✗ Profile photo upload FAILED: ' . $e->getMessage());
             log_message('error', 'Stack trace: ' . $e->getTraceAsString());
             // Don't return false - continue with other updates
         }
+
+        if (isset($data['school_grade'])) {
+            $data['school_grade'] = $this->normalize_grade($data['school_grade']);
+        }
+
 
         // Complete field mappings (same as add method)
         $field_mappings = [
