@@ -114,9 +114,11 @@ function showInitials(studentId) {
                   <?php 
                     $serial = 1; 
                     foreach ($school_students as $s): 
+                      // Free memory by unsetting heavy data after use
+                      ob_start();
                   ?>
                     <?php
-                      // Student data
+                      // Student data - only essential fields
                       $sid    = (int)($s['id'] ?? 0);
                       $name   = (string)($s['name'] ?? '');
                       $grade  = (string)($s['school_grade'] ?? '');
@@ -129,9 +131,7 @@ function showInitials(studentId) {
                         ? $s['school_internal_id'] 
                         : 'Not Set';
 
-                      // Sponsor information
-                      $sponsor_name = (string)($s['sponsor_name'] ?? '');
-                      $sponsor_type = (string)($s['sponsor_type'] ?? '');
+                      // Sponsor information - simplified to reduce memory
                       $all_sponsor_names = (string)($s['all_sponsor_names'] ?? '');
                       $all_sponsor_types = (string)($s['all_sponsor_types'] ?? '');
                       $sponsor_count = (int)($s['sponsor_count'] ?? 0);
@@ -157,15 +157,16 @@ function showInitials(studentId) {
                         }
                       }
 
-                      // Generate initials for avatar
+                      // Generate initials for avatar - memory efficient
                       $initials = '';
-                      foreach (preg_split('/\s+/', trim($name)) as $p) {
+                      $name_parts = preg_split('/\s+/', trim($name));
+                      foreach ($name_parts as $p) {
                         if ($p !== '' && strlen($initials) < 2) {
                           $initials .= strtoupper(substr($p, 0, 1));
                         }
                       }
 
-                      // Photo URL
+                      // Photo URL - don't generate if not needed
                       $photoUrl = admin_url('student_sponsor_portal/display_s_profile_photo/' . $sid);
                     ?>
                     <tr class="student-row"
@@ -173,8 +174,7 @@ function showInitials(studentId) {
                         data-student-id="<?php echo $sid; ?>"
                         data-grade="<?php echo html_escape($grade); ?>"
                         data-school="<?php echo html_escape(mb_strtolower($school)); ?>"
-                        data-status="<?php echo html_escape($status); ?>"
-                        data-sponsor="<?php echo html_escape(mb_strtolower($sponsor_name)); ?>">
+                        data-status="<?php echo html_escape($status); ?>">
                       
                       <!-- Serial Number -->
                       <td><strong><?php echo $serial; ?></strong></td>
@@ -188,6 +188,7 @@ function showInitials(studentId) {
                                 <?php echo $initials !== '' ? html_escape($initials) : '•'; ?>
                               </span>
                               
+                              <!-- LAZY LOADING: Use data-src to prevent immediate loading -->
                               <img data-src="<?php echo $photoUrl; ?>"
                               alt="<?php echo html_escape($name); ?>"
                               class="avatar__image"
@@ -284,7 +285,15 @@ function showInitials(studentId) {
                     </tr>
                   <?php 
                     $serial++; 
-                  endforeach; ?>
+                    // Free memory by clearing output buffer and unsetting variables
+                    ob_end_flush();
+                    unset($name_parts);
+                  endforeach; 
+                  // Force garbage collection
+                  if (function_exists('gc_collect_cycles')) {
+                    gc_collect_cycles();
+                  }
+                  ?>
                 <?php else: ?>
                   <!-- Empty State -->
                   <tr>
@@ -719,7 +728,7 @@ function showInitials(studentId) {
         student_id: id
       }, function(response) {
         if (response && response.success) {
-          // when DT is ready we’ll remove via API; if not, just remove row
+          // when DT is ready we'll remove via API; if not, just remove row
           var table = $.fn.DataTable && $.fn.DataTable.isDataTable('#school-students-table')
             ? $('#school-students-table').DataTable()
             : null;
@@ -766,46 +775,31 @@ function showInitials(studentId) {
       if ($tbl.length && $.fn.DataTable && $.fn.DataTable.isDataTable($tbl)) {
         var schoolTable = $tbl.DataTable();
         console.log('✅ hooked into existing School Students DataTable');
-          function loadVisibleAvatars(table) {
-            table.rows({page: 'current'}).every(function () {
-              var node = this.node();
-              var img = $(node).find('.avatar__image')[0];
-              if (img && !img.src) {
-                var realSrc = img.getAttribute('data-src');
-                if (realSrc) img.src = realSrc;
-              }
-            });
-          }
+        
+        function loadVisibleAvatars(table) {
+          table.rows({page: 'current'}).every(function () {
+            var node = this.node();
+            var img = $(node).find('.avatar__image')[0];
+            if (img && !img.src) {
+              var realSrc = img.getAttribute('data-src');
+              if (realSrc) img.src = realSrc;
+            }
+          });
+        }
 
+        // initial
+        loadVisibleAvatars(schoolTable);
 
-            // initial
-            loadVisibleAvatars(schoolTable);
-
-            // also on every draw
-            schoolTable.on('draw', function () {
-              // ... your serial number code ...
-              loadVisibleAvatars(schoolTable);
-            });
-
-
-        // fix serial numbers on draw
-        schoolTable.on('draw', function() {
+        // also on every draw
+        schoolTable.on('draw', function () {
+          // Update serial numbers
           var api = schoolTable;
           var startIndex = api.context[0]._iDisplayStart;
           api.column(0, { page: 'current' }).nodes().each(function(cell, i) {
             cell.innerHTML = '<strong>' + (startIndex + i + 1) + '</strong>';
           });
-
-          // re-evaluate avatars
-          $('.avatar__image').each(function() {
-            var img = this;
-            var studentId = img.id.replace('avatar-img-', '');
-            if (img.complete && img.naturalHeight !== 0) {
-              window.hideInitials(studentId);
-            } else {
-              window.showInitials(studentId);
-            }
-          });
+          
+          loadVisibleAvatars(schoolTable);
         });
 
         // row hover actions
@@ -839,9 +833,5 @@ function showInitials(studentId) {
 
 })();
 </script>
-
-
-
-
 
 <?php init_tail(); ?>

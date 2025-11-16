@@ -221,6 +221,7 @@
                 show_error('An error occurred while loading school students: ' . $e->getMessage(), 500);
             }
         }
+        
     // Add this to your Student_sponsor_portal.php controller
 
         // In the school_student_form method, update the validation and saving logic:

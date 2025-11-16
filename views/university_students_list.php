@@ -1,5 +1,34 @@
 <?php defined('BASEPATH') or exit('No direct script access allowed'); ?>
 <?php init_head(); ?>
+
+<!-- CRITICAL: Define Avatar Functions BEFORE HTML that uses them -->
+<script>
+// Avatar Management Functions - Defined Early
+function hideUniversityInitials(studentId) {
+  var avatar = document.getElementById('avatar-' + studentId);
+  var initials = document.getElementById('initials-' + studentId);
+  var image = document.getElementById('avatar-img-' + studentId);
+  
+  if (avatar && initials && image) {
+    avatar.classList.add('avatar--has-image');
+    initials.style.display = 'none';
+    image.style.display = 'block';
+  }
+}
+
+function showUniversityInitials(studentId) {
+  var avatar = document.getElementById('avatar-' + studentId);
+  var initials = document.getElementById('initials-' + studentId);
+  var image = document.getElementById('avatar-img-' + studentId);
+  
+  if (avatar && initials && image) {
+    avatar.classList.remove('avatar--has-image');
+    initials.style.display = 'block';
+    image.style.display = 'none';
+  }
+}
+</script>
+
 <div id="wrapper">
   <div class="content">
     <div class="row">
@@ -152,6 +181,7 @@
                         }
                       }
 
+                      // Photo URL - using data-src for lazy loading
                       $photoUrl = admin_url('student_sponsor_portal/display_profile_photo/' . $sid);
                     ?>
                     <tr class="student-row"
@@ -174,13 +204,16 @@
                               <span class="avatar__initials" id="initials-<?php echo $sid; ?>">
                                 <?php echo $initials !== '' ? html_escape($initials) : '•'; ?>
                               </span>
-                              <img src="<?php echo $photoUrl; ?>" 
+                              
+                              <!-- LAZY LOADING: Use data-src instead of src -->
+                              <img data-src="<?php echo $photoUrl; ?>"
                                    alt="<?php echo html_escape($name); ?>" 
                                    class="avatar__image"
                                    id="avatar-img-<?php echo $sid; ?>"
-                                   onload="hideInitials(<?php echo $sid; ?>)"
-                                   onerror="showInitials(<?php echo $sid; ?>)"
-                                   style="display: none;">
+                                   onload="hideUniversityInitials(<?php echo $sid; ?>)"
+                                   onerror="showUniversityInitials(<?php echo $sid; ?>)"
+                                   style="display:none;">
+
                             </div>
                           </div>  
                           <div class="media-body">
@@ -192,7 +225,7 @@
                             <br><small class="text-muted">ID: <?php echo $university_internal_id; ?></small>
                             <div class="row-options" style="display:none;">
                               <a href="<?php echo admin_url('student_sponsor_portal/university_student_form/' . $sid); ?>">Edit</a> |
-                              <a href="#" onclick="deleteStudent(<?php echo $sid; ?>); return false;" class="text-danger">Delete</a>
+                              <a href="#" onclick="deleteUniversityStudent(<?php echo $sid; ?>); return false;" class="text-danger">Delete</a>
                             </div>
                           </div>
                         </div>
@@ -647,223 +680,169 @@
 </style>
 
 <script>
-var universityTable;
-
-// Avatar Management Functions
-function hideInitials(studentId) {
-  var avatar = document.getElementById('avatar-' + studentId);
-  var initials = document.getElementById('initials-' + studentId);
-  var image = document.getElementById('avatar-img-' + studentId);
-  
-  if (avatar && initials && image) {
-    avatar.classList.add('avatar--has-image');
-    initials.style.display = 'none';
-    image.style.display = 'block';
-  }
-}
-
-function showInitials(studentId) {
-  var avatar = document.getElementById('avatar-' + studentId);
-  var initials = document.getElementById('initials-' + studentId);
-  var image = document.getElementById('avatar-img-' + studentId);
-  
-  if (avatar && initials && image) {
-    avatar.classList.remove('avatar--has-image');
-    initials.style.display = 'block';
-    image.style.display = 'none';
-  }
-}
-
-// View Student Details
-function viewStudent(id) {
-  $('#studentViewModal').modal('show');
-
-  $.post('<?php echo admin_url("student_sponsor_portal/get_university_student"); ?>', {
-    student_id: id,
-    action: 'view'
-  }, function(resp) {
-    if (resp && resp.success) {
-      $('#studentViewContent').html(resp.html);
-      $('#editStudentBtn').attr('href', '<?php echo admin_url("student_sponsor_portal/university_student_form/"); ?>' + id);
-    } else {
-      $('#studentViewContent').html(
-        '<div class="alert alert-danger">' + 
-        (resp.message || 'Error loading student') + 
-        '</div>'
-      );
-    }
-  }, 'json').fail(function() {
-    $('#studentViewContent').html(
-      '<div class="alert alert-danger">Error loading student details</div>'
-    );
-  });
-}
-
-// Delete Student
-function deleteStudent(id) {
-  if (!confirm('Are you sure you want to delete this student? This action cannot be undone.')) {
-    return;
+(function waitForjQuery() {
+  if (typeof window.jQuery === 'undefined') {
+    return setTimeout(waitForjQuery, 50);
   }
 
-  var row = $('#student-row-' + id).css('opacity', '0.5');
+  (function($) {
 
-  $.post('<?php echo admin_url("student_sponsor_portal/delete_university_student"); ?>', {
-    student_id: id
-  }, function(response) {
-    if (response && response.success) {
-      // Remove row from DataTable
-      if (universityTable) {
-        universityTable.row('#student-row-' + id).remove().draw();
-      } else {
-        $('#student-row-' + id).remove();
+    // expose avatar helpers because HTML uses onload/onerror
+    window.hideUniversityInitials = function(studentId) {
+      var avatar = document.getElementById('avatar-' + studentId);
+      var initials = document.getElementById('initials-' + studentId);
+      var image = document.getElementById('avatar-img-' + studentId);
+      if (avatar && initials && image) {
+        avatar.classList.add('avatar--has-image');
+        initials.style.display = 'none';
+        image.style.display = 'block';
       }
-      
-      // Show success message
-      if (typeof alert_float === 'function') {
-        alert_float('success', response.message || 'Student deleted successfully');
-      } else {
-        alert('Student deleted successfully');
-      }
-    } else {
-      row.css('opacity', '1');
-      var msg = (response && response.message) || 'Error deleting student';
-      if (typeof alert_float === 'function') {
-        alert_float('danger', msg);
-      } else {
-        alert('Error: ' + msg);
-      }
-    }
-  }, 'json').fail(function() {
-    row.css('opacity', '1');
-    if (typeof alert_float === 'function') {
-      alert_float('danger', 'Error deleting student');
-    } else {
-      alert('Error deleting student');
-    }
-  });
-}
+    };
 
-// Initialize DataTable
-jQuery(document).ready(function($) {
-    'use strict';
-    
-    // Initialize avatar states first
-    $('.avatar__image').each(function() {
-      var img = this;
-      var studentId = img.id.replace('avatar-img-', '');
-      
-      // Check if image is already loaded
-      if (img.complete) {
-        if (img.naturalHeight !== 0) {
-          hideInitials(studentId);
+    window.showUniversityInitials = function(studentId) {
+      var avatar = document.getElementById('avatar-' + studentId);
+      var initials = document.getElementById('initials-' + studentId);
+      var image = document.getElementById('avatar-img-' + studentId);
+      if (avatar && initials && image) {
+        avatar.classList.remove('avatar--has-image');
+        initials.style.display = 'block';
+        image.style.display = 'none';
+      }
+    };
+
+    // view & delete functions
+    window.viewUniversityStudent = function(id) {
+      $('#studentViewModal').modal('show');
+
+      $.post('<?php echo admin_url("student_sponsor_portal/get_university_student"); ?>', {
+        student_id: id,
+        action: 'view'
+      }, function(resp) {
+        if (resp && resp.success) {
+          $('#studentViewContent').html(resp.html);
+          $('#editStudentBtn').attr('href', '<?php echo admin_url("student_sponsor_portal/university_student_form/"); ?>' + id);
         } else {
-          showInitials(studentId);
+          $('#studentViewContent').html('<div class="alert alert-danger">' + (resp.message || 'Error loading student') + '</div>');
         }
-      } else {
-        // Image not loaded yet, show initials
-        showInitials(studentId);
-      }
-    });
-    
-    // Initialize DataTable with full configuration
-    universityTable = $('#university-students-table').DataTable({
-        // Display options
-        responsive: true,
-        pageLength: 25,
-        lengthMenu: [[10, 25, 50, 100, -1], [10, 25, 50, 100, "All"]],
-        
-        // Ordering
-        order: [[1, "asc"]], // Sort by student name
-        
-        // Column definitions
-        columnDefs: [
-            { 
-                orderable: false, 
-                targets: [0] // Serial number column
-            },
-            { 
-                searchable: false, 
-                targets: [0] // Serial number column
+      }, 'json').fail(function() {
+        $('#studentViewContent').html('<div class="alert alert-danger">Error loading student details</div>');
+      });
+    };
+
+    window.deleteUniversityStudent = function(id) {
+      if (!confirm('Are you sure you want to delete this university student? This action cannot be undone.')) return;
+
+      var $row = $('#student-row-' + id).css('opacity', '0.5');
+
+      $.post('<?php echo admin_url("student_sponsor_portal/delete_university_student"); ?>', {
+        student_id: id
+      }, function(response) {
+        if (response && response.success) {
+          // when DT is ready we'll remove via API; if not, just remove row
+          var table = $.fn.DataTable && $.fn.DataTable.isDataTable('#university-students-table')
+            ? $('#university-students-table').DataTable()
+            : null;
+
+          if (table) {
+            table.row('#student-row-' + id).remove().draw();
+          } else {
+            $('#student-row-' + id).remove();
+          }
+
+          if (typeof alert_float === 'function') {
+            alert_float('success', response.message || 'Student deleted successfully');
+          } else {
+            alert('Student deleted successfully');
+          }
+        } else {
+          $row.css('opacity', '1');
+          var msg = (response && response.message) || 'Error deleting student';
+          if (typeof alert_float === 'function') {
+            alert_float('danger', msg);
+          } else {
+            alert('Error: ' + msg);
+          }
+        }
+      }, 'json').fail(function() {
+        $row.css('opacity', '1');
+        if (typeof alert_float === 'function') {
+          alert_float('danger', 'Error deleting student');
+        } else {
+          alert('Error deleting student');
+        }
+      });
+    };
+
+    // -------------------------
+    // LAZY LOADING IMPLEMENTATION
+    // -------------------------
+    var tries = 0;
+    (function waitForPerfexDT() {
+      var $tbl = $('#university-students-table');
+
+      // table exists AND DataTables plugin is there AND Perfex already initialized it
+      if ($tbl.length && $.fn.DataTable && $.fn.DataTable.isDataTable($tbl)) {
+        var universityTable = $tbl.DataTable();
+        console.log('✅ hooked into existing University Students DataTable');
+
+        // Function to load visible avatars
+        function loadVisibleAvatars(table) {
+          table.rows({page: 'current'}).every(function () {
+            var node = this.node();
+            var img = $(node).find('.avatar__image')[0];
+            if (img && !img.src) {
+              var realSrc = img.getAttribute('data-src');
+              if (realSrc) img.src = realSrc;
             }
-        ],
-        
-        // Language customization
-        language: {
-            emptyTable: "No university students found",
-            zeroRecords: "No matching students found",
-            info: "Showing _START_ to _END_ of _TOTAL_ students",
-            infoEmpty: "Showing 0 to 0 of 0 students",
-            infoFiltered: "(filtered from _MAX_ total students)",
-            search: "<i class='fa fa-search'></i> Search:",
-            searchPlaceholder: "Search by name, university, program...",
-            lengthMenu: "Show _MENU_ students",
-            paginate: {
-                first: "First",
-                last: "Last",
-                next: "Next <i class='fa fa-angle-right'></i>",
-                previous: "<i class='fa fa-angle-left'></i> Previous"
-            }
-        },
-        
-        // DOM positioning
-        dom: "<'row'<'col-sm-6'l><'col-sm-6'f>>" +
-             "<'row'<'col-sm-12'tr>>" +
-             "<'row'<'col-sm-5'i><'col-sm-7'p>>",
-        
-        // Enable state saving (remembers page, search, etc.)
-        stateSave: true,
-        stateDuration: 60 * 60 * 24, // 24 hours
-        
-        // Callbacks
-        drawCallback: function(settings) {
-            // Update serial numbers after each draw
-            var api = this.api();
-            var startIndex = api.context[0]._iDisplayStart;
-            api.column(0, {page: 'current'}).nodes().each(function(cell, i) {
-                cell.innerHTML = '<strong>' + (startIndex + i + 1) + '</strong>';
-            });
-            
-            // Re-check avatar images after redraw
-            $('.avatar__image').each(function() {
-              var img = this;
-              var studentId = img.id.replace('avatar-img-', '');
-              
-              if (img.complete && img.naturalHeight !== 0) {
-                hideInitials(studentId);
-              } else {
-                showInitials(studentId);
-              }
-            });
-        },
-        
-        initComplete: function() {
-            console.log('University Students DataTable initialized successfully');
+          });
         }
-    });
 
-    // Custom search highlighting (optional enhancement)
-    universityTable.on('search.dt', function() {
-        var value = $('.dataTables_filter input').val();
-        if (value) {
-            console.log('Searching university students for: ' + value);
-        }
-    });
+        // Load avatars for initial page
+        loadVisibleAvatars(universityTable);
 
-    // Row hover effects for action links
-    $(document).on('mouseenter', '.student-row', function() { 
-        $(this).find('.row-options').show(); 
-    }).on('mouseleave', '.student-row', function() { 
-        $(this).find('.row-options').hide(); 
-    });
+        // Load avatars on every page change/draw
+        universityTable.on('draw', function () {
+          // Update serial numbers
+          var api = universityTable;
+          var startIndex = api.context[0]._iDisplayStart;
+          api.column(0, { page: 'current' }).nodes().each(function(cell, i) {
+            cell.innerHTML = '<strong>' + (startIndex + i + 1) + '</strong>';
+          });
 
-    // Focus on search box with keyboard shortcut (Ctrl+F or Cmd+F)
-    $(document).on('keydown', function(e) {
-        if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
+          // Load avatars for current page
+          loadVisibleAvatars(universityTable);
+        });
+
+        // Row hover effects for action links
+        $(document).on('mouseenter', '.student-row', function() {
+          $(this).find('.row-options').show();
+        }).on('mouseleave', '.student-row', function() {
+          $(this).find('.row-options').hide();
+        });
+
+        // Focus on search box with keyboard shortcut (Ctrl+F or Cmd+F)
+        $(document).on('keydown', function(e) {
+          if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
             e.preventDefault();
             $('.dataTables_filter input').focus();
-        }
-    });
-});
+          }
+        });
+
+        return;
+      }
+
+      // not ready yet → try again
+      if (tries < 120) {    // ~12 seconds total
+        tries++;
+        return setTimeout(waitForPerfexDT, 100);
+      } else {
+        console.warn('DataTable on #university-students-table was not initialized by Perfex.');
+      }
+    })();
+
+  })(window.jQuery);
+
+})();
 </script>
 
 <?php init_tail(); ?>
