@@ -375,13 +375,40 @@ private function clean($in)
     return $id;
 }
     
+// public function update($id, array $data)
+// {
+//     $clean = $this->clean($data);
+//     if (!$clean['sponsor_id'] || !$this->has_exactly_one_student($clean)) return false;
+
+//     // If next_payment_due not posted (readonly omitted), don't overwrite DB
+//     if (!array_key_exists('next_payment_due', $data)) unset($clean['next_payment_due']);
+
+//     if ($this->db->field_exists('updated_at', $this->txn_tbl)) {
+//         $clean['updated_at'] = date('Y-m-d H:i:s');
+//     }
+
+//     $this->db->where('id', (int)$id)->update($this->txn_tbl, $clean);
+
+//     // Always ensure computed fields are correct even if 0 rows affected
+//     $this->recompute_next_due_from_type($id);
+//     $this->update_scheduled_reminders($id);
+
+//     return true;
+// }
 public function update($id, array $data)
 {
     $clean = $this->clean($data);
     if (!$clean['sponsor_id'] || !$this->has_exactly_one_student($clean)) return false;
 
-    // If next_payment_due not posted (readonly omitted), don't overwrite DB
-    if (!array_key_exists('next_payment_due', $data)) unset($clean['next_payment_due']);
+    // ✅ Check if user manually provided next_payment_due
+    $manualNextDue = array_key_exists('next_payment_due', $data) 
+                     && $data['next_payment_due'] !== null 
+                     && trim($data['next_payment_due']) !== '';
+
+    // If next_payment_due not posted, don't overwrite DB
+    if (!array_key_exists('next_payment_due', $data)) {
+        unset($clean['next_payment_due']);
+    }
 
     if ($this->db->field_exists('updated_at', $this->txn_tbl)) {
         $clean['updated_at'] = date('Y-m-d H:i:s');
@@ -389,14 +416,15 @@ public function update($id, array $data)
 
     $this->db->where('id', (int)$id)->update($this->txn_tbl, $clean);
 
-    // Always ensure computed fields are correct even if 0 rows affected
-    $this->recompute_next_due_from_type($id);
+    // ✅ Only recompute if user didn't manually set next_payment_due
+    if (!$manualNextDue) {
+        $this->recompute_next_due_from_type($id);
+    }
+    
     $this->update_scheduled_reminders($id);
 
     return true;
 }
-
-
 
     /** Hard-delete a transaction and its payments */
     public function delete($id)

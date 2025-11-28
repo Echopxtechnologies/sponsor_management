@@ -204,7 +204,7 @@
                                             <i class="fa fa-money"></i>
                                         </div>
                                         <div class="card-title">
-                                            <h3>₹<?php echo number_format($dashboard_stats['financial']['total_committed'] ?? 0, 0); ?></h3>
+                                            <h3>Amount <?php echo number_format($dashboard_stats['financial']['total_committed'] ?? 0, 0); ?></h3>
                                             <span>Total Committed</span>
                                         </div>
                                     </div>
@@ -221,11 +221,11 @@
                                         <div class="card-stats">
                                             <span class="text-success">
                                                 <i class="fa fa-check"></i> 
-                                                ₹<?php echo number_format($total_paid, 0); ?> Paid
+                                                Amt - <?php echo number_format($total_paid, 0); ?> Paid
                                             </span>
                                             <span class="text-warning">
                                                 <i class="fa fa-clock-o"></i> 
-                                                ₹<?php echo number_format($total_committed - $total_paid, 0); ?> Pending
+                                                Amt - <?php echo number_format($total_committed - $total_paid, 0); ?> Pending
                                             </span>
                                         </div>
                                     </div>
@@ -561,7 +561,7 @@
                                                                             </small>
                                                                         </td>
                                                                         <td>
-                                                                            <strong class="text-success">₹<?php echo number_format($transaction['amount'], 2); ?></strong>
+                                                                            <strong class="text-success">amt <?php echo number_format($transaction['amount'], 2); ?></strong>
                                                                         </td>
                                                                         <td>
                                                                             <span class="label label-info">

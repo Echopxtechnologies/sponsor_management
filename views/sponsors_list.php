@@ -1,5 +1,34 @@
 <?php defined('BASEPATH') or exit('No direct script access allowed'); ?>
 <?php init_head(); ?>
+
+<!-- CRITICAL: Define Avatar Functions BEFORE HTML that uses them -->
+<script>
+// Avatar Management Functions - Defined Early
+function hideSponsorInitials(sponsorId) {
+  var avatar = document.getElementById('sponsor-avatar-' + sponsorId);
+  var initials = document.getElementById('sponsor-initials-' + sponsorId);
+  var image = document.getElementById('sponsor-avatar-img-' + sponsorId);
+  
+  if (avatar && initials && image) {
+    avatar.classList.add('avatar--has-image');
+    initials.style.display = 'none';
+    image.style.display = 'block';
+  }
+}
+
+function showSponsorInitials(sponsorId) {
+  var avatar = document.getElementById('sponsor-avatar-' + sponsorId);
+  var initials = document.getElementById('sponsor-initials-' + sponsorId);
+  var image = document.getElementById('sponsor-avatar-img-' + sponsorId);
+  
+  if (avatar && initials && image) {
+    avatar.classList.remove('avatar--has-image');
+    initials.style.display = 'block';
+    image.style.display = 'none';
+  }
+}
+</script>
+
 <div id="wrapper">
     <div class="content">
         <div class="row">
@@ -9,45 +38,57 @@
                         <!-- Header Section -->
                         <div class="row">
                             <div class="col-md-6">
-                                <h4 class="customer-profile-group-heading" style="margin-top:60px;">
+                                <h4 class="customer-profile-group-heading" style="margin-top:60px; margin-left:13px;">
                                     <i class="fa fa-users"></i> Sponsor Management
                                 </h4>
                             </div>
                             <div class="col-md-6">
                                 <div class="text-right" style="margin-top:15px;">
-
-                                 <!-- Import Button -->
-        <div class="btn-group" role="group" style="margin-right: 5px;">
-            <a href="<?php echo admin_url('student_sponsor_portal/bulk_import_sponsors'); ?>" 
-               class="btn btn-warning btn-sm"
-               title="Import sponsors from Excel/CSV file">
-                <i class="fa fa-upload"></i> Import
-            </a>
-        </div>
+                                    <!-- Import Button -->
+                                    <a href="<?php echo admin_url('student_sponsor_portal/bulk_import_sponsors'); ?>" 
+                                       class="btn btn-warning btn-sm"
+                                       style="margin-right: 5px;"
+                                       title="Import sponsors from Excel/CSV file">
+                                        <i class="fa fa-upload"></i> Import
+                                    </a>
+                                    
                                     <!-- Export Button -->
-                                    <div class="btn-group" role="group" style="margin-right: 5px;">
-                                        <a href="<?php echo admin_url('student_sponsor_portal/export_sponsors'); ?>" 
-                                           class="btn btn-success btn-sm"
-                                           title="Export all sponsors to CSV file">
-                                            <i class="fa fa-download"></i> Export CSV
-                                        </a>
-                                    </div>
+                                    <a href="<?php echo admin_url('student_sponsor_portal/export_sponsors'); ?>" 
+                                       class="btn btn-success btn-sm"
+                                       style="margin-right: 5px;"
+                                       title="Export all sponsors to CSV file">
+                                        <i class="fa fa-download"></i> Export CSV
+                                    </a>
+                                    
                                     <!-- New Sponsor Button -->
-                                    <div class="btn-group" role="group">
-                                        <a href="<?php echo admin_url('student_sponsor_portal/sponsor_form'); ?>" 
-                                           class="btn btn-primary btn-sm">
-                                            <i class="fa fa-plus"></i> New Sponsor
-                                        </a>
-                                    </div>
+                                    <a href="<?php echo admin_url('student_sponsor_portal/sponsor_form'); ?>" 
+                                       class="btn btn-primary btn-sm">
+                                        <i class="fa fa-plus"></i> New Sponsor
+                                    </a>
                                 </div>
                             </div>
                         </div>
 
                         <hr class="hr-panel-heading">
 
+                        <!-- Statistics Summary -->
+                        <?php if(!empty($sponsors) && count($sponsors) > 0): ?>
+                        <div class="row" style="margin-bottom: 15px;">
+                            <div class="col-md-12">
+                                <div class="alert alert-info" style="margin-bottom: 10px; padding: 8px 15px;">
+                                    <i class="fa fa-info-circle"></i>
+                                    <strong>Total Sponsors: <?php echo count($sponsors); ?></strong>
+                                    <span class="pull-right">
+                                        <small>Click on sponsor name to view/edit details</small>
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+                        <?php endif; ?>
+
                         <!-- Sponsors Table -->
                         <div class="table-responsive">
-                            <table class="table table-hover sponsors-table" id="sponsors-table">
+                            <table class="table table-hover sponsors-table dt-table" id="sponsors-table" width="100%">
                                 <thead>
                                     <tr>
                                         <th width="5%">#</th>
@@ -133,6 +174,7 @@
                                         ?>
                                         <tr class="sponsor-row" 
                                             id="sponsor-row-<?php echo $sponsor_id; ?>"
+                                            data-sponsor-id="<?php echo $sponsor_id; ?>"
                                             data-type="<?php echo html_escape(mb_strtolower($sponsor_type)); ?>"
                                             data-frequency="<?php echo html_escape(mb_strtolower($sponsor_frequency)); ?>"
                                             data-status="<?php echo html_escape($sponsor_status); ?>"
@@ -144,18 +186,38 @@
                                             <td>
                                                 <div class="media">
                                                     <div class="media-left">
-                                                        <div class="avatar">
-                                                            <span class="avatar__initials">
+                                                        <div class="avatar" id="sponsor-avatar-<?php echo $sponsor_id; ?>">
+                                                            <span class="avatar__initials" id="sponsor-initials-<?php echo $sponsor_id; ?>">
                                                                 <?php echo html_escape($initials); ?>
                                                             </span>
+                                                            <!-- Future: Add sponsor photo support -->
+                                                            <!-- <img data-src="<?php echo admin_url('student_sponsor_portal/display_sponsor_photo/' . $sponsor_id); ?>"
+                                                                 alt="<?php echo html_escape($sponsor_name); ?>" 
+                                                                 class="avatar__image"
+                                                                 id="sponsor-avatar-img-<?php echo $sponsor_id; ?>"
+                                                                 onload="hideSponsorInitials(<?php echo $sponsor_id; ?>)"
+                                                                 onerror="showSponsorInitials(<?php echo $sponsor_id; ?>)"
+                                                                 style="display:none;"> -->
                                                         </div>
                                                     </div>
                                                     <div class="media-body">
-                                                        <strong><?php echo htmlspecialchars($sponsor_name); ?></strong>
+                                                        <strong>
+                                                            <a href="<?php echo admin_url('student_sponsor_portal/sponsor_form/' . $sponsor_id); ?>">
+                                                                <?php echo htmlspecialchars($sponsor_name); ?>
+                                                            </a>
+                                                        </strong>
                                                         <br><small class="text-muted">ID: <?php echo $sponsor_id; ?></small>
                                                         <?php if(!empty($sponsor['city'])): ?>
                                                             <br><small class="text-muted"><i class="fa fa-map-marker"></i> <?php echo htmlspecialchars($sponsor['city']); ?></small>
                                                         <?php endif; ?>
+                                                        <div class="row-options" style="display:none;">
+                                                            <?php if(has_permission('student_sponsor_portal', '', 'edit')): ?>
+                                                            <a href="<?php echo admin_url('student_sponsor_portal/sponsor_form/' . $sponsor_id); ?>">Edit</a> |
+                                                            <?php endif; ?>
+                                                            <?php if(has_permission('student_sponsor_portal', '', 'delete')): ?>
+                                                            <a href="#" onclick="deleteSponsor(<?php echo $sponsor_id; ?>); return false;" class="text-danger">Delete</a>
+                                                            <?php endif; ?>
+                                                        </div>
                                                     </div>
                                                 </div>
                                             </td>
@@ -180,23 +242,25 @@
 
                                             <!-- Contact Info -->
                                             <td>
-                                                <?php if(!empty($sponsor_email)): ?>
-                                                    <div style="margin-bottom: 3px;">
-                                                        <i class="fa fa-envelope text-muted" style="width: 12px;"></i>
-                                                        <a href="mailto:<?php echo html_escape($sponsor_email); ?>" style="font-size: 11px;">
-                                                            <?php echo htmlspecialchars($sponsor_email); ?>
-                                                        </a>
-                                                    </div>
-                                                <?php endif; ?>
-                                                <?php if(!empty($sponsor_phone)): ?>
-                                                    <div>
-                                                        <i class="fa fa-phone text-muted" style="width: 12px;"></i>
-                                                        <span style="font-size: 11px;"><?php echo htmlspecialchars($sponsor_phone); ?></span>
-                                                    </div>
-                                                <?php endif; ?>
-                                                <?php if(empty($sponsor_email) && empty($sponsor_phone)): ?>
-                                                    <span class="text-muted">No contact info</span>
-                                                <?php endif; ?>
+                                                <div class="contact-info">
+                                                    <?php if(!empty($sponsor_email)): ?>
+                                                        <div style="margin-bottom: 3px;">
+                                                            <a href="mailto:<?php echo html_escape($sponsor_email); ?>" class="text-primary">
+                                                                <i class="fa fa-envelope" style="width: 12px;"></i> <?php echo htmlspecialchars($sponsor_email); ?>
+                                                            </a>
+                                                        </div>
+                                                    <?php endif; ?>
+                                                    <?php if(!empty($sponsor_phone)): ?>
+                                                        <div>
+                                                            <a href="tel:<?php echo html_escape($sponsor_phone); ?>" class="text-success">
+                                                                <i class="fa fa-phone" style="width: 12px;"></i> <?php echo htmlspecialchars($sponsor_phone); ?>
+                                                            </a>
+                                                        </div>
+                                                    <?php endif; ?>
+                                                    <?php if(empty($sponsor_email) && empty($sponsor_phone)): ?>
+                                                        <span class="text-muted">No contact info</span>
+                                                    <?php endif; ?>
+                                                </div>
                                             </td>
 
                                             <!-- Sponsored Students - Enhanced with Names -->
@@ -240,7 +304,6 @@
                                                                 </div>
                                                             </div>
                                                         <?php endif; ?>
-                                                                
                                                     </div>
                                                 <?php else: ?>
                                                     <div class="no-students">
@@ -309,7 +372,6 @@
                                                         <span class="caret"></span>
                                                     </button>
                                                     <ul class="dropdown-menu dropdown-menu-right">
-                                                   
                                                         <?php if(has_permission('student_sponsor_portal', '', 'edit')): ?>
                                                         <li><a href="<?php echo admin_url('student_sponsor_portal/sponsor_form/' . $sponsor_id); ?>"><i class="fa fa-edit"></i> Edit</a></li>
                                                         <?php endif; ?>
@@ -402,6 +464,115 @@
 </div>
 
 <style>
+/* DataTables Custom Styling */
+.dataTables_wrapper {
+  padding: 0;
+  margin-top: 15px;
+}
+
+.dataTables_wrapper .dataTables_length {
+  float: left;
+  margin-bottom: 15px;
+}
+
+.dataTables_wrapper .dataTables_length select {
+  padding: 5px;
+  border: 1px solid #ddd;
+  border-radius: 3px;
+  margin: 0 5px;
+}
+
+.dataTables_wrapper .dataTables_filter {
+  float: right;
+  margin-bottom: 15px;
+  text-align: right;
+}
+
+.dataTables_wrapper .dataTables_filter label {
+  font-weight: normal;
+  margin-bottom: 0;
+}
+
+.dataTables_wrapper .dataTables_filter input {
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  padding: 6px 12px;
+  margin-left: 8px;
+  width: 250px;
+  display: inline-block;
+}
+
+.dataTables_wrapper .dataTables_info {
+  float: left;
+  padding-top: 8px;
+  font-size: 13px;
+  color: #666;
+}
+
+.dataTables_wrapper .dataTables_paginate {
+  float: right;
+  text-align: right;
+  padding-top: 0;
+  margin: 0;
+}
+
+/* Pagination Buttons - FIXED STYLING */
+.dataTables_wrapper .dataTables_paginate .paginate_button {
+  box-sizing: border-box;
+  display: inline-block;
+  min-width: 32px;
+  padding: 6px 12px;
+  margin-left: 2px;
+  margin-right: 2px;
+  text-align: center;
+  text-decoration: none !important;
+  cursor: pointer;
+  color: #333 !important;
+  border: 1px solid #ddd;
+  background-color: #fff;
+  border-radius: 3px;
+  transition: all 0.2s ease;
+  font-size: 13px;
+  line-height: 1.42857143;
+}
+
+.dataTables_wrapper .dataTables_paginate .paginate_button:hover {
+  background-color: #f5f5f5;
+  border-color: #ccc;
+  color: #333 !important;
+}
+
+.dataTables_wrapper .dataTables_paginate .paginate_button.current,
+.dataTables_wrapper .dataTables_paginate .paginate_button.current:hover {
+  background-color: #007bff;
+  color: #fff !important;
+  border-color: #007bff;
+}
+
+.dataTables_wrapper .dataTables_paginate .paginate_button.disabled,
+.dataTables_wrapper .dataTables_paginate .paginate_button.disabled:hover,
+.dataTables_wrapper .dataTables_paginate .paginate_button.disabled:active {
+  cursor: not-allowed;
+  color: #999 !important;
+  border-color: #ddd;
+  background-color: #fff;
+  opacity: 0.5;
+}
+
+.dataTables_wrapper .dataTables_paginate .ellipsis {
+  padding: 0 10px;
+  color: #999;
+}
+
+/* Clear floats after pagination */
+.dataTables_wrapper:after {
+  visibility: hidden;
+  display: block;
+  content: "";
+  clear: both;
+  height: 0;
+}
+
 /* Enhanced Sponsors List Styling */
 .sponsors-table {
     border: 1px solid #e9ecef;
@@ -441,6 +612,42 @@
 .label-primary { background-color: #007bff; color: white; }
 .label-danger { background-color: #dc3545; color: white; }
 
+/* Contact Info Styling */
+.contact-info div {
+  margin-bottom: 2px;
+  font-size: 12px;
+}
+
+.contact-info a {
+  text-decoration: none;
+}
+
+.contact-info a:hover {
+  text-decoration: underline;
+}
+
+/* Row Options (Action Links) */
+.row-options { 
+  font-size: 11px; 
+  color: #777; 
+  display: none !important; 
+  margin-top: 3px; 
+}
+.row-options a { 
+  color: #777; 
+  text-decoration: none; 
+}
+.row-options a:hover { 
+  color: #333; 
+  text-decoration: none; 
+}
+.row-options a.text-danger { 
+  color: #dc3545 !important; 
+}
+.row-options a.text-danger:hover { 
+  color: #c82333 !important; 
+}
+
 .sponsor-row {
     transition: all 0.2s ease;
 }
@@ -448,6 +655,10 @@
 .sponsor-row:hover { 
     background: #f8f9fa;
     transform: translateX(2px);
+}
+
+.sponsor-row:hover .row-options { 
+  display: block !important; 
 }
 
 .avatar {
@@ -460,6 +671,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
+    position: relative;
     transition: all 0.3s ease;
 }
 
@@ -468,11 +680,34 @@
     transform: scale(1.05);
 }
 
+.avatar__image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 2;
+  display: none;
+}
+
 .avatar__initials {
+    position: absolute;
     font-size: 13px;
     color: #6c757d;
     line-height: 1;
+    text-align: center;
+    z-index: 1;
     font-weight: 600;
+    display: block;
+}
+
+.avatar--has-image .avatar__initials {
+  display: none !important;
+}
+
+.avatar--has-image .avatar__image {
+  display: block !important;
 }
 
 .media-left { 
@@ -560,8 +795,19 @@
     margin-right: 8px;
 }
 
+/* Alert Styling */
+.alert-info {
+  background-color: #d1ecf1;
+  border-color: #bee5eb;
+  color: #0c5460;
+}
+
 /* Responsive adjustments */
 @media (max-width: 768px) {
+    .text-right {
+        text-align: left !important;
+    }
+    
     .sponsors-table th,
     .sponsors-table td {
         padding: 6px 4px;
@@ -584,6 +830,23 @@
     .student-names-list {
         padding: 4px 6px;
         font-size: 10px;
+    }
+    
+    .dataTables_wrapper .dataTables_filter input {
+        width: 150px;
+    }
+    
+    .dataTables_wrapper .dataTables_length,
+    .dataTables_wrapper .dataTables_filter {
+        float: none;
+        text-align: left;
+    }
+    
+    .dataTables_wrapper .dataTables_info,
+    .dataTables_wrapper .dataTables_paginate {
+        float: none;
+        text-align: center;
+        margin-top: 10px;
     }
 }
 
@@ -611,208 +874,243 @@
 </style>
 
 <script>
-// Global variables
-let currentSponsorId = null;
-let currentSponsorName = '';
+// Wait for jQuery and then execute
+(function waitForjQuery() {
+  if (typeof window.jQuery === 'undefined') {
+    return setTimeout(waitForjQuery, 50);
+  }
 
-$(document).ready(function() {
-    // Initialize DataTable
-    var table = $('#sponsors-table').DataTable({
-        responsive: true,
-        pageLength: 25,
-        order: [[1, "asc"]],
-        columnDefs: [
-            { orderable: false, targets: [7] }, // Actions column
-            { searchable: false, targets: [0] }, // Serial number column
-            { orderable: false, targets: [4] }   // Sponsored students column (names are dynamic)
-        ],
-        language: {
-            emptyTable: "No sponsors found",
-            zeroRecords: "No matching sponsors found",
-            info: "Showing _START_ to _END_ of _TOTAL_ sponsors",
-            infoEmpty: "Showing 0 to 0 of 0 sponsors",
-            infoFiltered: "(filtered from _MAX_ total sponsors)"
-        }
-    });
-    
-    // View students button click
-    $(document).on('click', '.view-students-btn', function() {
-        var sponsorId = $(this).data('sponsor-id');
-        var sponsorName = $(this).data('sponsor-name');
-        viewSponsoredStudents(sponsorId, sponsorName);
-    });
-    
-    // Assign students button click
-    $(document).on('click', '.assign-students-btn', function() {
-        var sponsorId = $(this).data('sponsor-id');
-        assignStudentsToSponsor(sponsorId);
-    });
-    
-    // Enhanced tooltip handling for student names
-    $('.student-names-text[title]').on('mouseenter', function() {
-        var $this = $(this);
-        var title = $this.attr('title');
-        if (title && title.length > 50) {
-            $this.tooltip({
-                placement: 'top',
-                trigger: 'hover',
-                container: 'body',
-                html: false,
-                title: title
-            }).tooltip('show');
-        }
-    });
-});
+  (function($) {
 
-// View sponsored students
-function viewSponsoredStudents(sponsorId, sponsorName) {
-    currentSponsorId = sponsorId;
-    currentSponsorName = sponsorName;
-    
-    $('#sponsor-name-display').text(sponsorName);
-    $('#sponsoredStudentsModal').modal('show');
-    
-    $.ajax({
-        url: '<?php echo admin_url("student_sponsor_portal/get_sponsored_students"); ?>',
-        type: 'POST',
-        data: { 
-            sponsor_id: sponsorId,
-            <?php echo $this->security->get_csrf_token_name(); ?>: '<?php echo $this->security->get_csrf_hash(); ?>'
-        },
-        dataType: 'json',
-        success: function(response) {
-            if(response.success) {
-                $('#sponsored-students-content').html(response.html);
-                
-                // Update CSRF token
-                if (typeof csrfData !== 'undefined' && response[csrfData.token_name]) {
-                    csrfData.hash = response[csrfData.token_name];
+    // Global variables
+    let currentSponsorId = null;
+    let currentSponsorName = '';
+
+    // Expose delete function globally
+    window.deleteSponsor = function(sponsorId) {
+        if (!confirm('Are you sure you want to delete this sponsor? This will remove all sponsorship relationships but keep student records intact.')) {
+            return;
+        }
+
+        var $row = $('#sponsor-row-' + sponsorId).css('opacity', '0.5');
+
+        $.ajax({
+            url: '<?php echo admin_url("student_sponsor_portal/delete_sponsor"); ?>',
+            type: 'POST',
+            data: { 
+                sponsor_id: sponsorId,
+                <?php echo $this->security->get_csrf_token_name(); ?>: '<?php echo $this->security->get_csrf_hash(); ?>'
+            },
+            dataType: 'json',
+            success: function(response) {
+                if(response && response.success) {
+                    // Remove the row from DataTable
+                    var table = $.fn.DataTable && $.fn.DataTable.isDataTable('#sponsors-table')
+                        ? $('#sponsors-table').DataTable()
+                        : null;
+
+                    if (table) {
+                        table.row('#sponsor-row-' + sponsorId).remove().draw();
+                    } else {
+                        $('#sponsor-row-' + sponsorId).remove();
+                    }
+                    
+                    if (typeof alert_float === 'function') {
+                        alert_float('success', response.message || 'Sponsor deleted successfully');
+                    } else {
+                        alert('Sponsor deleted successfully');
+                    }
+                    
+                    // Update CSRF token
+                    if (typeof csrfData !== 'undefined' && response[csrfData.token_name]) {
+                        csrfData.hash = response[csrfData.token_name];
+                    }
+                } else {
+                    $row.css('opacity', '1');
+                    var msg = (response && response.message) || 'Error deleting sponsor';
+                    if (typeof alert_float === 'function') {
+                        alert_float('danger', msg);
+                    } else {
+                        alert('Error: ' + msg);
+                    }
                 }
-            } else {
-                $('#sponsored-students-content').html('<div class="alert alert-danger">' + (response.message || 'Error loading students') + '</div>');
-            }
-        },
-        error: function(xhr, status, error) {
-            console.error('AJAX Error:', xhr.responseText);
-            $('#sponsored-students-content').html('<div class="alert alert-danger">Error loading sponsored students</div>');
-        }
-    });
-}
-
-// View sponsor details
-function viewSponsorDetails(sponsorId) {
-    currentSponsorId = sponsorId;
-    $('#viewSponsorModal').modal('show');
-    
-    $.ajax({
-        url: '<?php echo admin_url("student_sponsor_portal/get_sponsor"); ?>',
-        type: 'POST',
-        data: { 
-            sponsor_id: sponsorId,
-            action: 'view',
-            <?php echo $this->security->get_csrf_token_name(); ?>: '<?php echo $this->security->get_csrf_hash(); ?>'
-        },
-        dataType: 'json',
-        success: function(response) {
-            if(response.success) {
-                $('#sponsor-details-content').html(response.html);
-                
-                // Update CSRF token
-                if (typeof csrfData !== 'undefined' && response[csrfData.token_name]) {
-                    csrfData.hash = response[csrfData.token_name];
+            },
+            error: function(xhr, status, error) {
+                console.error('Delete Error:', xhr.responseText);
+                $row.css('opacity', '1');
+                if (typeof alert_float === 'function') {
+                    alert_float('danger', 'Error deleting sponsor');
+                } else {
+                    alert('Error deleting sponsor');
                 }
-            } else {
-                $('#sponsor-details-content').html('<div class="alert alert-danger">' + (response.message || 'Error loading sponsor') + '</div>');
             }
-        },
-        error: function(xhr, status, error) {
-            console.error('AJAX Error:', xhr.responseText);
-            $('#sponsor-details-content').html('<div class="alert alert-danger">Error loading sponsor details</div>');
+        });
+    };
+
+    // View sponsored students
+    window.viewSponsoredStudents = function(sponsorId, sponsorName) {
+        currentSponsorId = sponsorId;
+        currentSponsorName = sponsorName;
+        
+        $('#sponsor-name-display').text(sponsorName);
+        $('#sponsoredStudentsModal').modal('show');
+        
+        $.ajax({
+            url: '<?php echo admin_url("student_sponsor_portal/get_sponsored_students"); ?>',
+            type: 'POST',
+            data: { 
+                sponsor_id: sponsorId,
+                <?php echo $this->security->get_csrf_token_name(); ?>: '<?php echo $this->security->get_csrf_hash(); ?>'
+            },
+            dataType: 'json',
+            success: function(response) {
+                if(response.success) {
+                    $('#sponsored-students-content').html(response.html);
+                    
+                    // Update CSRF token
+                    if (typeof csrfData !== 'undefined' && response[csrfData.token_name]) {
+                        csrfData.hash = response[csrfData.token_name];
+                    }
+                } else {
+                    $('#sponsored-students-content').html('<div class="alert alert-danger">' + (response.message || 'Error loading students') + '</div>');
+                }
+            },
+            error: function(xhr, status, error) {
+                console.error('AJAX Error:', xhr.responseText);
+                $('#sponsored-students-content').html('<div class="alert alert-danger">Error loading sponsored students</div>');
+            }
+        });
+    };
+
+    // View sponsor details
+    window.viewSponsorDetails = function(sponsorId) {
+        currentSponsorId = sponsorId;
+        $('#viewSponsorModal').modal('show');
+        
+        $.ajax({
+            url: '<?php echo admin_url("student_sponsor_portal/get_sponsor"); ?>',
+            type: 'POST',
+            data: { 
+                sponsor_id: sponsorId,
+                action: 'view',
+                <?php echo $this->security->get_csrf_token_name(); ?>: '<?php echo $this->security->get_csrf_hash(); ?>'
+            },
+            dataType: 'json',
+            success: function(response) {
+                if(response.success) {
+                    $('#sponsor-details-content').html(response.html);
+                    
+                    // Update CSRF token
+                    if (typeof csrfData !== 'undefined' && response[csrfData.token_name]) {
+                        csrfData.hash = response[csrfData.token_name];
+                    }
+                } else {
+                    $('#sponsor-details-content').html('<div class="alert alert-danger">' + (response.message || 'Error loading sponsor') + '</div>');
+                }
+            },
+            error: function(xhr, status, error) {
+                console.error('AJAX Error:', xhr.responseText);
+                $('#sponsor-details-content').html('<div class="alert alert-danger">Error loading sponsor details</div>');
+            }
+        });
+    };
+
+    // Other global functions
+    window.editCurrentSponsor = function() {
+        if (currentSponsorId) {
+            window.location.href = '<?php echo admin_url("student_sponsor_portal/sponsor_form/"); ?>' + currentSponsorId;
         }
-    });
-}
+    };
 
-// View sponsor transactions
-function viewSponsorTransactions(sponsorId) {
-    window.location.href = '<?php echo admin_url("student_sponsor_portal/sponsor_transactions/"); ?>' + sponsorId;
-}
+    window.manageStudents = function() {
+        if (currentSponsorId) {
+            window.location.href = '<?php echo admin_url("student_sponsor_portal/manage_sponsored_students/"); ?>' + currentSponsorId;
+        }
+    };
 
-// Edit current sponsor
-function editCurrentSponsor() {
-    if (currentSponsorId) {
-        window.location.href = '<?php echo admin_url("student_sponsor_portal/sponsor_form/"); ?>' + currentSponsorId;
-    }
-}
+    window.assignStudentsToSponsor = function(sponsorId) {
+        window.location.href = '<?php echo admin_url("student_sponsor_portal/assign_students/"); ?>' + sponsorId;
+    };
 
-// Manage students
-function manageStudents() {
-    if (currentSponsorId) {
-        window.location.href = '<?php echo admin_url("student_sponsor_portal/manage_sponsored_students/"); ?>' + currentSponsorId;
-    }
-}
+    // -------------------------
+    // WAIT FOR PERFEX DATATABLE INITIALIZATION
+    // -------------------------
+    var tries = 0;
+    (function waitForPerfexDT() {
+      var $tbl = $('#sponsors-table');
 
-// Assign students to sponsor
-function assignStudentsToSponsor(sponsorId) {
-    window.location.href = '<?php echo admin_url("student_sponsor_portal/assign_students/"); ?>' + sponsorId;
-}
+      // Check if table exists AND DataTables is initialized by Perfex
+      if ($tbl.length && $.fn.DataTable && $.fn.DataTable.isDataTable($tbl)) {
+        var sponsorsTable = $tbl.DataTable();
+        console.log('✅ Hooked into existing Sponsors DataTable');
 
-// Delete sponsor
-function deleteSponsor(sponsorId) {
-    if (!confirm('Are you sure you want to delete this sponsor? This will remove all sponsorship relationships but keep student records intact.')) {
+        // Update serial numbers on every draw
+        sponsorsTable.on('draw', function () {
+          var api = sponsorsTable;
+          var startIndex = api.context[0]._iDisplayStart;
+          api.column(0, { page: 'current' }).nodes().each(function(cell, i) {
+            cell.innerHTML = '<strong>' + (startIndex + i + 1) + '</strong>';
+          });
+        });
+
+        // Row hover effects for action links
+        $(document).on('mouseenter', '.sponsor-row', function() {
+          $(this).find('.row-options').show();
+        }).on('mouseleave', '.sponsor-row', function() {
+          $(this).find('.row-options').hide();
+        });
+
+        // View students button click
+        $(document).on('click', '.view-students-btn', function() {
+            var sponsorId = $(this).data('sponsor-id');
+            var sponsorName = $(this).data('sponsor-name');
+            viewSponsoredStudents(sponsorId, sponsorName);
+        });
+        
+        // Assign students button click
+        $(document).on('click', '.assign-students-btn', function() {
+            var sponsorId = $(this).data('sponsor-id');
+            assignStudentsToSponsor(sponsorId);
+        });
+        
+        // Enhanced tooltip handling for student names
+        $('.student-names-text[title]').on('mouseenter', function() {
+            var $this = $(this);
+            var title = $this.attr('title');
+            if (title && title.length > 50) {
+                $this.tooltip({
+                    placement: 'top',
+                    trigger: 'hover',
+                    container: 'body',
+                    html: false,
+                    title: title
+                }).tooltip('show');
+            }
+        });
+
+        // Focus on search box with keyboard shortcut (Ctrl+F or Cmd+F)
+        $(document).on('keydown', function(e) {
+          if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
+            e.preventDefault();
+            $('.dataTables_filter input').focus();
+          }
+        });
+
         return;
-    }
+      }
 
-    var row = $('#sponsor-row-' + sponsorId).css('opacity', '0.5');
+      // Not ready yet → try again
+      if (tries < 120) {    // ~12 seconds total
+        tries++;
+        return setTimeout(waitForPerfexDT, 100);
+      } else {
+        console.warn('DataTable on #sponsors-table was not initialized by Perfex.');
+      }
+    })();
 
-    $.ajax({
-        url: '<?php echo admin_url("student_sponsor_portal/delete_sponsor"); ?>',
-        type: 'POST',
-        data: { 
-            sponsor_id: sponsorId,
-            <?php echo $this->security->get_csrf_token_name(); ?>: '<?php echo $this->security->get_csrf_hash(); ?>'
-        },
-        dataType: 'json',
-        success: function(response) {
-            if(response.success) {
-                // Remove the row from DataTable
-                if ($.fn.DataTable && $.fn.DataTable.isDataTable('#sponsors-table')) {
-                    var table = $('#sponsors-table').DataTable();
-                    table.row('#sponsor-row-' + sponsorId).remove().draw();
-                } else {
-                    $('#sponsor-row-' + sponsorId).remove();
-                }
-                
-                if (typeof alert_float === 'function') {
-                    alert_float('success', response.message || 'Sponsor deleted successfully');
-                } else {
-                    alert('Sponsor deleted successfully');
-                }
-                
-                // Update CSRF token
-                if (typeof csrfData !== 'undefined' && response[csrfData.token_name]) {
-                    csrfData.hash = response[csrfData.token_name];
-                }
-            } else {
-                row.css('opacity', '1');
-                var msg = (response && response.message) || 'Error deleting sponsor';
-                if (typeof alert_float === 'function') {
-                    alert_float('danger', msg);
-                } else {
-                    alert('Error: ' + msg);
-                }
-            }
-        },
-        error: function(xhr, status, error) {
-            console.error('Delete Error:', xhr.responseText);
-            row.css('opacity', '1');
-            if (typeof alert_float === 'function') {
-                alert_float('danger', 'Error deleting sponsor');
-            } else {
-                alert('Error deleting sponsor');
-            }
-        }
-    });
-}
+  })(window.jQuery);
+
+})();
 </script>
 
 <?php init_tail(); ?>

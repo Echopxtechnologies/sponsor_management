@@ -126,17 +126,16 @@
 
                         <hr>
 
-                        <p><strong>Next Payment Due:</strong><br>
-                            <?= !empty($transaction['next_payment_due']) 
-                                ? date('M d, Y', strtotime($transaction['next_payment_due'])) 
-                                : '<span class="text-muted">Not scheduled</span>' ?>
-                        </p>
+                    <?php echo render_date_input('next_payment_due', 'Next Payment Due', 
+                        isset($txn->next_payment_due) && $txn->next_payment_due != '0000-00-00' 
+                            ? _d($txn->next_payment_due) 
+                            : ''); ?>
 
-                        <p><strong>Last Payment:</strong><br>
-                            <?= !empty($transaction['last_payment_date']) 
-                                ? date('M d, Y', strtotime($transaction['last_payment_date'])) 
-                                : '<span class="text-muted">No payments yet</span>' ?>
-                        </p>
+                    <?php echo render_date_input('last_payment_date', 'Last Payment Date', 
+                        isset($txn->last_payment_date) && $txn->last_payment_date != '0000-00-00' 
+                            ? _d($txn->last_payment_date) 
+                            : '', 
+                        ['disabled' => true]); ?>
                     </div>
                 </div>
             </div>

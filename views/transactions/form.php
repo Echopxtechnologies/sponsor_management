@@ -114,7 +114,7 @@
                       <div class="form-group">
                         <label for="next_payment_due">Next Payment Due</label>
                         <input id="next_payment_due" type="text" name="next_payment_due"
-                               value="<?= _d($txn->next_payment_due ?? '') ?>" readonly class="form-control">
+                               value="<?= _d($txn->next_payment_due ?? '') ?>" class="form-control">
                       </div>
                     </div>
                   </div>

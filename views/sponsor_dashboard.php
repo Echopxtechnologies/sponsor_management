@@ -63,7 +63,7 @@
                                 <i class="fa fa-check-circle fa-3x text-warning"></i>
                             </div>
                             <div class="col-xs-9 text-right">
-                                <div class="huge">₹<?= number_format($transaction_summary['total_paid'] ?? 0, 0) ?></div>
+                                <div class="huge">Amount <?= number_format($transaction_summary['total_paid'] ?? 0, 0) ?></div>
                                 <div>Total Paid</div>
                             </div>
                         </div>
@@ -79,7 +79,7 @@
                                 <i class="fa fa-clock-o fa-3x text-danger"></i>
                             </div>
                             <div class="col-xs-9 text-right">
-                                <div class="huge">₹<?= number_format($transaction_summary['total_outstanding'] ?? 0, 0) ?></div>
+                                <div class="huge">Amount <?= number_format($transaction_summary['total_outstanding'] ?? 0, 0) ?></div>
                                 <div>Outstanding</div>
                             </div>
                         </div>
@@ -214,8 +214,8 @@
                                                 </small>
                                             </td>
                                             <td>
-                                                <strong>₹<?= number_format($txn['total_amount'], 0) ?></strong>
-                                                <br><small class="text-success">Paid: ₹<?= number_format($txn['amount_paid'], 0) ?></small>
+                                                <strong>Amt :<?= number_format($txn['total_amount'], 0) ?></strong>
+                                                <br><small class="text-success">Paid: Amt :<?= number_format($txn['amount_paid'], 0) ?></small>
                                             </td>
                                             <td>
                                                 <?php 
@@ -277,7 +277,7 @@
                                                 </small>
                                             </td>
                                             <td>
-                                                <strong class="text-success">₹<?= number_format($payment['amount'], 0) ?></strong>
+                                                <strong class="text-success">Amt: <?= number_format($payment['amount'], 0) ?></strong>
                                             </td>
                                         </tr>
                                         <?php endforeach; ?>

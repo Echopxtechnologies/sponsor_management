@@ -55,6 +55,11 @@
             redirect(admin_url('student_sponsor_portal/school_student_form/' . $current_student->id));
             return;
         }
+        $current_sponsor = $this->is_sponsor_user_login();
+        if ($current_sponsor) {
+            redirect(admin_url('student_sponsor_portal/sponsor_dashboard'));
+            return;
+        }
         
         if (!has_permission('student_sponsor_portal', '', 'view')) {
             access_denied('student_sponsor_portal');
@@ -77,6 +82,24 @@
         $this->load->view('student_sponsor_portal/dashboard', $data);
     }
 
+    private function is_sponsor_user_login()
+{
+    if (!is_staff_logged_in()) {
+        return false;
+    }
+    
+    $staff_id = get_staff_user_id();
+    
+    // Check if this staff member is linked to a sponsor record
+    // Make sure table name and column names are correct!
+    $sponsor = $this->db->select('id, name, staff_id')
+                    ->where('staff_id', $staff_id)
+                    ->where('active', 1)
+                    ->get(db_prefix() . 'sponsor_records')  // Is this the correct table name?
+                    ->row();
+    
+    return $sponsor ? $sponsor : false;
+}
         public function get_stats()
         {
             if (!has_permission('student_sponsor_portal', '', 'view')) {
@@ -3355,23 +3378,24 @@
         /**
      * Check if current user is a sponsor with entity access
      */
-    private function is_sponsor_user()
-    {
-        if (!is_staff_logged_in()) {
-            return false;
-        }
-        
-        $staff_id = get_staff_user_id();
-        
-        // Check if this staff member is linked to a sponsor record
-        $sponsor = $this->db->select('id, name, staff_id')
-                        ->where('staff_id', $staff_id)
-                        ->where('active', 1) // Assuming you have an active field
-                        ->get(db_prefix() . 'sponsor_records')
-                        ->row();
-        
-        return $sponsor ? $sponsor : false;
+private function is_sponsor_user()
+{
+    if (!is_staff_logged_in()) {
+        return false;
     }
+    
+    $staff_id = get_staff_user_id();
+    
+    // Check if this staff member is linked to a sponsor record
+    // Make sure table name and column names are correct!
+    $sponsor = $this->db->select('id, name, staff_id')
+                    ->where('staff_id', $staff_id)
+                    ->where('active', 1)
+                    ->get(db_prefix() . 'sponsor_records')  // Is this the correct table name?
+                    ->row();
+    
+    return $sponsor ? $sponsor : false;
+}
 
     /**
      * Check sponsor access control for restricted areas
@@ -3520,7 +3544,7 @@
             ->join(db_prefix() . 'school_students ss', 'ss.id = st.school_student_id', 'left')
             ->join(db_prefix() . 'university_students us', 'us.id = st.university_student_id', 'left')
             ->where('st.sponsor_id', $sponsor_id)
-            ->order_by('st.created_date', 'DESC')
+            ->order_by('st.created_at', 'DESC')
             ->limit(10)
             ->get()
             ->result_array();
@@ -7266,6 +7290,15 @@
             $id   = (int)$this->input->post('id');
             $data = $this->input->post();
 
+                // ✅ ADD THIS: Convert date fields to SQL format (YYYY-MM-DD)
+               if (!empty($data['next_payment_due'])) {
+                    $data['next_payment_due'] = $this->convert_date_to_sql($data['next_payment_due']);
+                }
+                
+                if (!empty($data['last_payment_date'])) {
+                    $data['last_payment_date'] = $this->convert_date_to_sql($data['last_payment_date']);
+                }
+
             $schoolRaw = isset($data['school_student_id']) ? trim((string)$data['school_student_id']) : '';
             $uniRaw    = isset($data['university_student_id']) ? trim((string)$data['university_student_id']) : '';
 
@@ -7307,14 +7340,14 @@
             if ($id) {
                 if (!has_permission('student_sponsor_portal', '', 'edit')) access_denied('student_sponsor_portal');
                 $ok = $this->txn_model->update($id, $data);
-                if ($ok) { $this->txn_model->recompute_next_due_from_type($id); }
+                // if ($ok) { $this->txn_model->recompute_next_due_from_type($id); }
 
                 set_alert($ok ? 'success' : 'warning', $ok ? 'Updated' : 'Update failed');
-                redirect(admin_url('student_sponsor_portal/transaction/'.$id));
+                redirect(admin_url('student_sponsor_portal/transaction/'.$id)); 
             } else {
                 if (!has_permission('student_sponsor_portal', '', 'create')) access_denied('student_sponsor_portal');
                 $newId = $this->txn_model->create($data);
-                if ($newId) { $this->txn_model->recompute_next_due_from_type($newId); }
+                // if ($newId) { $this->txn_model->recompute_next_due_from_type($newId); }
                 set_alert($newId ? 'success' : 'warning', $newId ? 'Added' : 'Add failed');
                 redirect(admin_url($newId
                     ? 'student_sponsor_portal/transaction/'.$newId
@@ -7322,6 +7355,55 @@
             }
         }
 
+/**
+ * Convert date from various formats to SQL format (Y-m-d)
+ */
+private function convert_date_to_sql($date)
+{
+    if (empty($date) || $date === '0000-00-00') {
+        return null;
+    }
+    
+    $date = trim($date);
+    
+    // If already in SQL format (YYYY-MM-DD), return as-is
+    if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) {
+        return $date;
+    }
+    
+    // Try DD-MM-YYYY format (what your Next Payment Due uses: 27-12-2025)
+    $parsed = DateTime::createFromFormat('d-m-Y', $date);
+    if ($parsed && $parsed->format('d-m-Y') === $date) {
+        return $parsed->format('Y-m-d');
+    }
+    
+    // Try MM/DD/YYYY format (what your Last Payment Date uses: 11/27/2025)
+    $parsed = DateTime::createFromFormat('m/d/Y', $date);
+    if ($parsed && $parsed->format('m/d/Y') === $date) {
+        return $parsed->format('Y-m-d');
+    }
+    
+    // Try DD/MM/YYYY format
+    $parsed = DateTime::createFromFormat('d/m/Y', $date);
+    if ($parsed && $parsed->format('d/m/Y') === $date) {
+        return $parsed->format('Y-m-d');
+    }
+    
+    // Try MM-DD-YYYY format
+    $parsed = DateTime::createFromFormat('m-d-Y', $date);
+    if ($parsed && $parsed->format('m-d-Y') === $date) {
+        return $parsed->format('Y-m-d');
+    }
+    
+    // Fallback to strtotime
+    $timestamp = strtotime($date);
+    if ($timestamp !== false && $timestamp > 0) {
+        return date('Y-m-d', $timestamp);
+    }
+    
+    log_message('error', 'Could not parse date: ' . $date);
+    return null;
+}
         public function transaction_delete($id)
         {
             if (!has_permission('student_sponsor_portal', '', 'delete')) access_denied('student_sponsor_portal');
