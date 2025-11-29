@@ -52,9 +52,9 @@
                     </div>
                     <div class="panel-body">
                         <p><strong>Active Transactions:</strong> <?= count($transactions) ?></p>
-                        <p><strong>Total Sponsored:</strong> ₹<?= number_format(array_sum(array_column($transactions, 'total_amount')), 0) ?></p>
-                        <p><strong>Total Paid:</strong> ₹<?= number_format(array_sum(array_column($transactions, 'amount_paid')), 0) ?></p>
-                        <p><strong>Outstanding:</strong> ₹<?= number_format(array_sum(array_column($transactions, 'balance_amount')), 0) ?></p>
+                        <p><strong>Total Sponsored:</strong> Amt <?= number_format(array_sum(array_column($transactions, 'total_amount')), 0) ?></p>
+                        <p><strong>Total Paid:</strong> Amt <?= number_format(array_sum(array_column($transactions, 'amount_paid')), 0) ?></p>
+                        <p><strong>Outstanding:</strong> Amt <?= number_format(array_sum(array_column($transactions, 'balance_amount')), 0) ?></p>
                     </div>
                 </div>
             </div>
@@ -192,7 +192,7 @@
                                 <p><strong>Name:</strong> <?= htmlspecialchars($student[$student_type . '_father_name'] ?? 'Not provided') ?></p>
                                 <p><strong>Income:</strong> 
                                     <?php if (!empty($student[$student_type . '_father_income'])): ?>
-                                        ₹<?= number_format($student[$student_type . '_father_income'], 0) ?>
+                                        Amt <?= number_format($student[$student_type . '_father_income'], 0) ?>
                                     <?php else: ?>
                                         Not provided
                                     <?php endif; ?>
@@ -203,7 +203,7 @@
                                 <p><strong>Name:</strong> <?= htmlspecialchars($student[$student_type . '_mother_name'] ?? 'Not provided') ?></p>
                                 <p><strong>Income:</strong> 
                                     <?php if (!empty($student[$student_type . '_mother_income'])): ?>
-                                        ₹<?= number_format($student[$student_type . '_mother_income'], 0) ?>
+                                        Amt <?= number_format($student[$student_type . '_mother_income'], 0) ?>
                                     <?php else: ?>
                                         Not provided
                                     <?php endif; ?>
@@ -214,7 +214,7 @@
                                 <p><strong>Name:</strong> <?= htmlspecialchars($student[$student_type . '_guardian_name'] ?? 'Not provided') ?></p>
                                 <p><strong>Income:</strong> 
                                     <?php if (!empty($student[$student_type . '_guardian_income'])): ?>
-                                        ₹<?= number_format($student[$student_type . '_guardian_income'], 0) ?>
+                                        Amt <?= number_format($student[$student_type . '_guardian_income'], 0) ?>
                                     <?php else: ?>
                                         Not provided
                                     <?php endif; ?>
@@ -257,9 +257,9 @@
                                         <?php foreach ($transactions as $txn): ?>
                                         <tr>
                                             <td><?= date('M d, Y', strtotime($txn['created_date'])) ?></td>
-                                            <td><strong>₹<?= number_format($txn['total_amount'], 0) ?></strong></td>
-                                            <td class="text-success">₹<?= number_format($txn['amount_paid'], 0) ?></td>
-                                            <td class="text-danger">₹<?= number_format($txn['balance_amount'], 0) ?></td>
+                                            <td><strong>Amt <?= number_format($txn['total_amount'], 0) ?></strong></td>
+                                            <td class="text-success">Amt <?= number_format($txn['amount_paid'], 0) ?></td>
+                                            <td class="text-danger">Amt <?= number_format($txn['balance_amount'], 0) ?></td>
                                             <td>
                                                 <span class="label label-default">
                                                     <?= ucfirst($txn['payment_type'] ?? 'One-time') ?>

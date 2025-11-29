@@ -320,20 +320,20 @@ function showSponsorInitials(sponsorId) {
                                                     <div class="financial-summary" style="font-size: 11px;">
                                                         <?php if($total_commitment > 0): ?>
                                                         <div>
-                                                            <strong>Committed:</strong> ₹<?php echo number_format($total_commitment, 2); ?>
+                                                            <strong>Committed:</strong> Amt <?php echo number_format($total_commitment, 2); ?>
                                                         </div>
                                                         <?php endif; ?>
                                                         
                                                         <?php if($total_paid > 0): ?>
                                                         <div class="text-success">
-                                                            <strong>Paid:</strong> ₹<?php echo number_format($total_paid, 2); ?>
+                                                            <strong>Paid:</strong> Amt <?php echo number_format($total_paid, 2); ?>
                                                         </div>
                                                         <?php endif; ?>
                                                         
                                                         <?php if($total_balance != 0): ?>
                                                         <div class="<?php echo $total_balance > 0 ? 'text-warning' : 'text-info'; ?>">
                                                             <strong><?php echo $total_balance > 0 ? 'Balance' : 'Overpaid'; ?>:</strong> 
-                                                            ₹<?php echo number_format(abs($total_balance), 2); ?>
+                                                            Amt <?php echo number_format(abs($total_balance), 2); ?>
                                                         </div>
                                                         <?php endif; ?>
                                                         

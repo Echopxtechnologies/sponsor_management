@@ -63,15 +63,15 @@
                                 <table class="table table-borderless">
                                     <tr>
                                         <td><strong>Total Amount:</strong></td>
-                                        <td><h4 class="text-primary">₹<?= number_format($transaction['total_amount'], 2) ?></h4></td>
+                                        <td><h4 class="text-primary">Amt <?= number_format($transaction['total_amount'], 2) ?></h4></td>
                                     </tr>
                                     <tr>
                                         <td><strong>Amount Paid:</strong></td>
-                                        <td><h4 class="text-success">₹<?= number_format($transaction['amount_paid'], 2) ?></h4></td>
+                                        <td><h4 class="text-success">Amt <?= number_format($transaction['amount_paid'], 2) ?></h4></td>
                                     </tr>
                                     <tr>
                                         <td><strong>Balance Amount:</strong></td>
-                                        <td><h4 class="text-danger">₹<?= number_format($transaction['balance_amount'], 2) ?></h4></td>
+                                        <td><h4 class="text-danger">Amt <?= number_format($transaction['balance_amount'], 2) ?></h4></td>
                                     </tr>
                                     <tr>
                                         <td><strong>Currency:</strong></td>
@@ -179,7 +179,7 @@
                                             </td>
                                             <td>
                                                 <span class="text-success">
-                                                    <strong>₹<?= number_format($payment['amount'], 2) ?></strong>
+                                                    <strong>Amt <?= number_format($payment['amount'], 2) ?></strong>
                                                 </span>
                                             </td>
                                             <td><?= strtoupper($payment['currency'] ?? 'INR') ?></td>
@@ -208,7 +208,7 @@
                                     <tfoot>
                                         <tr class="info">
                                             <th>Total Payments:</th>
-                                            <th class="text-success">₹<?= number_format(array_sum(array_column($payments, 'amount')), 2) ?></th>
+                                            <th class="text-success">Amt <?= number_format(array_sum(array_column($payments, 'amount')), 2) ?></th>
                                             <th colspan="4"></th>
                                         </tr>
                                     </tfoot>
@@ -236,7 +236,7 @@
                             This is a <strong><?= ucfirst($transaction['payment_type']) ?></strong> payment plan.
                             
                             <?php if (!empty($transaction['next_payment_due'])): ?>
-                                The next payment of <strong>₹<?= number_format($transaction['balance_amount'], 0) ?></strong> 
+                                The next payment of <strong>Amt <?= number_format($transaction['balance_amount'], 0) ?></strong> 
                                 is due on <strong><?= date('M d, Y', strtotime($transaction['next_payment_due'])) ?></strong>.
                             <?php else: ?>
                                 No future payments are scheduled at this time.

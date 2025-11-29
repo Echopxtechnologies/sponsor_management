@@ -322,7 +322,7 @@
                   <div class="col-md-3">
                     <div class="alert alert-warning text-center">
                       <i class="fa fa-money fa-2x"></i>
-                      <h4 style="margin: 10px 0 5px 0;">₹<?php echo number_format($total_commitment, 0); ?></h4>
+                      <h4 style="margin: 10px 0 5px 0;">Amt <?php echo number_format($total_commitment, 0); ?></h4>
                       <small>Total Commitment</small>
                     </div>
                   </div>
@@ -456,19 +456,19 @@
                           <div class="row">
                             <div class="col-md-3">
                               <div class="metric-box" style="text-align: center; padding: 15px; background: #f8f9fa; border-radius: 4px; border-left: 4px solid #007bff;">
-                                <h4 style="margin: 0 0 5px 0; color: #007bff;">₹<?php echo number_format($total_commitment, 2); ?></h4>
+                                <h4 style="margin: 0 0 5px 0; color: #007bff;">Amt <?php echo number_format($total_commitment, 2); ?></h4>
                                 <small class="text-muted">Total Commitment</small>
                               </div>
                             </div>
                             <div class="col-md-3">
                               <div class="metric-box" style="text-align: center; padding: 15px; background: #f8f9fa; border-radius: 4px; border-left: 4px solid #28a745;">
-                                <h4 style="margin: 0 0 5px 0; color: #28a745;">₹<?php echo number_format($total_paid, 2); ?></h4>
+                                <h4 style="margin: 0 0 5px 0; color: #28a745;">Amt <?php echo number_format($total_paid, 2); ?></h4>
                                 <small class="text-muted">Amount Paid</small>
                               </div>
                             </div>
                             <div class="col-md-3">
                               <div class="metric-box" style="text-align: center; padding: 15px; background: #f8f9fa; border-radius: 4px; border-left: 4px solid <?php echo $total_balance > 0 ? '#ffc107' : '#17a2b8'; ?>;">
-                                <h4 style="margin: 0 0 5px 0; color: <?php echo $total_balance > 0 ? '#ffc107' : '#17a2b8'; ?>;">₹<?php echo number_format(abs($total_balance), 2); ?></h4>
+                                <h4 style="margin: 0 0 5px 0; color: <?php echo $total_balance > 0 ? '#ffc107' : '#17a2b8'; ?>;">Amt <?php echo number_format(abs($total_balance), 2); ?></h4>
                                 <small class="text-muted"><?php echo $total_balance > 0 ? 'Balance Due' : 'Overpaid'; ?></small>
                               </div>
                             </div>

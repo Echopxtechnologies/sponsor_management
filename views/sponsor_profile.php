@@ -79,7 +79,7 @@
                                 <i class="fa fa-money fa-3x text-warning"></i>
                             </div>
                             <div class="col-xs-9 text-right">
-                                <div class="huge">₹<?= number_format($stats['total_committed'], 0) ?></div>
+                                <div class="huge">Amt <?= number_format($stats['total_committed'], 0) ?></div>
                                 <div>Total Committed</div>
                             </div>
                         </div>
@@ -199,11 +199,11 @@
                             </div>
                             <div class="col-md-4 text-center">
                                 <h4 class="text-success">Amount Paid</h4>
-                                <h2>₹<?= number_format($stats['total_paid'], 0) ?></h2>
+                                <h2>Amt <?= number_format($stats['total_paid'], 0) ?></h2>
                             </div>
                             <div class="col-md-4 text-center">
                                 <h4 class="text-warning">Outstanding</h4>
-                                <h2>₹<?= number_format($stats['total_committed'] - $stats['total_paid'], 0) ?></h2>
+                                <h2>Amt <?= number_format($stats['total_committed'] - $stats['total_paid'], 0) ?></h2>
                             </div>
                         </div>
                     </div>

@@ -91,7 +91,7 @@
             <div class="col-md-4">
                 <div class="panel panel-success">
                     <div class="panel-body text-center">
-                        <h3>₹<?= number_format(array_sum(array_column(array_column($students, 'transaction_summary'), 'total_amount')), 0) ?></h3>
+                        <h3>Amt <?= number_format(array_sum(array_column(array_column($students, 'transaction_summary'), 'total_amount')), 0) ?></h3>
                         <p>Total Committed</p>
                     </div>
                 </div>
@@ -99,7 +99,7 @@
             <div class="col-md-4">
                 <div class="panel panel-warning">
                     <div class="panel-body text-center">
-                        <h3>₹<?= number_format(array_sum(array_column(array_column($students, 'transaction_summary'), 'amount_paid')), 0) ?></h3>
+                        <h3>Amt <?= number_format(array_sum(array_column(array_column($students, 'transaction_summary'), 'amount_paid')), 0) ?></h3>
                         <p>Total Paid</p>
                     </div>
                 </div>
@@ -187,17 +187,17 @@
                                             <td><?= htmlspecialchars($student['city'] ?? 'Not provided') ?></td>
                                             <td>
                                                 <strong class="text-primary">
-                                                    ₹<?= number_format($student['transaction_summary']['total_amount'] ?? 0, 0) ?>
+                                                    Amt <?= number_format($student['transaction_summary']['total_amount'] ?? 0, 0) ?>
                                                 </strong>
                                             </td>
                                             <td>
                                                 <strong class="text-success">
-                                                    ₹<?= number_format($student['transaction_summary']['amount_paid'] ?? 0, 0) ?>
+                                                    Amt <?= number_format($student['transaction_summary']['amount_paid'] ?? 0, 0) ?>
                                                 </strong>
                                             </td>
                                             <td>
                                                 <strong class="text-danger">
-                                                    ₹<?= number_format($student['transaction_summary']['balance_amount'] ?? 0, 0) ?>
+                                                    Amt <?= number_format($student['transaction_summary']['balance_amount'] ?? 0, 0) ?>
                                                 </strong>
                                             </td>
                                             <td>
@@ -214,13 +214,13 @@
                                         <tr class="info">
                                             <th colspan="6">Totals:</th>
                                             <th class="text-primary">
-                                                ₹<?= number_format(array_sum(array_column(array_column($students, 'transaction_summary'), 'total_amount')), 0) ?>
+                                                Amt <?= number_format(array_sum(array_column(array_column($students, 'transaction_summary'), 'total_amount')), 0) ?>
                                             </th>
                                             <th class="text-success">
-                                                ₹<?= number_format(array_sum(array_column(array_column($students, 'transaction_summary'), 'amount_paid')), 0) ?>
+                                                Amt <?= number_format(array_sum(array_column(array_column($students, 'transaction_summary'), 'amount_paid')), 0) ?>
                                             </th>
                                             <th class="text-danger">
-                                                ₹<?= number_format(array_sum(array_column(array_column($students, 'transaction_summary'), 'balance_amount')), 0) ?>
+                                                Amt <?= number_format(array_sum(array_column(array_column($students, 'transaction_summary'), 'balance_amount')), 0) ?>
                                             </th>
                                             <th></th>
                                         </tr>

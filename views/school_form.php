@@ -421,7 +421,7 @@ if(!empty($countries)):
                           <strong>Relationship:</strong> <?php echo ucfirst($sponsor['relationship_type'] ?? 'Direct'); ?> Sponsorship
                           
                           <?php if(!empty($sponsor['total_amount'])): ?>
-                            | <strong>Amount:</strong> ₹<?php echo number_format($sponsor['total_amount'], 0); ?>
+                            | <strong>Amount:</strong> Amt <?php echo number_format($sponsor['total_amount'], 0); ?>
                           <?php endif; ?>
                           
                           <?php if(!empty($sponsor['sponsorship_start'])): ?>
@@ -458,7 +458,7 @@ if(!empty($countries)):
                 $total_amount = array_sum(array_column($sponsor_history, 'total_amount'));
                 if ($total_amount > 0): 
               ?>
-                with a total commitment of <strong>₹<?php echo number_format($total_amount, 0); ?></strong>
+                with a total commitment of <strong>Amt <?php echo number_format($total_amount, 0); ?></strong>
               <?php endif; ?>
             </div>
             
