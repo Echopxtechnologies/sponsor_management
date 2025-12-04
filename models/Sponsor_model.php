@@ -1477,30 +1477,10 @@ private function decode_internal_ids($json)
      */
     private function country_schema()
     {
-        // Check which country table exists in your database and use correct schema
-        if ($this->db->table_exists(db_prefix() . 'country')) {
-            // Singular table name exists (tblcountry)
-            return [
-                'table' => db_prefix() . 'country',
-                'id' => 'id',              // Primary key is likely 'id'
-                'name' => 'name'           // Country name field
-            ];
-        }
-        
-        if ($this->db->table_exists(db_prefix() . 'countries')) {
-            // Plural table name exists (tblcountries)
-            return [
-                'table' => db_prefix() . 'countries',
-                'id' => 'country_id',      // Based on School_model
-                'name' => 'short_name'     // Based on School_model
-            ];
-        }
-        
-        // No country table exists - return null schema
         return [
-            'table' => null,
-            'id' => null,
-            'name' => null
+            'table' => db_prefix() . 'countries',
+            'id' => 'country_id', 
+            'name' => 'short_name'
         ];
     }
 

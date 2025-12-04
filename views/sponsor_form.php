@@ -589,11 +589,13 @@
                     <?= render_input('staff_email', 'Login Email', html_escape($sponsor['email'] ?? ''), 'email'); ?>
                   </div>
                   <div class="col-md-4">
-                    <?= render_input('staff_firstname', 'First Name', html_escape($sponsor['name'] ?? '')); ?>
+                    <?= render_input('staff_firstname', 'Name', html_escape($sponsor['name'] ?? '')); ?>
                   </div>
+                  <!--
                   <div class="col-md-4">
-                    <?= render_input('staff_lastname', 'Last Name', ''); ?>
+                  <?= render_input('staff_lastname', 'Last Name', ''); ?>
                   </div>
+                  -->
                 </div>
 
                 <div class="row">

@@ -7237,7 +7237,7 @@ private function is_sponsor_user()
             <table style="width: 100%; border-collapse: collapse; margin: 20px 0; background-color: #f9f9f9;">
                 <thead>
                     <tr style="background-color: #e8e8e8;">
-                        
+                        <th style="border: 1px solid #ddd; padding: 12px; text-align: left; font-weight: bold;">Transaction ID</th>
                         <th style="border: 1px solid #ddd; padding: 12px; text-align: left; font-weight: bold;">Payment Amount</th>
                         <th style="border: 1px solid #ddd; padding: 12px; text-align: left; font-weight: bold;">Remaining Amount</th>
                         <th style="border: 1px solid #ddd; padding: 12px; text-align: left; font-weight: bold;">Payment Date</th>
@@ -7246,7 +7246,7 @@ private function is_sponsor_user()
                 </thead>
                 <tbody>
                     <tr>
-                        <td style="border: 1px solid #ddd; padding: 12px;">' . $txn->transaction_id . '</td>
+                        <td style="border: 1px solid #ddd; padding: 12px;">' . $txn->id . '</td>
                         <td style="border: 1px solid #ddd; padding: 12px;">' . number_format($payment->amount, 2) . ' ' . $payment->currency . '</td>
                         <td style="border: 1px solid #ddd; padding: 12px;">' . number_format($remaining_amount, 2) . ' ' . $payment->currency . '</td>
                         <td style="border: 1px solid #ddd; padding: 12px;">' . date('m/d/Y', strtotime($payment->payment_date)) . '</td>
