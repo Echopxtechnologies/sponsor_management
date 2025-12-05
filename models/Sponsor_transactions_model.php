@@ -674,7 +674,7 @@ public function get_due_email_template($transaction_id)
                     <th style="border: 1px solid #ddd; padding: 12px; text-align: left; font-weight: bold;">Student</th>
                     <th style="border: 1px solid #ddd; padding: 12px; text-align: left; font-weight: bold;">Total</th>
                     <th style="border: 1px solid #ddd; padding: 12px; text-align: left; font-weight: bold;">Paid</th>
-                    <th style="border: 1px solid #ddd; padding: 12px; text-align: left; font-weight: bold;">Balance</th>
+                    <th style="border: 1px solid #ddd; padding: 12px; text-align: left; font-weight: bold;">Remaining Amount</th>
                     <th style="border: 1px solid #ddd; padding: 12px; text-align: left; font-weight: bold;">Due Date</th>
                 </tr>
             </thead>
