@@ -127,34 +127,38 @@
                 <div class="col-md-6">
                     <div class="panel panel-default">
                         <div class="panel-heading">
-                            <h3 class="panel-title"><i class="fa fa-map-marker"></i> Contact & Location</h3>
+                            <h3 class="panel-title"><i class="fa fa-map-marker"></i> Location</h3>
                         </div>
                         <div class="panel-body">
                             <table class="table table-borderless">
-                                <tr>
-                                    <td><strong>Email:</strong></td>
-                                    <td>
-                                        <?php if (!empty($student['email'])): ?>
-                                            <a href="mailto:<?= htmlspecialchars($student['email']) ?>">
-                                                <?= htmlspecialchars($student['email']) ?>
-                                            </a>
-                                        <?php else: ?>
-                                            <span class="text-muted">Not provided</span>
-                                        <?php endif; ?>
-                                    </td>
-                                </tr>
-                                <tr>
-                                    <td><strong>Phone:</strong></td>
-                                    <td>
-                                        <?php if (!empty($student['contact_no'])): ?>
-                                            <a href="tel:<?= htmlspecialchars($student['contact_no']) ?>">
-                                                <?= htmlspecialchars($student['contact_no']) ?>
-                                            </a>
-                                        <?php else: ?>
-                                            <span class="text-muted">Not provided</span>
-                                        <?php endif; ?>
-                                    </td>
-                                </tr>
+                          <?php /* COMMENTED OUT - Email not shown to sponsors
+                            <tr>
+                                <td><strong>Email:</strong></td>
+                                <td>
+                                    <?php if (!empty($student['email'])): ?>
+                                        <a href="mailto:<?= htmlspecialchars($student['email']) ?>">
+                                            <?= htmlspecialchars($student['email']) ?>
+                                        </a>
+                                    <?php else: ?>
+                                        <span class="text-muted">Not provided</span>
+                                    <?php endif; ?>
+                                </td>
+                            </tr>
+                            */ ?>
+                            <?php /* COMMENTED OUT - Phone not shown to sponsors
+                            <tr>
+                                <td><strong>Phone:</strong></td>
+                                <td>
+                                    <?php if (!empty($student['contact_no'])): ?>
+                                        <a href="tel:<?= htmlspecialchars($student['contact_no']) ?>">
+                                            <?= htmlspecialchars($student['contact_no']) ?>
+                                        </a>
+                                    <?php else: ?>
+                                        <span class="text-muted">Not provided</span>
+                                    <?php endif; ?>
+                                </td>
+                            </tr>
+                            */ ?>
                                 <tr>
                                     <td><strong>City:</strong></td>
                                     <td><?= htmlspecialchars($student['city'] ?? 'Not provided') ?></td>
@@ -256,7 +260,7 @@
                                     <tbody>
                                         <?php foreach ($transactions as $txn): ?>
                                         <tr>
-                                            <td><?= date('M d, Y', strtotime($txn['created_date'])) ?></td>
+                                            <td><?= date('M d, Y', strtotime($txn['created_at'])) ?></td>
                                             <td><strong>Amt <?= number_format($txn['total_amount'], 0) ?></strong></td>
                                             <td class="text-success">Amt <?= number_format($txn['amount_paid'], 0) ?></td>
                                             <td class="text-danger">Amt <?= number_format($txn['balance_amount'], 0) ?></td>
@@ -351,6 +355,29 @@
                                         <?php endforeach; ?>
                                     </tbody>
                                 </table>
+                            </div>
+                        <?php endif; ?>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- External Comments -->
+        <div class="row">
+            <div class="col-md-12">
+                <div class="panel panel-default">
+                    <div class="panel-heading">
+                        <h3 class="panel-title"><i class="fa fa-comment"></i> External Comments</h3>
+                    </div>
+                    <div class="panel-body">
+                        <?php if (!empty($student['external_comment'])): ?>
+                            <div class="well well-sm" style="background-color: #f9f9f9; border: 1px solid #e3e3e3;">
+                                <?= nl2br(htmlspecialchars($student['external_comment'])) ?>
+                            </div>
+                        <?php else: ?>
+                            <div class="alert alert-info text-center">
+                                <i class="fa fa-info-circle"></i>
+                                No external comments available.
                             </div>
                         <?php endif; ?>
                     </div>

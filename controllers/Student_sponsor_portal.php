@@ -3742,7 +3742,7 @@ private function is_sponsor_user()
             $transactions = $this->db->select('*')
                 ->where('sponsor_id', $sponsor_id)
                 ->where($student_type . '_student_id', $student_id)
-                ->order_by('created_date', 'DESC')
+                ->order_by('created_at', 'DESC')
                 ->get(db_prefix() . 'sponsor_transactions')
                 ->result_array();
             
@@ -8159,50 +8159,78 @@ private function convert_date_to_sql($date)
         return null;
     }
 
-    /**
-     * View individual student details
-     */
-    public function student_detail()
-    {
-        $type = $this->input->get('type', true); // 'school' or 'university'
-        $id = (int)$this->input->get('id', true);
-        
-        if (!$type || !$id || !in_array($type, ['school', 'university'])) {
-            show_404();
-            return;
-        }
-
-        // Load appropriate model
-        if ($type === 'school') {
-            $this->load->model('school_model');
-            $student = $this->school_model->get_by_id($id);
-            $data['report_cards'] = $this->school_model->get_report_cards($id);
-        } else {
-            $this->load->model('university_model');
-            $student = $this->university_model->get_by_id($id);
-            $data['report_cards'] = $this->university_model->get_report_cards($id);
-        }
-
-        if (!$student) {
-            set_alert('danger', 'Student not found');
-            redirect(admin_url('student_sponsor_portal/my_sponsored_students'));
-            return;
-        }
-
-        // Verify sponsor has access to this student
-        $current_sponsor_id = $this->get_current_sponsor_id();
-        if (!$current_sponsor_id || $student['sponsor_id'] != $current_sponsor_id) {
-            set_alert('danger', 'Access denied');
-            redirect(admin_url('student_sponsor_portal/my_sponsored_students'));
-            return;
-        }
-
-        $data['student'] = $student;
-        $data['student_type'] = $type;
-        $data['title'] = 'Student Details - ' . $student['name'];
-
-        $this->load->view('admin/sponsor_portal/student_detail', $data);
+/**
+ * View individual student details
+ */
+public function student_detail()
+{
+    $type = $this->input->get('type', true); // 'school' or 'university'
+    $id = (int)$this->input->get('id', true);
+    
+    if (!$type || !$id || !in_array($type, ['school', 'university'])) {
+        show_404();
+        return;
     }
+
+    // Get current sponsor object
+    $current_sponsor = $this->is_sponsor_user();
+    if (!$current_sponsor) {
+        access_denied('student_sponsor_portal');
+        return;
+    }
+    
+    $sponsor_id = (int)$current_sponsor->id;
+
+    // Load appropriate model
+    if ($type === 'school') {
+        $this->load->model('school_model');
+        $student = $this->school_model->get_by_id($id);
+        $report_cards = $this->school_model->get_report_cards($id);
+    } else {
+        $this->load->model('university_model');
+        $student = $this->university_model->get_by_id($id);
+        $report_cards = $this->university_model->get_report_cards($id);
+    }
+
+    if (!$student) {
+        set_alert('danger', 'Student not found');
+        redirect(admin_url('student_sponsor_portal/my_sponsored_students'));
+        return;
+    }
+
+    // Verify sponsor has access to this student via transactions
+    $access_check = $this->db->select('id')
+        ->where('sponsor_id', $sponsor_id)
+        ->where($type . '_student_id', $id)
+        ->get(db_prefix() . 'sponsor_transactions')
+        ->row();
+    
+    if (!$access_check) {
+        set_alert('danger', 'You do not have access to view this student');
+        redirect(admin_url('student_sponsor_portal/my_sponsored_students'));
+        return;
+    }
+
+    // Get transactions for this student from this sponsor
+    $transactions = $this->db->select('*')
+        ->where('sponsor_id', $sponsor_id)
+        ->where($type . '_student_id', $id)
+        ->order_by('created_at', 'DESC')
+        ->get(db_prefix() . 'sponsor_transactions')
+        ->result_array();
+
+    $data = [
+        'title' => 'Student Details - ' . $student['name'],
+        'student' => $student,
+        'student_type' => $type,
+        'transactions' => $transactions,
+        'report_cards' => $report_cards,
+        'sponsor' => $current_sponsor,
+        'is_sponsor_view' => true
+    ];
+
+    $this->load->view('student_sponsor_portal/sponsor_student_detail', $data);
+}
 
 
     /**

@@ -130,14 +130,14 @@
                       <label for="name" class="control-label">Full Name *</label>
                       <input type="text" name="name" id="name" required class="form-control"
                         value="<?php echo isset($student) ? html_escape($student['name'] ?? '') : (isset($old['name']) ? html_escape($old['name']) : ''); ?>" 
-                        placeholder="Enter student's full name">
+                        placeholder="Enter student's full name"<?php echo (isset($is_university_student) && $is_university_student) ? 'disabled' : ''; ?>>
                     </div>
 
                     <div class="form-group">
                       <label for="email" class="control-label">Email Address</label>
                       <input type="email" name="email" id="email" class="form-control"
                         value="<?php echo isset($student) ? html_escape($student['email'] ?? '') : (isset($old['email']) ? html_escape($old['email']) : ''); ?>" 
-                        placeholder="Enter email address">
+                        placeholder="Enter email address"<?php echo (isset($is_university_student) && $is_university_student) ? 'disabled' : ''; ?>>
                     </div>
 
                     <div class="form-group">
@@ -158,26 +158,26 @@
                         </div>
                         <input type="number" name="phone" id="phone" class="form-control"
                           value="<?php echo isset($student) ? html_escape($student['contact_no'] ?? '') : (isset($old['phone']) ? html_escape($old['phone']) : ''); ?>" 
-                          placeholder="Enter phone number">
+                          placeholder="Enter phone number"<?php echo (isset($is_university_student) && $is_university_student) ? 'disabled' : ''; ?>>
                       </div>
                     </div>
 
                     <div class="form-group">
                       <label for="dob" class="control-label">Date of Birth</label>
                       <input type="date" name="dob" id="dob" class="form-control"
-                        value="<?php echo isset($student) ? ($student['university_student_dob'] ?? '') : (isset($old['dob']) ? $old['dob'] : ''); ?>">
+                        value="<?php echo isset($student) ? ($student['university_student_dob'] ?? '') : (isset($old['dob']) ? $old['dob'] : ''); ?>"<?php echo (isset($is_university_student) && $is_university_student) ? 'disabled' : ''; ?>>
                     </div>
 
                     <div class="form-group">
                       <label class="control-label">Age</label>
                       <input type="text" id="calculated-age" class="form-control" readonly
                         value="<?php echo isset($student) && !empty($student['university_age']) ? $student['university_age'] . ' years' : ''; ?>" 
-                        placeholder="Will be calculated from DOB">
+                        placeholder="Will be calculated from DOB"<?php echo (isset($is_university_student) && $is_university_student) ? 'disabled' : ''; ?>>
                     </div>
 
                     <div class="form-group">
                       <label for="profile_photo" class="control-label">Profile Photo</label>
-                      <input type="file" name="profile_photo" id="profile_photo" class="form-control" accept="image/*">
+                      <input type="file" name="profile_photo" id="profile_photo" class="form-control" accept="image/*"<?php echo (isset($is_university_student) && $is_university_student) ? 'disabled' : ''; ?>>
                       <?php if(isset($student) && !empty($student['id'])): ?>
                         <div class="current-photo" style="margin-top: 10px;">
                           <img src="<?php echo admin_url('student_sponsor_portal/display_profile_photo/' . (int)$student['id']); ?>"
@@ -195,7 +195,7 @@
                       <label for="country_id" class="control-label">Country</label>
                       <?php if(isset($is_university_student) && $is_university_student): ?>
                         <!-- Simple dropdown for university students -->
-                        <select name="country_id" id="country_id" class="form-control selectpicker" data-live-search="true" data-none-selected-text="Select Country">
+                        <select name="country_id" id="country_id" class="form-control selectpicker" data-live-search="true" data-none-selected-text="Select Country"<?php echo (isset($is_university_student) && $is_university_student) ? 'disabled' : ''; ?>>
                           <option value="">Select Country</option>
                           <?php if(!empty($countries)): foreach($countries as $c): ?>
                             <?php
@@ -215,7 +215,7 @@
                       <?php else: ?>
                         <!-- Admin version with add button -->
                         <div class="country-select-wrapper">
-                          <select name="country_id" id="country_id" class="form-control selectpicker" data-live-search="true" data-none-selected-text="Select Country">
+                          <select name="country_id" id="country_id" class="form-control selectpicker" data-live-search="true" data-none-selected-text="Select Country"<?php echo (isset($is_university_student) && $is_university_student) ? 'disabled' : ''; ?>>
                             <option value="">Select Country</option>
                             <?php if(!empty($countries)): foreach($countries as $c): ?>
                               <?php
@@ -241,7 +241,7 @@
 
                     <div class="form-group">
                       <label for="address" class="control-label">Address</label>
-                      <textarea name="address" id="address" class="form-control" rows="3" placeholder="Complete address"><?php echo isset($student) ? html_escape($student['address'] ?? '') : (isset($old['address']) ? html_escape($old['address']) : ''); ?></textarea>
+                      <textarea name="address" id="address" class="form-control" rows="3" placeholder="Complete address"<?php echo (isset($is_university_student) && $is_university_student) ? 'disabled' : ''; ?>><?php echo isset($student) ? html_escape($student['address'] ?? '') : (isset($old['address']) ? html_escape($old['address']) : ''); ?></textarea>
                     </div>
 
                     <div class="row">
@@ -250,7 +250,7 @@
                           <label for="city" class="control-label">City / District</label>
                           <input type="text" pattern="[A-Za-z]+" name="city" id="city" class="form-control"
                             value="<?php echo isset($student) ? html_escape($student['city'] ?? '') : (isset($old['city']) ? html_escape($old['city']) : ''); ?>" 
-                            placeholder="City / District">
+                            placeholder="City / District"<?php echo (isset($is_university_student) && $is_university_student) ? 'disabled' : ''; ?>>
                         </div>
                       </div>
                       <div class="col-md-6">
@@ -258,7 +258,7 @@
                           <label for="postal_code" class="control-label">Postal Code</label>
                           <input type="number" name="postal_code" id="postal_code" class="form-control"
                             value="<?php echo isset($student) ? html_escape($student['zip'] ?? '') : (isset($old['postal_code']) ? html_escape($old['postal_code']) : ''); ?>" 
-                            placeholder="Postal code">
+                            placeholder="Postal code"<?php echo (isset($is_university_student) && $is_university_student) ? 'disabled' : ''; ?>>
                         </div>
                       </div>
                     </div>
@@ -268,7 +268,7 @@
                       <label for="university_id" class="control-label">University Student ID</label>
                       <input type="text" name="university_id" id="university_id" class="form-control"
                         value="<?php echo isset($student) ? html_escape($student['university_id'] ?? '') : (isset($old['university_id']) ? html_escape($old['university_id']) : ''); ?>" 
-                        placeholder="Enter university student ID">
+                        placeholder="Enter university student ID"<?php echo (isset($is_university_student) && $is_university_student) ? 'disabled' : ''; ?>>
                     </div>
 
                     <!-- Internal ID - Always read-only display -->
@@ -287,7 +287,7 @@
                         <label for="university_internal_id" class="control-label">Edit Internal Student ID</label>
                         <input type="text" name="university_internal_id" id="university_internal_id" class="form-control"
                           value="<?php echo isset($student) ? html_escape($student['university_internal_id'] ?? '') : (isset($old['university_internal_id']) ? html_escape($old['university_internal_id']) : ''); ?>" 
-                          placeholder="Internal tracking ID">
+                          placeholder="Internal tracking ID"<?php echo (isset($is_university_student) && $is_university_student) ? 'disabled' : ''; ?>>
                         <small class="text-muted">Admin only: Modify internal tracking ID</small>
                       </div>
                     <?php endif; ?>
@@ -301,7 +301,7 @@
                     <div class="form-group">
                       <label for="university_name_id" class="control-label">University Name</label>
                       <div class="university-select-wrapper">
-                        <select name="university_name_id" id="university_name_id" class="form-control selectpicker" data-live-search="true" data-none-selected-text="Select University">
+                        <select name="university_name_id" id="university_name_id" class="form-control selectpicker" data-live-search="true" data-none-selected-text="Select University"<?php echo (isset($is_university_student) && $is_university_student) ? 'disabled' : ''; ?>>
                           <option value="">Select University</option>
                           <?php if(!empty($universities)): foreach($universities as $university): ?>
                             <?php
@@ -327,7 +327,7 @@
                     <div class="form-group">
                       <label for="university_program_id" class="control-label">Program / Degree</label>
                       <div class="program-select-wrapper">
-                        <select name="university_program_id" id="university_program_id" class="form-control selectpicker" data-live-search="true" data-none-selected-text="Select Program">
+                        <select name="university_program_id" id="university_program_id" class="form-control selectpicker" data-live-search="true" data-none-selected-text="Select Program"<?php echo (isset($is_university_student) && $is_university_student) ? 'disabled' : ''; ?>>
                           <option value="">Select Program</option>
                           <?php if(!empty($programs)): foreach($programs as $program): ?>
                             <?php
@@ -354,7 +354,7 @@
                   <div class="col-md-6">
                     <div class="form-group">
                       <label for="year_of_study" class="control-label">Year of Study</label>
-                      <select name="year_of_study" id="year_of_study" class="form-control">
+                      <select name="year_of_study" id="year_of_study" class="form-control"<?php echo (isset($is_university_student) && $is_university_student) ? 'disabled' : ''; ?>>
                         <option value="">Select year and semester</option>
                         <?php
                         $year_options = [
@@ -478,12 +478,12 @@
                     <div class="form-group">
                       <label for="sponsorship_start" class="control-label">Sponsorship Start Date</label>
                       <input type="date" name="sponsorship_start" id="sponsorship_start" class="form-control"
-                        value="<?php echo isset($student) ? ($student['university_sponsorship_start_date'] ?? '') : (isset($old['sponsorship_start']) ? $old['sponsorship_start'] : ''); ?>">
+                        value="<?php echo isset($student) ? ($student['university_sponsorship_start_date'] ?? '') : (isset($old['sponsorship_start']) ? $old['sponsorship_start'] : ''); ?>"<?php echo (isset($is_university_student) && $is_university_student) ? 'disabled' : ''; ?>>
                     </div>
                     <div class="form-group">
                       <label for="sponsorship_end" class="control-label">Sponsorship End Date</label>
                       <input type="date" name="sponsorship_end" id="sponsorship_end" class="form-control"
-                        value="<?php echo isset($student) ? ($student['university_sponsorship_end_date'] ?? '') : (isset($old['sponsorship_end']) ? $old['sponsorship_end'] : ''); ?>">
+                        value="<?php echo isset($student) ? ($student['university_sponsorship_end_date'] ?? '') : (isset($old['sponsorship_end']) ? $old['sponsorship_end'] : ''); ?>"<?php echo (isset($is_university_student) && $is_university_student) ? 'disabled' : ''; ?>>
                     </div>
                   </div>
                   <div class="col-md-6">
@@ -491,13 +491,13 @@
                       <label for="introduced_by" class="control-label">Introduced By</label>
                       <input type="text" name="introduced_by" id="introduced_by" class="form-control"
                         value="<?php echo isset($student) ? html_escape($student['university_introducedby'] ?? '') : (isset($old['introduced_by']) ? html_escape($old['introduced_by']) : ''); ?>" 
-                        placeholder="Person who introduced the student">
+                        placeholder="Person who introduced the student"<?php echo (isset($is_university_student) && $is_university_student) ? 'disabled' : ''; ?>>
                     </div>
                     <div class="form-group">
                       <label for="introduced_phone" class="control-label">Introducer's Phone</label>
                       <input type="number" name="introduced_phone" id="introduced_phone" class="form-control"
                         value="<?php echo isset($student) ? html_escape($student['university_introducedph'] ?? '') : (isset($old['introduced_phone']) ? html_escape($old['introduced_phone']) : ''); ?>" 
-                        placeholder="Contact number">
+                        placeholder="Contact number"<?php echo (isset($is_university_student) && $is_university_student) ? 'disabled' : ''; ?>>
                     </div>
                   </div>
                 </div>
@@ -511,7 +511,7 @@
                     <div class="form-group">
                       <label for="bank_id" class="control-label">Bank Name</label>
                       <div class="bank-select-wrapper">
-                        <select name="bank_id" id="bank_id" class="form-control selectpicker" data-live-search="true" data-none-selected-text="Select Bank">
+                        <select name="bank_id" id="bank_id" class="form-control selectpicker" data-live-search="true" data-none-selected-text="Select Bank"<?php echo (isset($is_university_student) && $is_university_student) ? 'disabled' : ''; ?>>
                           <option value="">Select Bank</option>
                           <?php if(!empty($banks)): foreach($banks as $b): ?>
                             <?php
@@ -535,7 +535,7 @@
                       <label for="bank_account_number" class="control-label">Bank Account Number</label>
                       <input type="number" name="bank_account_number" id="bank_account_number" class="form-control"
                         value="<?php echo isset($student) ? html_escape($student['university_bank_account_no'] ?? '') : (isset($old['bank_account_number']) ? html_escape($old['bank_account_number']) : ''); ?>" 
-                        placeholder="Account number">
+                        placeholder="Account number"<?php echo (isset($is_university_student) && $is_university_student) ? 'disabled' : ''; ?>>
                     </div>
                   </div>
 
@@ -544,11 +544,11 @@
                       <label for="bank_branch_number" class="control-label">Bank Branch Number</label>
                       <input type="text" name="bank_branch_number" id="bank_branch_number" class="form-control"
                         value="<?php echo isset($student) ? html_escape($student['university_bank_branch_number'] ?? '') : (isset($old['bank_branch_number']) ? html_escape($old['bank_branch_number']) : ''); ?>" 
-                        placeholder="Branch code/number">
+                        placeholder="Branch code/number"<?php echo (isset($is_university_student) && $is_university_student) ? 'disabled' : ''; ?>>
                     </div>
                     <div class="form-group">
                       <label for="bank_branch_info" class="control-label">Bank Branch Information</label>
-                      <textarea name="bank_branch_info" id="bank_branch_info" class="form-control" rows="3" placeholder="Additional branch details"><?php echo isset($student) ? html_escape($student['university_bank_branch_info'] ?? '') : (isset($old['bank_branch_info']) ? html_escape($old['bank_branch_info']) : ''); ?></textarea>
+                      <textarea name="bank_branch_info" id="bank_branch_info" class="form-control" rows="3" placeholder="Additional branch details"<?php echo (isset($is_university_student) && $is_university_student) ? 'disabled' : ''; ?>><?php echo isset($student) ? html_escape($student['university_bank_branch_info'] ?? '') : (isset($old['bank_branch_info']) ? html_escape($old['bank_branch_info']) : ''); ?></textarea>
                     </div>
                   </div>
                 </div>
@@ -561,13 +561,13 @@
                     <div class="form-group">
                       <label for="father_name" class="control-label">Father's Name</label>
                       <input type="text" name="father_name" id="father_name" class="form-control"
-                        value="<?php echo isset($student) ? html_escape($student['university_father_name'] ?? '') : (isset($old['father_name']) ? html_escape($old['father_name']) : ''); ?>">
+                        value="<?php echo isset($student) ? html_escape($student['university_father_name'] ?? '') : (isset($old['father_name']) ? html_escape($old['father_name']) : ''); ?>"<?php echo (isset($is_university_student) && $is_university_student) ? 'disabled' : ''; ?>>
                     </div>
                     <div class="form-group">
                       <label for="father_income" class="control-label">Father's Income</label>
                       <input type="number" step="0.01" name="father_income" id="father_income" class="form-control"
                         value="<?php echo isset($student) ? html_escape($student['university_father_income'] ?? '') : (isset($old['father_income']) ? html_escape($old['father_income']) : ''); ?>" 
-                        placeholder="Monthly income">
+                        placeholder="Monthly income"<?php echo (isset($is_university_student) && $is_university_student) ? 'disabled' : ''; ?>>
                     </div>
                   </div>
 
@@ -575,13 +575,13 @@
                     <div class="form-group">
                       <label for="mother_name" class="control-label">Mother's Name</label>
                       <input type="text" name="mother_name" id="mother_name" class="form-control"
-                        value="<?php echo isset($student) ? html_escape($student['university_mother_name'] ?? '') : (isset($old['mother_name']) ? html_escape($old['mother_name']) : ''); ?>">
+                        value="<?php echo isset($student) ? html_escape($student['university_mother_name'] ?? '') : (isset($old['mother_name']) ? html_escape($old['mother_name']) : ''); ?>"<?php echo (isset($is_university_student) && $is_university_student) ? 'disabled' : ''; ?>>
                     </div>
                     <div class="form-group">
                       <label for="mother_income" class="control-label">Mother's Income</label>
                       <input type="number" step="0.01" name="mother_income" id="mother_income" class="form-control"
                         value="<?php echo isset($student) ? html_escape($student['university_mother_income'] ?? '') : (isset($old['mother_income']) ? html_escape($old['mother_income']) : ''); ?>" 
-                        placeholder="Monthly income">
+                        placeholder="Monthly income"<?php echo (isset($is_university_student) && $is_university_student) ? 'disabled' : ''; ?>>
                     </div>
                   </div>
 
@@ -589,13 +589,13 @@
                     <div class="form-group">
                       <label for="guardian_name" class="control-label">Guardian's Name</label>
                       <input type="text" name="guardian_name" id="guardian_name" class="form-control"
-                        value="<?php echo isset($student) ? html_escape($student['university_guardian_name'] ?? '') : (isset($old['guardian_name']) ? html_escape($old['guardian_name']) : ''); ?>">
+                        value="<?php echo isset($student) ? html_escape($student['university_guardian_name'] ?? '') : (isset($old['guardian_name']) ? html_escape($old['guardian_name']) : ''); ?>"<?php echo (isset($is_university_student) && $is_university_student) ? 'disabled' : ''; ?>>
                     </div>
                     <div class="form-group">
                       <label for="guardian_income" class="control-label">Guardian's Income</label>
                       <input type="number" step="0.01" name="guardian_income" id="guardian_income" class="form-control"
                         value="<?php echo isset($student) ? html_escape($student['university_guardian_income'] ?? '') : (isset($old['guardian_income']) ? html_escape($old['guardian_income']) : ''); ?>" 
-                        placeholder="Monthly income">
+                        placeholder="Monthly income"<?php echo (isset($is_university_student) && $is_university_student) ? 'disabled' : ''; ?>>
                     </div>
                   </div>
                 </div>
@@ -605,7 +605,7 @@
                     <div class="form-group">
                       <label for="background_information" class="control-label">Background Information</label>
                       <textarea name="background_information" id="background_information" class="form-control" rows="3" 
-                        placeholder="Student background, family situation, etc."><?php echo isset($student) ? html_escape($student['background_info'] ?? '') : (isset($old['background_information']) ? html_escape($old['background_information']) : ''); ?></textarea>
+                        placeholder="Student background, family situation, etc."<?php echo (isset($is_university_student) && $is_university_student) ? 'disabled' : ''; ?>><?php echo isset($student) ? html_escape($student['background_info'] ?? '') : (isset($old['background_information']) ? html_escape($old['background_information']) : ''); ?></textarea>
                     </div>
                   </div>
                 </div>
@@ -619,7 +619,7 @@
                     <div class="form-group">
                       <label for="internal_comment" class="control-label">Internal Comment</label>
                       <textarea name="internal_comment" id="internal_comment" class="form-control" rows="3" 
-                        placeholder="Internal notes (not visible to sponsors)"><?php echo isset($student) ? html_escape($student['internal_comment'] ?? '') : (isset($old['internal_comment']) ? html_escape($old['internal_comment']) : ''); ?></textarea>
+                        placeholder="Internal notes (not visible to sponsors)"<?php echo (isset($is_university_student) && $is_university_student) ? 'disabled' : ''; ?>><?php echo isset($student) ? html_escape($student['internal_comment'] ?? '') : (isset($old['internal_comment']) ? html_escape($old['internal_comment']) : ''); ?></textarea>
                       <small class="text-muted">These comments are only visible to staff/administrators.</small>
                     </div>
                   </div>
@@ -627,7 +627,7 @@
                     <div class="form-group">
                       <label for="external_comment" class="control-label">External Comment</label>
                       <textarea name="external_comment" id="external_comment" class="form-control" rows="3" 
-                        placeholder="Comments visible to sponsors"><?php echo isset($student) ? html_escape($student['external_comment'] ?? '') : (isset($old['external_comment']) ? html_escape($old['external_comment']) : ''); ?></textarea>
+                        placeholder="Comments visible to sponsors"<?php echo (isset($is_university_student) && $is_university_student) ? 'disabled' : ''; ?>><?php echo isset($student) ? html_escape($student['external_comment'] ?? '') : (isset($old['external_comment']) ? html_escape($old['external_comment']) : ''); ?></textarea>
                       <small class="text-muted">These comments may be visible to sponsors and other stakeholders.</small>
                     </div>
                   </div>
@@ -789,24 +789,26 @@
             </div>
 
             <!-- Action Buttons -->
-            <div class="row" style="margin-top: 20px;">
-              <div class="col-md-12">
-                <button type="submit" id="btn-save-student" class="btn btn-primary btn-lg">
-                  <i class="fa fa-save"></i> 
-                  <?php if(isset($is_university_student) && $is_university_student): ?>
-                    Update My Profile
-                  <?php else: ?>
-                    <?php echo isset($student) ? 'Update Student' : 'Register Student'; ?>
-                  <?php endif; ?>
-                </button>
-                
-                <?php if(!isset($is_university_student) || !$is_university_student): ?>
-                  <a href="<?php echo admin_url('student_sponsor_portal/university_students'); ?>" class="btn btn-default btn-lg">
-                    <i class="fa fa-times"></i> Cancel
-                  </a>
-                <?php endif; ?>
-              </div>
-            </div>
+<!-- Action Buttons -->
+<div class="row" style="margin-top: 20px;">
+  <div class="col-md-12">
+    <?php if(!isset($is_university_student) || !$is_university_student): ?>
+      <!-- Admin can edit -->
+      <button type="submit" id="btn-save-student" class="btn btn-primary btn-lg">
+        <i class="fa fa-save"></i> 
+        <?php echo isset($student) ? 'Update Student' : 'Register Student'; ?>
+      </button>
+      <a href="<?php echo admin_url('student_sponsor_portal/university_students'); ?>" class="btn btn-default btn-lg">
+        <i class="fa fa-times"></i> Cancel
+      </a>
+    <?php else: ?>
+      <!-- University student sees view-only message -->
+      <div class="alert alert-info">
+        <i class="fa fa-info-circle"></i> Your profile is view-only. Contact administration to update your information.
+      </div>
+    <?php endif; ?>
+  </div>
+</div>
 
             <?php echo form_close(); ?>
           </div>
