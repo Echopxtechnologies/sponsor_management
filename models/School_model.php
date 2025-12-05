@@ -1411,26 +1411,103 @@ foreach ($students as &$student) {
         return false;
     }
 }
-    public function delete($id)
-    {
-        try {
-            $cards = $this->db->where('student_school_id', (int)$id)->get($this->tbl_rcard)->result();
-            foreach ($cards as $c) {
-                if (!empty($c->report_card_file)) {
-                    $abs = rtrim(FCPATH, '/\\') . '/' . ltrim($c->report_card_file, '/');
-                    if (is_file($abs)) @unlink($abs);
-                }
-            }
-            $this->db->where('student_school_id', (int)$id)->delete($this->tbl_rcard);
+    // public function delete($id)
+    // {
+    //     try {
+    //         $cards = $this->db->where('student_school_id', (int)$id)->get($this->tbl_rcard)->result();
+    //         foreach ($cards as $c) {
+    //             if (!empty($c->report_card_file)) {
+    //                 $abs = rtrim(FCPATH, '/\\') . '/' . ltrim($c->report_card_file, '/');
+    //                 if (is_file($abs)) @unlink($abs);
+    //             }
+    //         }
+    //         $this->db->where('student_school_id', (int)$id)->delete($this->tbl_rcard);
 
-            $this->db->where('id', (int)$id)->delete($this->tbl_students);
-            return $this->db->affected_rows() > 0;
+    //         $this->db->where('id', (int)$id)->delete($this->tbl_students);
+    //         return $this->db->affected_rows() > 0;
 
-        } catch (Exception $e) {
-            log_message('error','Error deleting school student: '.$e->getMessage());
+    //     } catch (Exception $e) {
+    //         log_message('error','Error deleting school student: '.$e->getMessage());
+    //         return false;
+    //     }
+    // }
+    /**
+ * Delete a school student and delete related staff user (login credentials)
+ *
+ * @param int $id Student ID
+ * @return bool
+ */
+public function delete($id)
+{
+    try {
+        $id = (int)$id;
+        if ($id <= 0) {
+            log_message('error', 'School_model::delete - Invalid ID: ' . $id);
             return false;
         }
+
+        // 1) Get the linked staff_id AND email BEFORE deleting the student
+        $student = $this->db
+            ->select('staff_id, email')
+            ->from($this->tbl_students)
+            ->where('id', $id)
+            ->get()
+            ->row();
+
+        $staff_id = $student ? (int)$student->staff_id : null;
+        $email    = $student ? $student->email : null;
+
+        log_message('debug', 'School_model::delete - Student ID '.$id.' staff_id=' . $staff_id . ' email=' . $email);
+
+        // 2) Delete report cards (existing logic)
+        $cards = $this->db
+            ->where('student_school_id', $id)
+            ->get($this->tbl_rcard)
+            ->result();
+
+        foreach ($cards as $c) {
+            if (!empty($c->report_card_file)) {
+                $abs = rtrim(FCPATH, '/\\') . '/' . ltrim($c->report_card_file, '/');
+                if (is_file($abs)) {
+                    @unlink($abs);
+                }
+            }
+        }
+
+        $this->db->where('student_school_id', $id)->delete($this->tbl_rcard);
+
+        // 3) Delete the student
+        $this->db->where('id', $id)->delete($this->tbl_students);
+        $student_deleted = $this->db->affected_rows() > 0;
+
+        if (!$student_deleted) {
+            log_message('error', 'School_model::delete - Student delete failed for ID: ' . $id);
+            return false;
+        }
+
+        // 4) Delete the related staff record (credentials)
+        $staff_table = db_prefix() . 'staff';
+
+        // Prefer staff_id if present
+        if ($staff_id) {
+            $this->db->where('staffid', $staff_id)->delete($staff_table);
+            log_message('info', 'School_model::delete - Deleted staff by staffid=' . $staff_id);
+        } elseif (!empty($email)) {
+            // Fallback: delete by email if staff_id was never linked
+            $this->db->where('email', $email)->delete($staff_table);
+            log_message('info', 'School_model::delete - Deleted staff by email=' . $email);
+        } else {
+            log_message('info', 'School_model::delete - No staff_id/email found for student ID ' . $id . ', staff not deleted.');
+        }
+
+        return true;
+
+    } catch (Exception $e) {
+        log_message('error', 'Error deleting school student: ' . $e->getMessage());
+        return false;
     }
+}
+
 
     public function count_all()
     {

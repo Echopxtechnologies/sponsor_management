@@ -1450,28 +1450,103 @@ private function detect_file_mime_type($file_path, $uploaded_type = '')
         }
     }
 
-    public function delete($id)
-    {
-        try {
-            $tbl_rcard = db_prefix() . 'university_report_card';
+    // public function delete($id)
+    // {
+    //     try {
+    //         $tbl_rcard = db_prefix() . 'university_report_card';
             
-            $cards = $this->db->where('student_university_id', (int)$id)->get($tbl_rcard)->result();
-            foreach ($cards as $c) {
-                if (!empty($c->report_card_file)) {
-                    $abs = rtrim(FCPATH, '/\\') . '/' . ltrim($c->report_card_file, '/');
-                    if (is_file($abs)) @unlink($abs);
-                }
-            }
-            $this->db->where('student_university_id', (int)$id)->delete($tbl_rcard);
+    //         $cards = $this->db->where('student_university_id', (int)$id)->get($tbl_rcard)->result();
+    //         foreach ($cards as $c) {
+    //             if (!empty($c->report_card_file)) {
+    //                 $abs = rtrim(FCPATH, '/\\') . '/' . ltrim($c->report_card_file, '/');
+    //                 if (is_file($abs)) @unlink($abs);
+    //             }
+    //         }
+    //         $this->db->where('student_university_id', (int)$id)->delete($tbl_rcard);
 
-            $this->db->where('id', (int)$id)->delete(db_prefix() . 'university_students');
+    //         $this->db->where('id', (int)$id)->delete(db_prefix() . 'university_students');
 
-            return $this->db->affected_rows() > 0;
-        } catch (Exception $e) {
-            log_message('error', 'Error deleting university student: ' . $e->getMessage());
+    //         return $this->db->affected_rows() > 0;
+    //     } catch (Exception $e) {
+    //         log_message('error', 'Error deleting university student: ' . $e->getMessage());
+    //         return false;
+    //     }
+    // }
+
+public function delete($id)
+{
+    try {
+        $id = (int)$id;
+        if ($id <= 0) {
+            log_message('error', 'University_model::delete - Invalid ID: ' . $id);
             return false;
         }
+
+        $tbl_students = db_prefix() . 'university_students';
+        $tbl_rcard    = db_prefix() . 'university_report_card';
+
+        // 1) Get linked staff_id and email BEFORE deleting the student
+        $student = $this->db
+            ->select('staff_id, email')
+            ->from($tbl_students)
+            ->where('id', $id)
+            ->get()
+            ->row();
+
+        $staff_id = $student ? (int)$student->staff_id : null;
+        $email    = $student ? $student->email : null;
+
+        log_message('debug', 'University_model::delete - Student ID '.$id.' staff_id=' . $staff_id . ' email=' . $email);
+
+        // 2) Delete report cards (existing logic)
+        $cards = $this->db
+            ->where('student_university_id', $id)
+            ->get($tbl_rcard)
+            ->result();
+
+        foreach ($cards as $c) {
+            if (!empty($c->report_card_file)) {
+                $abs = rtrim(FCPATH, '/\\') . '/' . ltrim($c->report_card_file, '/');
+                if (is_file($abs)) {
+                    @unlink($abs);
+                }
+            }
+        }
+
+        $this->db->where('student_university_id', $id)->delete($tbl_rcard);
+
+        // 3) Delete the university student
+        $this->db->where('id', $id)->delete($tbl_students);
+        $student_deleted = $this->db->affected_rows() > 0;
+
+        if (!$student_deleted) {
+            log_message('error', 'University_model::delete - Student delete failed for ID: ' . $id);
+            return false;
+        }
+
+        // 4) Delete related staff login (credentials)
+        $staff_table = db_prefix() . 'staff';
+
+        if ($staff_id) {
+            // Delete by staffid if present
+            $this->db->where('staffid', $staff_id)->delete($staff_table);
+            log_message('info', 'University_model::delete - Deleted staff by staffid=' . $staff_id);
+        } elseif (!empty($email)) {
+            // Fallback: delete by email if staff_id was never set
+            $this->db->where('email', $email)->delete($staff_table);
+            log_message('info', 'University_model::delete - Deleted staff by email=' . $email);
+        } else {
+            log_message('info', 'University_model::delete - No staff_id/email found for student ID ' . $id . ', staff not deleted.');
+        }
+
+        return true;
+
+    } catch (Exception $e) {
+        log_message('error', 'Error deleting university student: ' . $e->getMessage());
+        return false;
     }
+}
+
 
     /* ----------------- READ OPERATIONS ----------------- */
 
