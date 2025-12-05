@@ -750,18 +750,18 @@
                     </div>
                     <div class="col-md-4">
                       <div class="form-group">
-                        <label for="staff_firstname" class="control-label">First Name</label>
+                        <label for="staff_firstname" class="control-label">Full Name</label>
                         <input type="text" name="staff_firstname" id="staff_firstname" class="form-control"
                           value="<?php echo isset($student) ? html_escape($student['name'] ?? '') : (isset($old['staff_firstname']) ? html_escape($old['staff_firstname']) : ''); ?>">
                       </div>
                     </div>
-                    <div class="col-md-4">
+                    <!-- <div class="col-md-4">
                       <div class="form-group">
                         <label for="staff_lastname" class="control-label">Last Name</label>
                         <input type="text" name="staff_lastname" id="staff_lastname" class="form-control"
-                          value="<?php echo isset($old['staff_lastname']) ? html_escape($old['staff_lastname']) : ''; ?>">
+                          value="<?php //echo isset($old['staff_lastname']) ? html_escape($old['staff_lastname']) : ''; ?>">
                       </div>
-                    </div>
+                    </div> -->
                   </div>
                   <div class="row">
                     <div class="col-md-4">
