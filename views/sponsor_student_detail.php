@@ -251,7 +251,7 @@
                                             <th>Transaction Date</th>
                                             <th>Total Amount</th>
                                             <th>Amount Paid</th>
-                                            <th>Remaining Amount</th>
+                                            <th>Next Payment</th>
                                             <th>Payment Type</th>
                                             <th>Status</th>
                                             <th>Actions</th>

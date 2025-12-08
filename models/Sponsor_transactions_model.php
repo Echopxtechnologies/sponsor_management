@@ -639,6 +639,7 @@ public function get_due_email_template($transaction_id)
     $txn = $this->get($transaction_id);
     if (!$txn) return false;
 
+
     // Get sponsor name
     $sponsor = $this->db->select('name')->where('id', $txn->sponsor_id)->get(db_prefix().'sponsor_records')->row();
     $sponsor_name = $sponsor ? $sponsor->name : 'Sponsor';
@@ -655,6 +656,7 @@ public function get_due_email_template($transaction_id)
 
     $due_date = $txn->next_payment_due ? date('m/d/Y', strtotime($txn->next_payment_due)) : 'Not Set';
     $amount_due = $txn->total_amount - $txn->amount_paid;
+    // echo $amount_due;
     $currency = strtolower($txn->currency);
 
     $subject = "Reminder: Payment Due on " . $due_date;
@@ -674,7 +676,7 @@ public function get_due_email_template($transaction_id)
                     <th style="border: 1px solid #ddd; padding: 12px; text-align: left; font-weight: bold;">Student</th>
                     <th style="border: 1px solid #ddd; padding: 12px; text-align: left; font-weight: bold;">Total</th>
                     <th style="border: 1px solid #ddd; padding: 12px; text-align: left; font-weight: bold;">Paid</th>
-                    <th style="border: 1px solid #ddd; padding: 12px; text-align: left; font-weight: bold;">Remaining Amount</th>
+                    <th style="border: 1px solid #ddd; padding: 12px; text-align: left; font-weight: bold;">Next Payment</th>
                     <th style="border: 1px solid #ddd; padding: 12px; text-align: left; font-weight: bold;">Due Date</th>
                 </tr>
             </thead>

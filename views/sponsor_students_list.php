@@ -144,7 +144,7 @@
                                             <th>Location</th>
                                             <th>Sponsorship Amount</th>
                                             <th>Amount Paid</th>
-                                            <th>Remaining Amount</th>
+                                            <th>Next Payment</th>
                                             <th>Actions</th>
                                         </tr>
                                     </thead>

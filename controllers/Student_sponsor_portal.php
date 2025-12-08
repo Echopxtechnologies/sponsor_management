@@ -7190,6 +7190,15 @@ private function is_sponsor_user()
         // Step 1: Fetch the payment record
         $pay_tbl = $this->sponsor_transactions_model->get_pay_tbl(); // Access table name via model method
         $payment = $this->db->select('*')->where('id', $payment_id)->get($pay_tbl)->row();
+            //SELECT * FROM `tblsponsor_payments` WHERE `transaction_id` = 47 ORDER BY `payment_date` DESC, `id` DESC LIMIT 1;
+    $last_payment = $this->db->select('*')
+    ->from('tblsponsor_payments')
+    ->where('transaction_id', $transaction_id)
+    ->order_by('payment_date', 'DESC')
+    ->order_by('id', 'DESC')
+    ->limit(1)
+    ->get()
+    ->row();
         
         if (!$payment) {
             log_message('error', 'Payment not found for ID: ' . $payment_id);
@@ -7202,6 +7211,14 @@ private function is_sponsor_user()
             log_message('error', 'Transaction not found for payment: ' . $payment_id);
             return false;
         }
+        // ✅ FIX: Calculate amount_paid FRESH from payments table
+            $agg = $this->db->select('SUM(amount) AS total_paid', false)
+                            ->where('transaction_id', $payment->transaction_id)
+                            ->get($pay_tbl)->row();
+            $amount_paid = $agg && $agg->total_paid ? (float)$agg->total_paid : 0.0;
+            
+            // ✅ FIX: Calculate remaining from fresh value
+            $remaining_amount = (float)$txn->total_amount - $amount_paid;
 
         // Step 3: Get sponsor details (email and name)
         $sponsor = $this->db->select('email, name')->where('id', $txn->sponsor_id)->get(db_prefix().'sponsor_records')->row();
@@ -7224,7 +7241,7 @@ private function is_sponsor_user()
         $subject = "Payment Details for " . $sponsor->name;
 
         // Calculate remaining amount
-        $remaining_amount = $txn->total_amount - $txn->amount_paid;
+        // $remaining_amount = $txn->total_amount - $txn->amount_paid;
 
         $body = '
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
@@ -7233,13 +7250,12 @@ private function is_sponsor_user()
             <p style="color: #333; line-height: 1.6; margin-bottom: 20px;">
                 We have received a new payment for the sponsorship of <strong>' . $student_name . '</strong>. Below are the details:
             </p>
-            
             <table style="width: 100%; border-collapse: collapse; margin: 20px 0; background-color: #f9f9f9;">
                 <thead>
                     <tr style="background-color: #e8e8e8;">
                         <th style="border: 1px solid #ddd; padding: 12px; text-align: left; font-weight: bold;">Transaction ID</th>
                         <th style="border: 1px solid #ddd; padding: 12px; text-align: left; font-weight: bold;">Payment Amount</th>
-                        <th style="border: 1px solid #ddd; padding: 12px; text-align: left; font-weight: bold;">Remaining Amount</th>
+                        <th style="border: 1px solid #ddd; padding: 12px; text-align: left; font-weight: bold;">Next Payment</th>
                         <th style="border: 1px solid #ddd; padding: 12px; text-align: left; font-weight: bold;">Payment Date</th>
                         <th style="border: 1px solid #ddd; padding: 12px; text-align: left; font-weight: bold;">Payment Method</th>
                     </tr>
@@ -7413,111 +7429,105 @@ private function convert_date_to_sql($date)
         }
 
         public function add_payment($transaction_id)
-    {
-        if (!is_admin() && !has_permission('student_sponsor_portal', '', 'create')) {
-            access_denied('student_sponsor_portal');
-        }
+{
+    if (!is_admin() && !has_permission('student_sponsor_portal', '', 'create')) {
+        access_denied('student_sponsor_portal');
+    }
 
-        $transaction_id = (int) $transaction_id;
-        if ($transaction_id <= 0) {
-            show_error('Invalid transaction id', 400);
-        }
+    $transaction_id = (int) $transaction_id;
+    if ($transaction_id <= 0) {
+        show_error('Invalid transaction id', 400);
+    }
 
-        $txn = $this->db->where('id', $transaction_id)
-                        ->get(db_prefix().'sponsor_transactions')->row();
-        if (!$txn) {
-            show_error('Transaction not found', 404);
-        }
+    $txn = $this->db->where('id', $transaction_id)
+                    ->get(db_prefix().'sponsor_transactions')->row();
+    if (!$txn) {
+        show_error('Transaction not found', 404);
+    }
 
-        $pdate    = trim($this->input->post('payment_date', true));
-        $amount   = (float) $this->input->post('amount', true);
-        $currency = trim($this->input->post('currency', true));
-        $note     = trim($this->input->post('note', true));
-        $sponsor  = (int) $this->input->post('sponsor_id', true);
-        $student  = (int) $this->input->post('student_id', true);
+    $pdate    = trim($this->input->post('payment_date', true));
+    $amount   = (float) $this->input->post('amount', true);
+    $currency = trim($this->input->post('currency', true));
+    $note     = trim($this->input->post('note', true));
+    $sponsor  = (int) $this->input->post('sponsor_id', true);
+    $student  = (int) $this->input->post('student_id', true);
 
-        if (!$pdate || !$amount) {
-            set_alert('warning', 'Payment date and amount are required.');
-            redirect(admin_url('student_sponsor_portal/transaction/'.$transaction_id.'?tab=payments'));
-        }
-
-        $row = [
-            'transaction_id' => $transaction_id,
-            'sponsor_id'     => $sponsor ?: (int)$txn->sponsor_id,
-            'student_id'     => $student ?: (int)($txn->school_student_id ?: $txn->university_student_id),
-            'payment_date'   => $pdate,
-            'amount'         => $amount,
-            'currency'       => $currency ?: $txn->currency,
-            'note'           => $note,
-            'created_by'     => get_staff_user_id(),
-            'created_at'     => date('Y-m-d H:i:s'),
-        ];
-
-        // Insert payment record
-        $ok = $this->db->insert(db_prefix().'sponsor_payments', $row);
-
-        if (!$ok) {
-            set_alert('warning', 'Failed to add payment.');
-            redirect(admin_url('student_sponsor_portal/transaction/'.$transaction_id.'?tab=payments'));
-        }
-
-        // Now, fetch the payment record using the transaction_id and get the payment_id
-        $payment = $this->db->where('transaction_id', $transaction_id)
-                            ->order_by('payment_date', 'DESC')  // Ensure we get the latest payment first
-                            ->get(db_prefix().'sponsor_payments')->row();
-
-        if ($payment) {
-            // Pass the correct payment_id to send_payment_email
-            $this->send_payment_email($payment->id);  // Send the email with the correct payment_id
-        }
-
-        // Update the transaction with the new payment details
-        $sum = $this->db->select_sum('amount', 's')
-                        ->where('transaction_id', $transaction_id)
-                        ->get(db_prefix().'sponsor_payments')->row();
-        $amount_paid = (float) ($sum ? $sum->s : 0);
-
-        $last = $this->db->select('payment_date')
-                        ->where('transaction_id', $transaction_id)
-                        ->order_by('payment_date', 'DESC')
-                        ->limit(1)
-                        ->get(db_prefix().'sponsor_payments')->row();
-        $last_payment_date = $last ? $last->payment_date : null;
-
-        $next_payment_due = null;
-        if ($last_payment_date) {
-            $dt = DateTime::createFromFormat('Y-m-d', $last_payment_date) ?: new DateTime($last_payment_date);
-            if ($dt) {
-                switch ($txn->payment_type) {
-                    case 'monthly':
-                        $dt->modify('+1 month');
-                        $next_payment_due = $dt->format('Y-m-d');
-                        break;
-                    case 'quarterly':
-                        $dt->modify('+3 months');
-                        $next_payment_due = $dt->format('Y-m-d');
-                        break;
-                    case 'yearly':
-                        $dt->modify('+1 year');
-                        $next_payment_due = $dt->format('Y-m-d');
-                        break;
-                    default:
-                        $next_payment_due = null;
-                }
-            }
-        }
-
-        // Update transaction record with new payment status
-        $this->db->where('id', $transaction_id)->update(db_prefix().'sponsor_transactions', [
-            'amount_paid'       => $amount_paid,
-            'balance_amount'    => max(0, (float)$txn->total_amount - $amount_paid),
-            'last_payment_date' => $last_payment_date,
-            'next_payment_due'  => $next_payment_due,
-        ]);
-
-        set_alert('success', 'Payment added.');
+    if (!$pdate || !$amount) {
+        set_alert('warning', 'Payment date and amount are required.');
         redirect(admin_url('student_sponsor_portal/transaction/'.$transaction_id.'?tab=payments'));
     }
+
+    $row = [
+        'transaction_id' => $transaction_id,
+        'sponsor_id'     => $sponsor ?: (int)$txn->sponsor_id,
+        'student_id'     => $student ?: (int)($txn->school_student_id ?: $txn->university_student_id),
+        'payment_date'   => $pdate,
+        'amount'         => $amount,
+        'currency'       => $currency ?: $txn->currency,
+        'note'           => $note,
+        'created_by'     => get_staff_user_id(),
+        'created_at'     => date('Y-m-d H:i:s'),
+    ];
+
+    // Insert payment record
+    $this->db->insert(db_prefix().'sponsor_payments', $row);
+    $payment_id = $this->db->insert_id();  // ✅ Get ID immediately
+
+    if (!$payment_id) {
+        set_alert('warning', 'Failed to add payment.');
+        redirect(admin_url('student_sponsor_portal/transaction/'.$transaction_id.'?tab=payments'));
+    }
+
+    // ✅ Send email with correct payment_id
+    $this->send_payment_email($payment_id);
+
+    // Update transaction totals
+    $sum = $this->db->select_sum('amount', 's')
+                    ->where('transaction_id', $transaction_id)
+                    ->get(db_prefix().'sponsor_payments')->row();
+    $amount_paid = (float) ($sum ? $sum->s : 0);
+
+    $last = $this->db->select('payment_date')
+                    ->where('transaction_id', $transaction_id)
+                    ->order_by('payment_date', 'DESC')
+                    ->limit(1)
+                    ->get(db_prefix().'sponsor_payments')->row();
+    $last_payment_date = $last ? $last->payment_date : null;
+
+    $next_payment_due = null;
+    if ($last_payment_date) {
+        $dt = DateTime::createFromFormat('Y-m-d', $last_payment_date) ?: new DateTime($last_payment_date);
+        if ($dt) {
+            switch ($txn->payment_type) {
+                case 'monthly':
+                    $dt->modify('+1 month');
+                    $next_payment_due = $dt->format('Y-m-d');
+                    break;
+                case 'quarterly':
+                    $dt->modify('+3 months');
+                    $next_payment_due = $dt->format('Y-m-d');
+                    break;
+                case 'yearly':
+                    $dt->modify('+1 year');
+                    $next_payment_due = $dt->format('Y-m-d');
+                    break;
+                default:
+                    $next_payment_due = null;
+            }
+        }
+    }
+
+    // Update transaction record
+    $this->db->where('id', $transaction_id)->update(db_prefix().'sponsor_transactions', [
+        'amount_paid'       => $amount_paid,
+        'balance_amount'    => max(0, (float)$txn->total_amount - $amount_paid),
+        'last_payment_date' => $last_payment_date,
+        'next_payment_due'  => $next_payment_due,
+    ]);
+
+    set_alert('success', 'Payment added.');
+    redirect(admin_url('student_sponsor_portal/transaction/'.$transaction_id.'?tab=payments'));
+}
 
         public function edit_payment($transaction_id, $payment_id)
         {
@@ -8024,71 +8034,90 @@ private function convert_date_to_sql($date)
 
 
     public function my_sponsored_students()
-    {
-        $current_sponsor = $this->is_sponsor_user();
-        if (!$current_sponsor) {
-            access_denied('student_sponsor_portal');
+{
+    $current_sponsor = $this->is_sponsor_user();
+    if (!$current_sponsor) {
+        access_denied('student_sponsor_portal');
+    }
+
+    try {
+        $sponsor_id = (int)$current_sponsor->id;
+        
+        // Get filter parameters
+        $student_type = $this->input->get('type');
+        $search = trim($this->input->get('search') ?? '');
+        
+        // Get students based on filter
+        if ($student_type === 'school') {
+            $students = $this->get_sponsor_students_by_type($sponsor_id, 'school');
+        } elseif ($student_type === 'university') {
+            $students = $this->get_sponsor_students_by_type($sponsor_id, 'university');
+        } else {
+            $students = $this->get_sponsor_students($sponsor_id);
         }
 
-        try {
-            $sponsor_id = (int)$current_sponsor->id;
-            
-            // Get filter parameters
-            $student_type = $this->input->get('type'); // 'school', 'university', or 'all'
-            $search = trim($this->input->get('search') ?? '');
-            
-            // Get students based on filter
-            if ($student_type === 'school') {
-                $students = $this->get_sponsor_students_by_type($sponsor_id, 'school');
-            } elseif ($student_type === 'university') {
-                $students = $this->get_sponsor_students_by_type($sponsor_id, 'university');
-            } else {
-                $students = $this->get_sponsor_students($sponsor_id);
-            }
+        // Apply search filter if provided
+        if (!empty($search)) {
+            $students = array_filter($students, function($student) use ($search) {
+                return stripos($student['name'], $search) !== false ||
+                    stripos($student['school_internal_id'] ?? $student['university_internal_id'], $search) !== false ||
+                    stripos($student['city'] ?? '', $search) !== false;
+            });
+        }
 
-            // Apply search filter if provided
-            if (!empty($search)) {
-                $students = array_filter($students, function($student) use ($search) {
-                    return stripos($student['name'], $search) !== false ||
-                        stripos($student['school_internal_id'] ?? $student['university_internal_id'], $search) !== false ||
-                        stripos($student['city'] ?? '', $search) !== false;
-                });
-            }
-
-            // Get transaction summaries for each student
-            foreach ($students as &$student) {
-                $student_id_field = $student['student_type'] . '_student_id';
-                
-                $txn_summary = $this->db->select('
-                    COUNT(*) as transaction_count,
-                    SUM(total_amount) as total_amount,
-                    SUM(amount_paid) as amount_paid,
-                    SUM(balance_amount) as balance_amount
-                ')
+        // Get transaction summaries for each student
+        foreach ($students as &$student) {
+            $student_id_field = $student['student_type'] . '_student_id';
+            
+            // ✅ FIX: Get transactions for this student
+            $transactions = $this->db->select('id, total_amount')
                 ->where('sponsor_id', $sponsor_id)
                 ->where($student_id_field, $student['id'])
                 ->get(db_prefix() . 'sponsor_transactions')
-                ->row_array();
+                ->result();
+            
+            $total_amount = 0;
+            $amount_paid = 0;
+            $transaction_count = count($transactions);
+            
+            foreach ($transactions as $txn) {
+                $total_amount += (float)$txn->total_amount;
                 
-                $student['transaction_summary'] = $txn_summary;
+                // ✅ FIX: Calculate amount_paid FRESH from payments table
+                $pay_sum = $this->db->select('SUM(amount) AS paid', false)
+                    ->where('transaction_id', $txn->id)
+                    ->get(db_prefix() . 'sponsor_payments')
+                    ->row();
+                
+                $amount_paid += ($pay_sum && $pay_sum->paid) ? (float)$pay_sum->paid : 0;
             }
-
-            $data = [
-                'title' => 'My Sponsored Students',
-                'sponsor' => $current_sponsor,
-                'students' => $students,
-                'current_filter' => $student_type ?: 'all',
-                'current_search' => $search,
-                'is_sponsor_view' => true
+            
+            $balance_amount = max(0, $total_amount - $amount_paid);
+            
+            $student['transaction_summary'] = [
+                'transaction_count' => $transaction_count,
+                'total_amount'      => $total_amount,
+                'amount_paid'       => $amount_paid,      // ✅ Fresh from payments
+                'balance_amount'    => $balance_amount    // ✅ Calculated fresh
             ];
-
-            $this->load->view('student_sponsor_portal/sponsor_students_list', $data);
-
-        } catch (Exception $e) {
-            log_message('error', 'Error in my_sponsored_students: ' . $e->getMessage());
-            show_error('Error loading students', 500);
         }
+
+        $data = [
+            'title' => 'My Sponsored Students',
+            'sponsor' => $current_sponsor,
+            'students' => $students,
+            'current_filter' => $student_type ?: 'all',
+            'current_search' => $search,
+            'is_sponsor_view' => true
+        ];
+
+        $this->load->view('student_sponsor_portal/sponsor_students_list', $data);
+
+    } catch (Exception $e) {
+        log_message('error', 'Error in my_sponsored_students: ' . $e->getMessage());
+        show_error('Error loading students', 500);
     }
+}
     /**
      * Apply filters to student list
      */

@@ -12,7 +12,7 @@
   <div class="table-responsive" style="margin-top:25px;">
     <table class="table table-striped dt-table">
       <thead><tr>
-        <th>ID</th><th>Sponsor</th><th>Student</th><th>Total</th><th>Paid</th><th>Remaining Amount</th><th>Next Due</th><th>Type</th><th>Updated</th><th></th>
+        <th>ID</th><th>Sponsor</th><th>Student</th><th>Total</th><th>Paid</th><th>Next Payment</th><th>Next Due</th><th>Type</th><th>Updated</th><th></th>
       </tr></thead>
       <tbody>
         <?php foreach ($txns as $t): ?>

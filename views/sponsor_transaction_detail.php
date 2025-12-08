@@ -70,7 +70,7 @@
                                         <td><h4 class="text-success">Amt <?= number_format($transaction['amount_paid'], 2) ?></h4></td>
                                     </tr>
                                     <tr>
-                                        <td><strong>Remaining Amount:</strong></td>
+                                        <td><strong>Next Payment:</strong></td>
                                         <td><h4 class="text-danger">Amt <?= number_format($transaction['balance_amount'], 2) ?></h4></td>
                                     </tr>
                                     <tr>
