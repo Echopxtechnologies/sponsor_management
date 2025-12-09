@@ -11,6 +11,9 @@
                             <i class="fa fa-graduation-cap"></i> My Sponsored Students
                         </h3>
                         <div class="pull-right">
+                            <a href="<?= admin_url('student_sponsor_portal/sponsor_dashboard') ?>" class="btn btn-sm btn-default">
+                                <i class="fa fa-user"></i> Dashboard
+                            </a>
                             <a href="<?= admin_url('student_sponsor_portal/sponsor_profile') ?>" class="btn btn-sm btn-default">
                                 <i class="fa fa-user"></i> Back to Profile
                             </a>
