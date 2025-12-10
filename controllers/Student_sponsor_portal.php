@@ -3912,22 +3912,42 @@ private function is_sponsor_user()
 
             return $this->upsert_staff($staff_data, $existing_staff_id, 'University Student');
     }
+        // public function university_students()
+        // {
+        // $current_student = $this->is_school_student_user();
+        // if ($current_student) {
+        //     redirect(admin_url('student_sponsor_portal/school_student_form/' . $current_student->id));
+        //     return;
+        // }
+        //     if (!has_permission('student_sponsor_portal', '', 'view')) {
+        //         access_denied('student_sponsor_portal');
+        //     }
+            
+        //     $data['students'] = $this->university_model->get_all();
+        //     $data['title'] = 'University Students';
+            
+        //     $this->load->view('student_sponsor_portal/university_students_list_ajax', $data);
+        // }
+
         public function university_students()
-        {
-        $current_student = $this->is_school_student_user();
-        if ($current_student) {
-            redirect(admin_url('student_sponsor_portal/school_student_form/' . $current_student->id));
-            return;
-        }
-            if (!has_permission('student_sponsor_portal', '', 'view')) {
-                access_denied('student_sponsor_portal');
-            }
-            
-            $data['students'] = $this->university_model->get_all();
-            $data['title'] = 'University Students';
-            
-            $this->load->view('student_sponsor_portal/university_students_list', $data);
-        }
+{
+    $current_student = $this->is_school_student_user();
+    if ($current_student) {
+        redirect(admin_url('student_sponsor_portal/school_student_form/' . $current_student->id));
+        return;
+    }
+    
+    if (!has_permission('student_sponsor_portal', '', 'view')) {
+        access_denied('student_sponsor_portal');
+    }
+    
+    // REMOVE THIS LINE - data will be loaded via AJAX
+    // $data['students'] = $this->university_model->get_all();
+    
+    $data['title'] = 'University Students';
+    
+    $this->load->view('student_sponsor_portal/university_students_list_ajax', $data);
+}
 
         public function university_form()
         {
@@ -9294,4 +9314,98 @@ public function student_detail()
         fclose($output);
         exit;
     }
+
+    /**
+ * AJAX handler for server-side DataTables - University Students
+ */
+/**
+ * AJAX handler for server-side DataTables - University Students
+ */
+/**
+ * AJAX handler for server-side DataTables - University Students
+ */
+public function get_university_students_ajax()
+{
+    if (!$this->input->is_ajax_request()) {
+        echo json_encode(['draw' => 0, 'recordsTotal' => 0, 'recordsFiltered' => 0, 'data' => [], 'error' => 'Not AJAX']);
+        return;
+    }
+
+    if (!has_permission('student_sponsor_portal', '', 'view')) {
+        echo json_encode(['draw' => 0, 'recordsTotal' => 0, 'recordsFiltered' => 0, 'data' => [], 'error' => 'No permission']);
+        return;
+    }
+
+    try {
+        $draw   = (int) $this->input->post('draw');
+        $start  = (int) $this->input->post('start');
+        $length = (int) $this->input->post('length');
+        $search_arr = $this->input->post('search');
+        $search = isset($search_arr['value']) ? $search_arr['value'] : '';
+        $order  = $this->input->post('order');
+
+        // Column mapping for sorting
+        $columns = ['id', 'name', 'university_name', 'program_name', 'university_year_of_study', 'staff_id', 'all_sponsor_names', 'email'];
+        $order_column = isset($order[0]['column']) ? ($columns[$order[0]['column']] ?? 'name') : 'name';
+        $order_dir = isset($order[0]['dir']) && $order[0]['dir'] === 'desc' ? 'DESC' : 'ASC';
+
+        // Get paginated data from model
+        $students = $this->university_model->get_university_students_paginated($start, $length, $search, $order_column, $order_dir);
+        $total = $this->university_model->count_all_university_students();
+        $filtered = $search ? $this->university_model->count_filtered_university_students($search) : $total;
+
+        // Process data for DataTables
+        $data = [];
+        foreach ($students as $s) {
+            // Calculate status
+            $status = 'unverified';
+            if (isset($s['staff_id']) && $s['staff_id'] !== null) {
+                $status = (isset($s['active']) && $s['active'] == 1) ? 'active' : 'inactive';
+            }
+
+            // Generate initials
+            $initials = '';
+            $name_parts = preg_split('/\s+/', trim($s['name'] ?? ''));
+            foreach ($name_parts as $p) {
+                if ($p !== '' && strlen($initials) < 2) {
+                    $initials .= strtoupper(substr($p, 0, 1));
+                }
+            }
+
+            $data[] = [
+                'id'                     => $s['id'],
+                'name'                   => $s['name'] ?? '',
+                'initials'               => $initials ?: '•',
+                'university_internal_id' => $s['university_internal_id'] ?? 'Not Set',
+                'university_name'        => $s['university_name'] ?? '',
+                'program_name'           => $s['program_name'] ?? '',
+                'university_year_of_study' => $s['university_year_of_study'] ?? '',
+                'status'                 => $status,
+                'email'                  => $s['email'] ?? '',
+                'contact_no'             => $s['contact_no'] ?? '',
+                'all_sponsor_names'      => $s['all_sponsor_names'] ?? '',
+                'sponsor_count'          => $s['sponsor_count'] ?? 0
+            ];
+        }
+
+        header('Content-Type: application/json');
+        echo json_encode([
+            'draw'            => $draw,
+            'recordsTotal'    => $total,
+            'recordsFiltered' => $filtered,
+            'data'            => $data
+        ]);
+
+    } catch (Exception $e) {
+        log_message('error', 'get_university_students_ajax error: ' . $e->getMessage());
+        header('Content-Type: application/json');
+        echo json_encode([
+            'draw'            => 0,
+            'recordsTotal'    => 0,
+            'recordsFiltered' => 0,
+            'data'            => [],
+            'error'           => $e->getMessage()
+        ]);
+    }
+}
     }
