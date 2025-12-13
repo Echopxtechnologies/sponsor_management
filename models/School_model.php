@@ -92,6 +92,79 @@ class School_model extends App_Model
     }
 
     /**
+ * Get paginated school students for DataTables
+ */
+public function get_school_students_paginated($start, $length, $search = '', $order_column = 'name', $order_dir = 'ASC')
+{
+    $this->db->select('ss.*, 
+                       sn.name as school_name,
+                       sr.name as sponsor_name,
+                       sr.sponsor_type,
+                       sr.id as sponsor_record_id,
+                       st.active as staff_active', false);
+    $this->db->from($this->tbl_students . ' ss');
+    $this->db->join($this->tbl_sname . ' sn', 'sn.id = ss.school_name_id', 'left');
+    $this->db->join($this->tbl_sponsor . ' sr', 'sr.id = ss.sponsor_id', 'left');
+    $this->db->join(db_prefix() . 'staff st', 'st.staffid = ss.staff_id', 'left');
+
+    // Apply search filter
+    if ($search != '') {
+        $this->db->group_start();
+        $this->db->like('ss.name', $search);
+        $this->db->or_like('ss.email', $search);
+        $this->db->or_like('ss.contact_no', $search);
+        $this->db->or_like('ss.school_internal_id', $search);
+        $this->db->or_like('sn.name', $search);
+        $this->db->group_end();
+    }
+
+    // Handle order column
+    $student_fields = ['id', 'name', 'email', 'contact_no', 'school_grade', 'staff_id', 'school_internal_id'];
+    if (in_array($order_column, $student_fields)) {
+        $order_column = 'ss.' . $order_column;
+    } elseif ($order_column === 'school_name') {
+        $order_column = 'sn.name';
+    } elseif ($order_column === 'sponsor_name') {
+        $order_column = 'sr.name';
+    } elseif ($order_column === 'status') {
+        $order_column = 'ss.staff_id';
+    }
+    
+    $this->db->order_by($order_column, $order_dir);
+    $this->db->limit($length, $start);
+
+    $results = $this->db->get()->result_array();
+    
+    // Add computed fields
+    foreach ($results as &$row) {
+        $row['sponsor_count'] = !empty($row['sponsor_record_id']) ? 1 : 0;
+        $row['all_sponsor_names'] = $row['sponsor_name'] ?? '';
+        $row['all_sponsor_types'] = $row['sponsor_type'] ?? '';
+    }
+    
+    return $results;
+}
+
+/**
+ * Count filtered school students
+ */
+public function count_filtered_school_students($search)
+{
+    $this->db->from($this->tbl_students . ' ss');
+    $this->db->join($this->tbl_sname . ' sn', 'sn.id = ss.school_name_id', 'left');
+
+    $this->db->group_start();
+    $this->db->like('ss.name', $search);
+    $this->db->or_like('ss.email', $search);
+    $this->db->or_like('ss.contact_no', $search);
+    $this->db->or_like('ss.school_internal_id', $search);
+    $this->db->or_like('sn.name', $search);
+    $this->db->group_end();
+
+    return $this->db->count_all_results();
+}
+
+    /**
      * Get all sponsors for a student (including transaction history)
      * 
      * @param int $student_id Student ID

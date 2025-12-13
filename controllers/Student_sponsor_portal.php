@@ -218,33 +218,237 @@
         /* =====================              SCHOOL STUDENTS              =================== */
         /* =================================================================================== */
 
-        public function school_students()
-        {
-            // School students can't access the list - redirect to their own form
-            $current_student = $this->is_school_student_user();
-            if ($current_student) {
-                redirect(admin_url('student_sponsor_portal/school_student_form/' . $current_student->id));
-                return;
-            }
+        // public function school_students()
+        // {
+        //     // School students can't access the list - redirect to their own form
+        //     $current_student = $this->is_school_student_user();
+        //     if ($current_student) {
+        //         redirect(admin_url('student_sponsor_portal/school_student_form/' . $current_student->id));
+        //         return;
+        //     }
             
-            if (!has_permission('student_sponsor_portal', '', 'view')) {
-                access_denied('student_sponsor_portal');
-            }
+        //     if (!has_permission('student_sponsor_portal', '', 'view')) {
+        //         access_denied('student_sponsor_portal');
+        //     }
 
-            try {
-                log_message('debug', 'Loading school students list');
+        //     try {
+        //         log_message('debug', 'Loading school students list');
                 
-                $data['title'] = 'School Students Management';
-                $data['school_students'] = $this->school_model->get_all();
+        //         $data['title'] = 'School Students Management';
+        //         $data['school_students'] = $this->school_model->get_all();
                 
-                $this->load->view('student_sponsor_portal/school_students_list', $data);
+        //         $this->load->view('student_sponsor_portal/school_students_list', $data);
                 
-            } catch (Exception $e) {
-                log_message('error', 'Error in school_students: ' . $e->getMessage());
-                show_error('An error occurred while loading school students: ' . $e->getMessage(), 500);
+        //     } catch (Exception $e) {
+        //         log_message('error', 'Error in school_students: ' . $e->getMessage());
+        //         show_error('An error occurred while loading school students: ' . $e->getMessage(), 500);
+        //     }
+        // }
+        public function school_students()
+{
+    // School students can't access the list - redirect to their own form
+    $current_student = $this->is_school_student_user();
+    if ($current_student) {
+        redirect(admin_url('student_sponsor_portal/school_student_form/' . $current_student->id));
+        return;
+    }
+    
+    if (!has_permission('student_sponsor_portal', '', 'view')) {
+        access_denied('student_sponsor_portal');
+    }
+
+    // DON'T load all students - data will be loaded via AJAX
+    $data['title'] = 'School Students Management';
+    
+    $this->load->view('student_sponsor_portal/school_students_list_ajax', $data);
+}
+
+/**
+ * AJAX endpoint for school students DataTable
+ */
+public function ajax_get_school_students()
+{
+    if (!has_permission('student_sponsor_portal', '', 'view')) {
+        header('Content-Type: application/json');
+        echo json_encode(['draw' => 0, 'recordsTotal' => 0, 'recordsFiltered' => 0, 'data' => []]);
+        return;
+    }
+
+    $this->load->model('school_model');
+
+    $draw = (int)$this->input->post('draw');
+    $start = (int)$this->input->post('start');
+    $length = (int)$this->input->post('length');
+    
+    $search_arr = $this->input->post('search');
+    $search = is_array($search_arr) && isset($search_arr['value']) ? $search_arr['value'] : '';
+    
+    $order = $this->input->post('order');
+    $order_column = 'name';
+    $order_dir = 'ASC';
+    
+    if (is_array($order) && !empty($order[0])) {
+        $columns = ['id', 'name', 'school_grade', 'school_name', 'status', 'sponsor_name', 'contact_no'];
+        $col_idx = (int)$order[0]['column'];
+        if (isset($columns[$col_idx])) {
+            $order_column = $columns[$col_idx];
+        }
+        $order_dir = (isset($order[0]['dir']) && strtoupper($order[0]['dir']) === 'DESC') ? 'DESC' : 'ASC';
+    }
+
+    // Get paginated students
+    $students = $this->school_model->get_school_students_paginated($start, $length, $search, $order_column, $order_dir);
+    $total_records = $this->school_model->count_all();
+    $filtered_records = empty($search) ? $total_records : $this->school_model->count_filtered_school_students($search);
+
+    // Format data - get school names and sponsor names separately if needed
+    $data = [];
+    foreach ($students as $s) {
+        // Get school name if not already joined
+        $school_name = '';
+        if (!empty($s['school_name'])) {
+            $school_name = $s['school_name'];
+        } elseif (!empty($s['school_name_id'])) {
+            $school = $this->db->select('name')->from(db_prefix() . 'ssp_school_names')->where('id', $s['school_name_id'])->get()->row();
+            $school_name = $school ? $school->name : '';
+        }
+        
+        // Get sponsor name if not already joined
+        $sponsor_name = '';
+        $sponsor_type = '';
+        if (!empty($s['sponsor_name'])) {
+            $sponsor_name = $s['sponsor_name'];
+            $sponsor_type = $s['sponsor_type'] ?? '';
+        } elseif (!empty($s['sponsor_id'])) {
+            $sponsor = $this->db->select('name, sponsor_type')->from(db_prefix() . 'ssp_sponsors')->where('id', $s['sponsor_id'])->get()->row();
+            if ($sponsor) {
+                $sponsor_name = $sponsor->name;
+                $sponsor_type = $sponsor->sponsor_type ?? '';
             }
         }
         
+        // Get staff active status
+        $staff_active = 0;
+        if (!empty($s['staff_active'])) {
+            $staff_active = (int)$s['staff_active'];
+        } elseif (!empty($s['staff_id'])) {
+            $staff = $this->db->select('active')->from(db_prefix() . 'staff')->where('staffid', $s['staff_id'])->get()->row();
+            $staff_active = $staff ? (int)$staff->active : 0;
+        }
+
+        $data[] = [
+            'id'                 => (int)($s['id'] ?? 0),
+            'name'               => $s['name'] ?? '',
+            'school_internal_id' => !empty($s['school_internal_id']) ? $s['school_internal_id'] : 'Not Set',
+            'school_grade'       => $s['school_grade'] ?? '',
+            'school_name'        => $school_name,
+            'email'              => $s['email'] ?? '',
+            'contact_no'         => $s['contact_no'] ?? '',
+            'staff_id'           => $s['staff_id'] ?? null,
+            'staff_active'       => $staff_active,
+            'sponsor_name'       => $sponsor_name,
+            'sponsor_type'       => $sponsor_type
+        ];
+    }
+
+    header('Content-Type: application/json');
+    echo json_encode([
+        'draw'            => $draw,
+        'recordsTotal'    => (int)$total_records,
+        'recordsFiltered' => (int)$filtered_records,
+        'data'            => $data
+    ]);
+}
+
+public function test_ajax_school_students()
+{
+    $this->load->model('school_model');
+    
+    // Test the model method directly
+    $students = $this->school_model->get_school_students_paginated(0, 5, '', 'name', 'ASC');
+    $total = $this->school_model->count_all();
+    
+    echo "<pre>";
+    echo "Total records: " . $total . "\n\n";
+    echo "Sample data:\n";
+    print_r($students);
+    echo "</pre>";
+}
+
+
+/**
+ * Get paginated school students for DataTables
+ */
+public function get_school_students_paginated($start, $length, $search = '', $order_column = 'name', $order_dir = 'ASC')
+{
+    $this->db->select('ss.*, 
+                       sn.name as school_name,
+                       sr.name as all_sponsor_names,
+                       sr.sponsor_type as all_sponsor_types,
+                       sr.id as sponsor_record_id,
+                       st.active as staff_active', false);
+    $this->db->from($this->tbl_students . ' ss');
+    $this->db->join($this->tbl_sname . ' sn', 'sn.id = ss.school_name_id', 'left');
+    $this->db->join($this->tbl_sponsor . ' sr', 'sr.id = ss.sponsor_id', 'left');
+    $this->db->join(db_prefix() . 'staff st', 'st.staffid = ss.staff_id', 'left');
+
+    if ($search) {
+        $this->db->group_start();
+        $this->db->like('ss.name', $search);
+        $this->db->or_like('ss.email', $search);
+        $this->db->or_like('ss.contact_no', $search);
+        $this->db->or_like('ss.school_internal_id', $search);
+        $this->db->or_like('sn.name', $search);
+        $this->db->or_like('sr.name', $search);
+        $this->db->group_end();
+    }
+
+    // Handle order column - prefix with ss. for student fields
+    $student_fields = ['id', 'name', 'email', 'contact_no', 'school_grade', 'staff_id'];
+    if (in_array($order_column, $student_fields)) {
+        $order_column = 'ss.' . $order_column;
+    } elseif ($order_column === 'school_name') {
+        $order_column = 'sn.name';
+    } elseif ($order_column === 'sponsor_name') {
+        $order_column = 'sr.name';
+    }
+    
+    $this->db->order_by($order_column, $order_dir);
+    $this->db->limit($length, $start);
+
+    $results = $this->db->get()->result_array();
+    
+    // Add sponsor_count in PHP
+    foreach ($results as &$row) {
+        $row['sponsor_count'] = !empty($row['sponsor_record_id']) ? 1 : 0;
+    }
+    
+    return $results;
+}
+
+/**
+ * Count filtered school students
+ */
+public function count_filtered_school_students($search)
+{
+    $this->db->from($this->tbl_students . ' ss');
+    $this->db->join($this->tbl_sname . ' sn', 'sn.id = ss.school_name_id', 'left');
+    $this->db->join($this->tbl_sponsor . ' sr', 'sr.id = ss.sponsor_id', 'left');
+
+    $this->db->group_start();
+    $this->db->like('ss.name', $search);
+    $this->db->or_like('ss.email', $search);
+    $this->db->or_like('ss.contact_no', $search);
+    $this->db->or_like('ss.school_internal_id', $search);
+    $this->db->or_like('sn.name', $search);
+    $this->db->or_like('sr.name', $search);
+    $this->db->group_end();
+
+    return $this->db->count_all_results();
+}
+
+
+
     // Add this to your Student_sponsor_portal.php controller
 
         // In the school_student_form method, update the validation and saving logic:
@@ -335,7 +539,7 @@
                             ]);
                         }
                     } else {
-                        $this->db->where('id', $newId)->update(db_prefix() . 'school_students', ['staff_active' => 0]);
+                        // $this->db->where('id', $newId)->update(db_prefix() . 'school_students', ['staff_active' => 0]);
                     }
 
                     set_alert('success', 'School student registered successfully');
@@ -398,21 +602,40 @@
                         return;
                     }
 
-                    // Handle staff creation for existing student
-                    if (!empty($this->input->post('create_staff'))) {
+                    // Handle staff creation/update for existing student
                         $existing = $this->school_model->get_by_id($sid);
                         $existing_staff_id = $existing['staff_id'] ?? null;
 
-                        $this->ensure_three_min_roles();
-                        $staff_id = $this->create_or_update_staff_from_student($this->input->post(), $existing_staff_id);
+                        if (!empty($this->input->post('create_staff'))) {
+                            // User wants to create/maintain staff access
+                            $this->ensure_three_min_roles();
+                            $staff_id = $this->create_or_update_staff_from_student($this->input->post(), $existing_staff_id);
 
-                        if ($staff_id) {
-                            $this->db->where('id', $sid)->update(db_prefix() . 'school_students', [
-                                'staff_id' => $staff_id,
-                                'staff_active' => !empty($this->input->post('staff_active')) ? 1 : 0,
-                            ]);
+                            if ($staff_id) {
+                                // Only update staff_active if the checkbox was explicitly in the form
+                                // Check if staff_active was actually submitted (could be '1' or not present)
+                                $staff_active_value = $this->input->post('staff_active');
+                                
+                                // If staff_active checkbox exists in POST, use its value
+                                // Otherwise, preserve the existing value
+                                if ($staff_active_value !== null) {
+                                    $new_staff_active = (int)$staff_active_value;
+                                } else {
+                                    // Preserve existing staff_active status
+                                    $new_staff_active = (int)($existing['staff_active'] ?? 1);
+                                }
+                                
+                                $this->db->where('id', $sid)->update(db_prefix() . 'school_students', [
+                                    'staff_id' => $staff_id,
+                                    'staff_active' => $new_staff_active,
+                                ]);
+                            }
+                        } elseif ($existing_staff_id) {
+                            // create_staff is unchecked but student already has staff access
+                            // PRESERVE existing staff_active status - don't change anything
+                            // Only deactivate if explicitly requested (not just because checkbox wasn't checked)
+                            log_message('debug', 'Preserving existing staff access for student ID: ' . $sid);
                         }
-                    }
 
                     redirect(admin_url('student_sponsor_portal/school_students'));
                 }
@@ -3492,97 +3715,178 @@ private function is_sponsor_user()
      * Get sponsor's transaction summary
      */
     private function get_sponsor_transaction_summary($sponsor_id)
-    {
-        $summary = $this->db->select('
-            COUNT(*) as total_transactions,
-            SUM(total_amount) as total_committed,
-            SUM(amount_paid) as total_paid,
-            SUM(balance_amount) as total_outstanding
-        ')
-        ->where('sponsor_id', $sponsor_id)
-        ->get(db_prefix() . 'sponsor_transactions')
-        ->row_array();
-        
-        return $summary;
+{
+    $sponsor_id = (int)$sponsor_id;
+    
+    $summary = [
+        'total_transactions' => 0,
+        'total_committed' => 0,
+        'total_paid' => 0,
+        'total_outstanding' => 0
+    ];
+    
+    // Get transaction count and total from transactions table
+    $trans_data = $this->db->select('
+        COUNT(*) as total_transactions,
+        COALESCE(SUM(total_amount), 0) as total_committed
+    ')
+    ->where('sponsor_id', $sponsor_id)
+    ->get(db_prefix() . 'sponsor_transactions')
+    ->row_array();
+    
+    if ($trans_data) {
+        $summary['total_transactions'] = (int)($trans_data['total_transactions'] ?? 0);
+        $summary['total_committed'] = (float)($trans_data['total_committed'] ?? 0);
     }
+    
+    // ✅ KEY FIX: Get total_paid from sponsor_payments table
+    $payments_data = $this->db->select('COALESCE(SUM(amount), 0) as total_paid')
+        ->where('sponsor_id', $sponsor_id)
+        ->get(db_prefix() . 'sponsor_payments')
+        ->row();
+    
+    if ($payments_data) {
+        $summary['total_paid'] = (float)($payments_data->total_paid ?? 0);
+    }
+    
+    $summary['total_outstanding'] = $summary['total_committed'] - $summary['total_paid'];
+    
+    return $summary;
+}
 
     /**
      * Sponsor Dashboard - Read-only view of sponsored students
      */
     public function sponsor_dashboard()
-    {
-        // Check if user is a sponsor
-        $current_sponsor = $this->is_sponsor_user();
-        if (!$current_sponsor) {
-            // If not a sponsor, check if they have regular permissions
-            if (!has_permission('student_sponsor_portal', '', 'view')) {
-                access_denied('student_sponsor_portal');
-            }
-            // If admin/staff, redirect to main dashboard
-            redirect(admin_url('student_sponsor_portal'));
-            return;
+{
+    // Check if user is a sponsor
+    $current_sponsor = $this->is_sponsor_user();
+    if (!$current_sponsor) {
+        if (!has_permission('student_sponsor_portal', '', 'view')) {
+            access_denied('student_sponsor_portal');
         }
-
-        try {
-            $sponsor_id = (int)$current_sponsor->id;
-            
-            // Get sponsored students
-            $sponsored_students = $this->get_sponsor_students($sponsor_id);
-            
-            // Get transaction summary
-            $transaction_summary = $this->get_sponsor_transaction_summary($sponsor_id);
-            
-            // Get recent transactions
-            $recent_transactions = $this->db->select('
-                st.*,
-                ss.name as school_student_name,
-                ss.school_internal_id,
-                us.name as university_student_name,
-                us.university_internal_id
-            ')
-            ->from(db_prefix() . 'sponsor_transactions st')
-            ->join(db_prefix() . 'school_students ss', 'ss.id = st.school_student_id', 'left')
-            ->join(db_prefix() . 'university_students us', 'us.id = st.university_student_id', 'left')
-            ->where('st.sponsor_id', $sponsor_id)
-            ->order_by('st.created_at', 'DESC')
-            ->limit(10)
-            ->get()
-            ->result_array();
-            
-            // Get payment history
-            $payment_history = $this->db->select('
-                sp.*,
-                st.total_amount,
-                ss.name as school_student_name,
-                us.name as university_student_name
-            ')
-            ->from(db_prefix() . 'sponsor_payments sp')
-            ->join(db_prefix() . 'sponsor_transactions st', 'st.id = sp.transaction_id', 'inner')
-            ->join(db_prefix() . 'school_students ss', 'ss.id = st.school_student_id', 'left')
-            ->join(db_prefix() . 'university_students us', 'us.id = st.university_student_id', 'left')
-            ->where('sp.sponsor_id', $sponsor_id)
-            ->order_by('sp.payment_date', 'DESC')
-            ->limit(15)
-            ->get()
-            ->result_array();
-            
-            $data = [
-                'title' => 'My Sponsored Students',
-                'sponsor' => $current_sponsor,
-                'sponsored_students' => $sponsored_students,
-                'transaction_summary' => $transaction_summary,
-                'recent_transactions' => $recent_transactions,
-                'payment_history' => $payment_history,
-                'is_sponsor_view' => true
-            ];
-            
-            $this->load->view('student_sponsor_portal/sponsor_dashboard', $data);
-            
-        } catch (Exception $e) {
-            log_message('error', 'Error in sponsor_dashboard: ' . $e->getMessage());
-            show_error('An error occurred while loading your dashboard: ' . $e->getMessage(), 500);
-        }
+        redirect(admin_url('student_sponsor_portal'));
+        return;
     }
+
+    try {
+        $sponsor_id = (int)$current_sponsor->id;
+        
+        // Get sponsored students
+        $sponsored_students = $this->get_sponsor_students($sponsor_id);
+        
+        // Get transaction summary - NOW USES FIXED METHOD
+        $transaction_summary = $this->get_sponsor_transaction_summary($sponsor_id);
+        
+        // Get recent transactions WITH calculated payments
+        $recent_transactions = $this->get_recent_transactions_with_payments($sponsor_id, 10);
+        
+        // Get payment history - WITH TABLE CHECK
+        $payment_history = $this->get_payment_history($sponsor_id, 15);
+        
+        $data = [
+            'title' => 'My Sponsored Students',
+            'sponsor' => $current_sponsor,
+            'sponsored_students' => $sponsored_students,
+            'transaction_summary' => $transaction_summary,
+            'recent_transactions' => $recent_transactions,
+            'payment_history' => $payment_history,
+            'is_sponsor_view' => true
+        ];
+        
+        $this->load->view('student_sponsor_portal/sponsor_dashboard', $data);
+        
+    } catch (Exception $e) {
+        log_message('error', 'Error in sponsor_dashboard: ' . $e->getMessage());
+        show_error('An error occurred while loading your dashboard: ' . $e->getMessage(), 500);
+    }
+}
+private function get_payment_history($sponsor_id, $limit = 15)
+{
+    $sponsor_id = (int)$sponsor_id;
+    
+    // Check if payments table exists
+    if (!$this->db->table_exists(db_prefix() . 'sponsor_payments')) {
+        return [];
+    }
+    
+    return $this->db->select('
+        sp.*,
+        st.total_amount,
+        st.school_student_id,
+        st.university_student_id,
+        ss.name as school_student_name,
+        us.name as university_student_name
+    ')
+    ->from(db_prefix() . 'sponsor_payments sp')
+    ->join(db_prefix() . 'sponsor_transactions st', 'st.id = sp.transaction_id', 'left')
+    ->join(db_prefix() . 'school_students ss', 'ss.id = st.school_student_id', 'left')
+    ->join(db_prefix() . 'university_students us', 'us.id = st.university_student_id', 'left')
+    ->where('sp.sponsor_id', $sponsor_id)
+    ->order_by('sp.payment_date', 'DESC')
+    ->limit($limit)
+    ->get()
+    ->result_array();
+}
+
+
+private function get_recent_transactions_with_payments($sponsor_id, $limit = 10)
+{
+    $sponsor_id = (int)$sponsor_id;
+    
+    // Get base transactions
+    $transactions = $this->db->select('
+        st.id,
+        st.sponsor_id,
+        st.school_student_id,
+        st.university_student_id,
+        st.total_amount,
+        st.currency,
+        st.payment_type,
+        st.sponsorship_start,
+        st.sponsorship_end,
+        st.next_payment_due,
+        st.created_at,
+        st.updated_at,
+        ss.name as school_student_name,
+        ss.school_internal_id,
+        us.name as university_student_name,
+        us.university_internal_id
+    ')
+    ->from(db_prefix() . 'sponsor_transactions st')
+    ->join(db_prefix() . 'school_students ss', 'ss.id = st.school_student_id', 'left')
+    ->join(db_prefix() . 'university_students us', 'us.id = st.university_student_id', 'left')
+    ->where('st.sponsor_id', $sponsor_id)
+    ->order_by('st.created_at', 'DESC')
+    ->limit($limit)
+    ->get()
+    ->result_array();
+    
+    // Calculate amount_paid for each transaction from payments table
+    foreach ($transactions as &$txn) {
+        $txn['amount_paid'] = 0;
+        $txn['balance_amount'] = (float)$txn['total_amount'];
+        
+        if ($this->db->table_exists(db_prefix() . 'sponsor_payments')) {
+            $pay_sum = $this->db->select('COALESCE(SUM(amount), 0) as paid')
+                ->where('transaction_id', $txn['id'])
+                ->get(db_prefix() . 'sponsor_payments')
+                ->row();
+            
+            if ($pay_sum && $pay_sum->paid) {
+                $txn['amount_paid'] = (float)$pay_sum->paid;
+                $txn['balance_amount'] = (float)$txn['total_amount'] - $txn['amount_paid'];
+            }
+        }
+        
+        // Add student name helper
+        $txn['student_name'] = $txn['school_student_name'] ?: $txn['university_student_name'];
+        $txn['student_id'] = $txn['school_internal_id'] ?: $txn['university_internal_id'];
+        $txn['student_type'] = $txn['school_student_id'] ? 'school' : 'university';
+    }
+    
+    return $transactions;
+}
 
 
     /**
@@ -3654,46 +3958,65 @@ private function is_sponsor_user()
      * Sponsor Profile - Read-only view for sponsors
      */
     public function sponsor_profile()
-    {
-        $current_sponsor = $this->is_sponsor_user();
-        if (!$current_sponsor) {
-            access_denied('student_sponsor_portal');
-        }
-
-        try {
-            $sponsor_id = (int)$current_sponsor->id;
-            $sponsor = $this->sponsor_model->get_by_id($sponsor_id);
-            
-            if (!$sponsor) {
-                set_alert('danger', 'Sponsor profile not found');
-                redirect(admin_url(''));
-                return;
-            }
-
-            // Get basic statistics
-            $stats = [
-                'total_students' => count($this->get_sponsor_students($sponsor_id)),
-                'school_students' => count($this->get_sponsor_students_by_type($sponsor_id, 'school')),
-                'university_students' => count($this->get_sponsor_students_by_type($sponsor_id, 'university')),
-                'total_transactions' => $this->db->where('sponsor_id', $sponsor_id)->count_all_results(db_prefix() . 'sponsor_transactions'),
-                'total_committed' => $this->db->select_sum('total_amount')->where('sponsor_id', $sponsor_id)->get(db_prefix() . 'sponsor_transactions')->row()->total_amount ?? 0,
-                'total_paid' => $this->db->select_sum('amount_paid')->where('sponsor_id', $sponsor_id)->get(db_prefix() . 'sponsor_transactions')->row()->amount_paid ?? 0,
-            ];
-
-            $data = [
-                'title' => 'My Profile',
-                'sponsor' => $sponsor,
-                'stats' => $stats,
-                'is_sponsor_view' => true
-            ];
-
-            $this->load->view('student_sponsor_portal/sponsor_profile', $data);
-
-        } catch (Exception $e) {
-            log_message('error', 'Error in sponsor_profile: ' . $e->getMessage());
-            show_error('Error loading profile', 500);
-        }
+{
+    $current_sponsor = $this->is_sponsor_user();
+    if (!$current_sponsor) {
+        access_denied('student_sponsor_portal');
     }
+
+    try {
+        $sponsor_id = (int)$current_sponsor->id;
+        $sponsor = $this->sponsor_model->get_by_id($sponsor_id);
+        
+        if (!$sponsor) {
+            set_alert('danger', 'Sponsor profile not found');
+            redirect(admin_url(''));
+            return;
+        }
+
+        // ✅ FIX: Calculate total_paid from payments table
+        $total_paid = 0;
+        if ($this->db->table_exists(db_prefix() . 'sponsor_payments')) {
+            $paid_result = $this->db->select('COALESCE(SUM(amount), 0) as total_paid')
+                ->where('sponsor_id', $sponsor_id)
+                ->get(db_prefix() . 'sponsor_payments')
+                ->row();
+            $total_paid = $paid_result ? (float)$paid_result->total_paid : 0;
+        }
+
+        // Get total_committed from transactions table
+        $committed_result = $this->db->select('COALESCE(SUM(total_amount), 0) as total_committed')
+            ->where('sponsor_id', $sponsor_id)
+            ->get(db_prefix() . 'sponsor_transactions')
+            ->row();
+        $total_committed = $committed_result ? (float)$committed_result->total_committed : 0;
+
+        // Get basic statistics
+        $stats = [
+            'total_students' => count($this->get_sponsor_students($sponsor_id)),
+            'school_students' => count($this->get_sponsor_students_by_type($sponsor_id, 'school')),
+            'university_students' => count($this->get_sponsor_students_by_type($sponsor_id, 'university')),
+            'total_transactions' => $this->db->where('sponsor_id', $sponsor_id)
+                                             ->count_all_results(db_prefix() . 'sponsor_transactions'),
+            'total_committed' => $total_committed,
+            'total_paid' => $total_paid,  // ✅ Now from payments table
+            'total_outstanding' => $total_committed - $total_paid
+        ];
+
+        $data = [
+            'title' => 'My Profile',
+            'sponsor' => $sponsor,
+            'stats' => $stats,
+            'is_sponsor_view' => true
+        ];
+
+        $this->load->view('student_sponsor_portal/sponsor_profile', $data);
+
+    } catch (Exception $e) {
+        log_message('error', 'Error in sponsor_profile: ' . $e->getMessage());
+        show_error('Error loading profile', 500);
+    }
+}
     public function view_sponsored_student($student_type = null, $student_id = null)
     {
         $current_sponsor = $this->is_sponsor_user();
@@ -3900,19 +4223,51 @@ private function is_sponsor_user()
                 }
             }
         }
-        private function create_or_update_staff_from_university_student(array $student_data, ?int $existing_staff_id): ?int
-        {
-            $staff_data = [
-                'staff_email'     => $student_data['email'] ?? '',
-                'staff_firstname' => $student_data['name'] ?? '',
-                'staff_lastname'  => '',
-                'staff_password'  => $student_data['staff_password'] ?? '',
-                'active'          => !empty($student_data['staff_active']) ? 1 : 0,
-            ];
+    //     private function create_or_update_staff_from_university_student(array $student_data, ?int $existing_staff_id): ?int
+    //     {
+    //         $staff_data = [
+    //             'staff_email'     => $student_data['email'] ?? '',
+    //             'staff_firstname' => $student_data['name'] ?? '',
+    //             'staff_lastname'  => '',
+    //             'staff_password'  => $student_data['staff_password'] ?? '',
+    //             'active'          => !empty($student_data['staff_active']) ? 1 : 0,
+    //         ];
 
-            return $this->upsert_staff($staff_data, $existing_staff_id, 'University Student');
+    //         return $this->upsert_staff($staff_data, $existing_staff_id, 'University Student');
+    // }
+    
+    private function create_or_update_staff_from_university_student(array $student_data, ?int $existing_staff_id): ?int
+{
+    // Check for staff_active first (form field name), then active as fallback
+    $active_status = 1; // Default to active for new staff
+    
+    if (isset($student_data['staff_active'])) {
+        $active_status = !empty($student_data['staff_active']) ? 1 : 0;
+    } elseif (isset($student_data['active'])) {
+        $active_status = !empty($student_data['active']) ? 1 : 0;
+    } elseif ($existing_staff_id) {
+        // Preserve existing staff's active status
+        $existing_staff = $this->db->select('active')
+                                   ->where('staffid', $existing_staff_id)
+                                   ->get(db_prefix() . 'staff')
+                                   ->row();
+        if ($existing_staff) {
+            $active_status = (int)$existing_staff->active;
+        }
     }
-        // public function university_students()
+    
+    $staff_data = [
+        'staff_email'     => $student_data['email'] ?? '',
+        'staff_firstname' => $student_data['name'] ?? '',
+        'staff_lastname'  => '',
+        'staff_password'  => $student_data['staff_password'] ?? '',
+        'active'          => $active_status,
+    ];
+
+    return $this->upsert_staff($staff_data, $existing_staff_id, 'University Student');
+}
+
+    // public function university_students()
         // {
         // $current_student = $this->is_school_student_user();
         // if ($current_student) {
@@ -7726,19 +8081,50 @@ private function convert_date_to_sql($date)
             return (int)$this->db->insert_id();
         }
 
+        // private function create_or_update_staff_from_student(array $student_data, ?int $existing_staff_id): ?int
+        // {
+        //     $staff_data = [
+        //         'staff_email'     => $student_data['email'] ?? '',
+        //         'staff_firstname' => $student_data['name'] ?? '',
+        //         'staff_lastname'  => '',
+        //         'staff_password'  => $student_data['staff_password'] ?? '',
+        //         'active'          => !empty($student_data['active']) ? 1 : 0,
+        //     ];
+
+        //     return $this->upsert_staff($staff_data, $existing_staff_id, 'Student');
+        // }
+
         private function create_or_update_staff_from_student(array $student_data, ?int $existing_staff_id): ?int
-        {
-            $staff_data = [
-                'staff_email'     => $student_data['email'] ?? '',
-                'staff_firstname' => $student_data['name'] ?? '',
-                'staff_lastname'  => '',
-                'staff_password'  => $student_data['staff_password'] ?? '',
-                'active'          => !empty($student_data['active']) ? 1 : 0,
-            ];
-
-            return $this->upsert_staff($staff_data, $existing_staff_id, 'Student');
+{
+    // Check for staff_active first (form field name), then active as fallback
+    // If neither exists and we're updating an existing staff, preserve their current status
+    $active_status = 1; // Default to active for new staff
+    
+    if (isset($student_data['staff_active'])) {
+        $active_status = !empty($student_data['staff_active']) ? 1 : 0;
+    } elseif (isset($student_data['active'])) {
+        $active_status = !empty($student_data['active']) ? 1 : 0;
+    } elseif ($existing_staff_id) {
+        // Preserve existing staff's active status
+        $existing_staff = $this->db->select('active')
+                                   ->where('staffid', $existing_staff_id)
+                                   ->get(db_prefix() . 'staff')
+                                   ->row();
+        if ($existing_staff) {
+            $active_status = (int)$existing_staff->active;
         }
+    }
+    
+    $staff_data = [
+        'staff_email'     => $student_data['email'] ?? '',
+        'staff_firstname' => $student_data['name'] ?? '',
+        'staff_lastname'  => '',
+        'staff_password'  => $student_data['staff_password'] ?? '',
+        'active'          => $active_status,
+    ];
 
+    return $this->upsert_staff($staff_data, $existing_staff_id, 'Student');
+}
 
         public function cron_due_reminders()
     {
@@ -8213,7 +8599,7 @@ private function convert_date_to_sql($date)
  */
 public function student_detail()
 {
-    $type = $this->input->get('type', true); // 'school' or 'university'
+    $type = $this->input->get('type', true);
     $id = (int)$this->input->get('id', true);
     
     if (!$type || !$id || !in_array($type, ['school', 'university'])) {
@@ -8221,7 +8607,6 @@ public function student_detail()
         return;
     }
 
-    // Get current sponsor object
     $current_sponsor = $this->is_sponsor_user();
     if (!$current_sponsor) {
         access_denied('student_sponsor_portal');
@@ -8247,7 +8632,7 @@ public function student_detail()
         return;
     }
 
-    // Verify sponsor has access to this student via transactions
+    // Verify sponsor has access
     $access_check = $this->db->select('id')
         ->where('sponsor_id', $sponsor_id)
         ->where($type . '_student_id', $id)
@@ -8260,7 +8645,7 @@ public function student_detail()
         return;
     }
 
-    // Get transactions for this student from this sponsor
+    // Get transactions for this student
     $transactions = $this->db->select('*')
         ->where('sponsor_id', $sponsor_id)
         ->where($type . '_student_id', $id)
@@ -8268,11 +8653,40 @@ public function student_detail()
         ->get(db_prefix() . 'sponsor_transactions')
         ->result_array();
 
+    // ✅ FIX: Calculate amount_paid from payments table for each transaction
+    $total_amount = 0;
+    $total_paid = 0;
+    
+    foreach ($transactions as &$txn) {
+        $total_amount += (float)$txn['total_amount'];
+        
+        // Get actual payments for this transaction
+        $pay_sum = $this->db->select('COALESCE(SUM(amount), 0) as paid')
+            ->where('transaction_id', $txn['id'])
+            ->get(db_prefix() . 'sponsor_payments')
+            ->row();
+        
+        $txn['amount_paid'] = ($pay_sum && $pay_sum->paid) ? (float)$pay_sum->paid : 0;
+        $txn['balance_amount'] = (float)$txn['total_amount'] - $txn['amount_paid'];
+        
+        $total_paid += $txn['amount_paid'];
+    }
+    unset($txn); // Break reference
+
+    // ✅ Add quick stats for the view
+    $quick_stats = [
+        'active_transactions' => count($transactions),
+        'total_sponsored' => $total_amount,
+        'total_paid' => $total_paid,
+        'outstanding' => $total_amount - $total_paid
+    ];
+
     $data = [
         'title' => 'Student Details - ' . $student['name'],
         'student' => $student,
         'student_type' => $type,
         'transactions' => $transactions,
+        'quick_stats' => $quick_stats,  // ✅ Pass quick stats to view
         'report_cards' => $report_cards,
         'sponsor' => $current_sponsor,
         'is_sponsor_view' => true

@@ -181,68 +181,7 @@
         </div>
 
         <!-- Recent Transactions and Payments -->
-        <div class="row">
-            <!-- Recent Transactions -->
-            <div class="col-md-6">
-                <div class="panel panel-default">
-                    <div class="panel-heading">
-                        <h3 class="panel-title">
-                            <i class="fa fa-exchange"></i> Recent Transactions
-                        </h3>
-                    </div>
-                    <div class="panel-body">
-                        <?php if (empty($recent_transactions)): ?>
-                            <p class="text-muted text-center">No transactions found.</p>
-                        <?php else: ?>
-                            <div class="table-responsive">
-                                <table class="table table-condensed">
-                                    <thead>
-                                        <tr>
-                                            <th>Student</th>
-                                            <th>Amount</th>
-                                            <th>Status</th>
-                                            <th>Action</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        <?php foreach ($recent_transactions as $txn): ?>
-                                        <tr>
-                                            <td>
-                                                <small>
-                                                    <?= htmlspecialchars($txn['school_student_name'] ?: $txn['university_student_name']) ?>
-                                                    <br><span class="text-muted"><?= htmlspecialchars($txn['school_internal_id'] ?: $txn['university_internal_id']) ?></span>
-                                                </small>
-                                            </td>
-                                            <td>
-                                                <strong>Amt :<?= number_format($txn['total_amount'], 0) ?></strong>
-                                                <br><small class="text-success">Paid: Amt :<?= number_format($txn['amount_paid'], 0) ?></small>
-                                            </td>
-                                            <td>
-                                                <?php 
-                                                $balance = $txn['total_amount'] - $txn['amount_paid'];
-                                                if ($balance <= 0): ?>
-                                                    <span class="label label-success">Completed</span>
-                                                <?php elseif ($txn['amount_paid'] > 0): ?>
-                                                    <span class="label label-warning">Partial</span>
-                                                <?php else: ?>
-                                                    <span class="label label-danger">Pending</span>
-                                                <?php endif; ?>
-                                            </td>
-                                            <td>
-                                                <a href="<?= admin_url('student_sponsor_portal/view_transaction_details/' . $txn['id']) ?>" 
-                                                   class="btn btn-xs btn-default" title="View Transaction">
-                                                    <i class="fa fa-eye"></i>
-                                                </a>
-                                            </td>
-                                        </tr>
-                                        <?php endforeach; ?>
-                                    </tbody>
-                                </table>
-                            </div>
-                        <?php endif; ?>
-                    </div>
-                </div>
-            </div>
+        
 
             <!-- Payment History -->
             <div class="col-md-6">

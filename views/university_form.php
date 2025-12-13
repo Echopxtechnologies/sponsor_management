@@ -97,13 +97,13 @@
                   <i class="fa fa-users"></i> Family Info
                 </a>
               </li>
-              <?php if(!isset($is_university_student) || !$is_university_student): ?>
+              <?php //if(!isset($is_university_student) || !$is_university_student): ?>
                 <li role="presentation">
                   <a href="#additional-info" aria-controls="additional-info" role="tab" data-toggle="tab">
                     <i class="fa fa-info-circle"></i> Additional Info
                   </a>
                 </li>
-              <?php endif; ?>
+              <?php //endif; ?>
               <li role="presentation">
                 <a href="#report-cards" aria-controls="report-cards" role="tab" data-toggle="tab">
                   <i class="fa fa-file-text"></i> Report Cards
@@ -612,28 +612,46 @@
               </div>
 
               <!-- Additional Info Tab (Admin Only) -->
-              <?php if(!isset($is_university_student) || !$is_university_student): ?>
-              <div role="tabpanel" class="tab-pane" id="additional-info">
-                <div class="row">
-                  <div class="col-md-6">
-                    <div class="form-group">
-                      <label for="internal_comment" class="control-label">Internal Comment</label>
-                      <textarea name="internal_comment" id="internal_comment" class="form-control" rows="3" 
-                        placeholder="Internal notes (not visible to sponsors)"<?php echo (isset($is_university_student) && $is_university_student) ? 'disabled' : ''; ?>><?php echo isset($student) ? html_escape($student['internal_comment'] ?? '') : (isset($old['internal_comment']) ? html_escape($old['internal_comment']) : ''); ?></textarea>
-                      <small class="text-muted">These comments are only visible to staff/administrators.</small>
-                    </div>
-                  </div>
-                  <div class="col-md-6">
-                    <div class="form-group">
-                      <label for="external_comment" class="control-label">External Comment</label>
-                      <textarea name="external_comment" id="external_comment" class="form-control" rows="3" 
-                        placeholder="Comments visible to sponsors"<?php echo (isset($is_university_student) && $is_university_student) ? 'disabled' : ''; ?>><?php echo isset($student) ? html_escape($student['external_comment'] ?? '') : (isset($old['external_comment']) ? html_escape($old['external_comment']) : ''); ?></textarea>
-                      <small class="text-muted">These comments may be visible to sponsors and other stakeholders.</small>
-                    </div>
-                  </div>
-                </div>
-              </div>
-              <?php endif; ?>
+
+  <div role="tabpanel" class="tab-pane" id="additional-info">
+  <div class="row">
+    <?php if(!isset($is_university_student) || !$is_university_student): ?>
+      <!-- Internal Comment - Admin Only -->
+      <div class="col-md-6">
+        <div class="form-group">
+          <label for="internal_comment" class="control-label">Internal Comment</label>
+          <textarea name="internal_comment" id="internal_comment" class="form-control" rows="3" 
+            placeholder="Internal notes (not visible to students or sponsors)"><?php echo isset($student) ? html_escape($student['internal_comment'] ?? '') : (isset($old['internal_comment']) ? html_escape($old['internal_comment']) : ''); ?></textarea>
+          <small class="text-muted">These comments are only visible to staff/administrators.</small>
+        </div>
+      </div>
+      <div class="col-md-6">
+        <div class="form-group">
+          <label for="external_comment" class="control-label">External Comment</label>
+          <textarea name="external_comment" id="external_comment" class="form-control" rows="3" 
+            placeholder="Comments visible to students and sponsors"><?php echo isset($student) ? html_escape($student['external_comment'] ?? '') : (isset($old['external_comment']) ? html_escape($old['external_comment']) : ''); ?></textarea>
+          <small class="text-muted">These comments are visible to students and sponsors.</small>
+        </div>
+      </div>
+    <?php else: ?>
+      <!-- External Comment - Student View (Read-Only) -->
+      <div class="col-md-12">
+        <div class="form-group">
+          <label class="control-label"><i class="fa fa-comment-o"></i> External Comments </label>
+          <?php if(!empty($student['external_comment'])): ?>
+            <div class="well" style="background-color: #f9f9f9; border: 1px solid #e3e3e3; border-radius: 4px; padding: 15px; margin-top: 5px;">
+              <p style="margin: 0; white-space: pre-wrap; color: #333;"><?php echo html_escape($student['external_comment']); ?></p>
+            </div>
+          <?php else: ?>
+            <div class="alert alert-info" style="margin-top: 5px;">
+              <i class="fa fa-info-circle"></i> No External Comments at this time.
+            </div>
+          <?php endif; ?>
+        </div>
+      </div>
+    <?php endif; ?>
+  </div>
+</div>
 
               <!-- Report Cards Tab -->
               <div role="tabpanel" class="tab-pane" id="report-cards">
