@@ -68,7 +68,6 @@
 </div>
 
 <style>
-    
 .students-table { border: 1px solid #e9ecef; border-radius: 6px; overflow: hidden; }
 .students-table th { background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%); font-weight: 600; font-size: 12px; border-bottom: 2px solid #dee2e6; color: #495057; text-transform: uppercase; letter-spacing: 0.5px; padding: 12px 8px; }
 .students-table td { vertical-align: middle; font-size: 13px; padding: 12px 8px; border-bottom: 1px solid #f1f3f4; }
@@ -89,16 +88,16 @@
 tr:hover .row-options { display: block; }
 .contact-info div { margin-bottom: 2px; font-size: 12px; }
 .sponsor-info { font-size: 12px; }
+.sponsor-info strong { display: block; margin-bottom: 2px; }
 </style>
 
 <?php init_tail(); ?>
 
 <script>
-
-
 $('#university-students-table').on('draw.dt', function() {
     $(this).closest('.dataTables_wrapper').removeClass('table-loading');
 });
+
 (function waitForjQuery() {
   if (typeof window.jQuery === 'undefined') {
     return setTimeout(waitForjQuery, 50);
@@ -190,14 +189,39 @@ $('#university-students-table').on('draw.dt', function() {
             }
           },
           { 
+            // UPDATED: Sponsor column now shows type like School list
             data: 'all_sponsor_names',
             render: function(data, type, row) {
               if (!data) return '<span class="text-muted"><i class="fa fa-heart-o"></i> No Sponsor</span>';
-              var html = '<div class="sponsor-info"><strong class="text-success">' + data + '</strong>';
+              
+              var html = '<div class="sponsor-info">';
+              html += '<strong class="text-success">' + data + '</strong>';
+              
+              // Show sponsor type if available (like School list)
+              if (row.sponsor_type) {
+                var typeIcon = 'fa-tag';  // default icon
+                var typeLabel = row.sponsor_type;
+                
+                // Set icon based on sponsor type
+                var typeLower = row.sponsor_type.toLowerCase();
+                if (typeLower === 'company' || typeLower === 'organization' || typeLower === 'corporate') {
+                  typeIcon = 'fa-building';
+                } else if (typeLower === 'individual' || typeLower === 'person') {
+                  typeIcon = 'fa-tag';
+                } else if (typeLower === 'ngo' || typeLower === 'charity' || typeLower === 'foundation') {
+                  typeIcon = 'fa-heart';
+                }
+                
+                html += '<br><small class="text-muted"><i class="fa ' + typeIcon + '"></i> ' + typeLabel + '</small>';
+              }
+              
+              // Show multiple sponsors count if applicable
               if (row.sponsor_count > 1) {
                 html += '<br><small class="text-info"><i class="fa fa-users"></i> ' + row.sponsor_count + ' Sponsors</small>';
               }
-              return html + '</div>';
+              
+              html += '</div>';
+              return html;
             }
           },
           { 

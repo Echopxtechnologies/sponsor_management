@@ -91,20 +91,42 @@ class School_model extends App_Model
         return $this->db->get()->row_array();
     }
 
-    /**
+/**
  * Get paginated school students for DataTables
+ * Fixed to properly fetch sponsors from both direct relationship and transactions
  */
 public function get_school_students_paginated($start, $length, $search = '', $order_column = 'name', $order_dir = 'ASC')
 {
-    $this->db->select('ss.*, 
-                       sn.name as school_name,
-                       sr.name as sponsor_name,
-                       sr.sponsor_type,
-                       sr.id as sponsor_record_id,
-                       st.active as staff_active', false);
+    // Build subquery to get the latest sponsor from transactions for each student
+    $sponsor_txn_subquery = "
+        SELECT 
+            st_inner.school_student_id,
+            st_inner.sponsor_id,
+            sr_inner.name as sponsor_name,
+            sr_inner.sponsor_type
+        FROM {$this->tbl_sponsor_txn} st_inner
+        INNER JOIN {$this->tbl_sponsor} sr_inner ON sr_inner.id = st_inner.sponsor_id
+        WHERE st_inner.school_student_id IS NOT NULL
+        AND st_inner.id = (
+            SELECT MAX(st2.id) 
+            FROM {$this->tbl_sponsor_txn} st2 
+            WHERE st2.school_student_id = st_inner.school_student_id
+        )
+    ";
+
+    $this->db->select("
+        ss.*, 
+        sn.name as school_name,
+        COALESCE(sr.name, txn_sponsor.sponsor_name) as sponsor_name,
+        COALESCE(sr.sponsor_type, txn_sponsor.sponsor_type) as sponsor_type,
+        COALESCE(sr.id, txn_sponsor.sponsor_id) as sponsor_record_id,
+        st.active as staff_active
+    ", false);
+    
     $this->db->from($this->tbl_students . ' ss');
     $this->db->join($this->tbl_sname . ' sn', 'sn.id = ss.school_name_id', 'left');
     $this->db->join($this->tbl_sponsor . ' sr', 'sr.id = ss.sponsor_id', 'left');
+    $this->db->join("({$sponsor_txn_subquery}) txn_sponsor", 'txn_sponsor.school_student_id = ss.id', 'left');
     $this->db->join(db_prefix() . 'staff st', 'st.staffid = ss.staff_id', 'left');
 
     // Apply search filter
@@ -115,6 +137,8 @@ public function get_school_students_paginated($start, $length, $search = '', $or
         $this->db->or_like('ss.contact_no', $search);
         $this->db->or_like('ss.school_internal_id', $search);
         $this->db->or_like('sn.name', $search);
+        $this->db->or_like('sr.name', $search);
+        $this->db->or_like('txn_sponsor.sponsor_name', $search);
         $this->db->group_end();
     }
 
@@ -125,12 +149,12 @@ public function get_school_students_paginated($start, $length, $search = '', $or
     } elseif ($order_column === 'school_name') {
         $order_column = 'sn.name';
     } elseif ($order_column === 'sponsor_name') {
-        $order_column = 'sr.name';
+        $order_column = 'COALESCE(sr.name, txn_sponsor.sponsor_name)';
     } elseif ($order_column === 'status') {
         $order_column = 'ss.staff_id';
     }
     
-    $this->db->order_by($order_column, $order_dir);
+    $this->db->order_by($order_column, $order_dir, false);
     $this->db->limit($length, $start);
 
     $results = $this->db->get()->result_array();
@@ -147,11 +171,29 @@ public function get_school_students_paginated($start, $length, $search = '', $or
 
 /**
  * Count filtered school students
+ * Fixed to include sponsor search from both sources
  */
 public function count_filtered_school_students($search)
 {
+    // Build subquery for transaction sponsors
+    $sponsor_txn_subquery = "
+        SELECT 
+            st_inner.school_student_id,
+            sr_inner.name as sponsor_name
+        FROM {$this->tbl_sponsor_txn} st_inner
+        INNER JOIN {$this->tbl_sponsor} sr_inner ON sr_inner.id = st_inner.sponsor_id
+        WHERE st_inner.school_student_id IS NOT NULL
+        AND st_inner.id = (
+            SELECT MAX(st2.id) 
+            FROM {$this->tbl_sponsor_txn} st2 
+            WHERE st2.school_student_id = st_inner.school_student_id
+        )
+    ";
+
     $this->db->from($this->tbl_students . ' ss');
     $this->db->join($this->tbl_sname . ' sn', 'sn.id = ss.school_name_id', 'left');
+    $this->db->join($this->tbl_sponsor . ' sr', 'sr.id = ss.sponsor_id', 'left');
+    $this->db->join("({$sponsor_txn_subquery}) txn_sponsor", 'txn_sponsor.school_student_id = ss.id', 'left');
 
     $this->db->group_start();
     $this->db->like('ss.name', $search);
@@ -159,6 +201,8 @@ public function count_filtered_school_students($search)
     $this->db->or_like('ss.contact_no', $search);
     $this->db->or_like('ss.school_internal_id', $search);
     $this->db->or_like('sn.name', $search);
+    $this->db->or_like('sr.name', $search);
+    $this->db->or_like('txn_sponsor.sponsor_name', $search);
     $this->db->group_end();
 
     return $this->db->count_all_results();

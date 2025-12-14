@@ -95,9 +95,10 @@ class Sponsor_model extends App_Model
                  WHERE st3.sponsor_id = sp.id) AS total_commitment';
             
             $select_fields[] = '
-                (SELECT COALESCE(SUM(amount_paid), 0) 
-                 FROM ' . $this->tbl_sponsor_transactions . ' st4 
-                 WHERE st4.sponsor_id = sp.id) AS total_paid';
+                (SELECT COALESCE(SUM(p.amount), 0) 
+                FROM ' . db_prefix() . 'sponsor_payments p
+                INNER JOIN ' . $this->tbl_sponsor_transactions . ' st4 ON st4.id = p.transaction_id
+                WHERE st4.sponsor_id = sp.id) AS total_paid';
             
             $select_fields[] = '
                 (SELECT COUNT(*) 
@@ -177,9 +178,10 @@ class Sponsor_model extends App_Model
                  WHERE st3.sponsor_id = sp.id) AS total_commitment';
             
             $select_fields[] = '
-                (SELECT COALESCE(SUM(amount_paid), 0) 
-                 FROM ' . $this->tbl_sponsor_transactions . ' st4 
-                 WHERE st4.sponsor_id = sp.id) AS total_paid';
+                (SELECT COALESCE(SUM(p.amount), 0) 
+                FROM ' . db_prefix() . 'sponsor_payments p
+                INNER JOIN ' . $this->tbl_sponsor_transactions . ' st4 ON st4.id = p.transaction_id
+                WHERE st4.sponsor_id = sp.id) AS total_paid';
             
             $select_fields[] = '
                 (SELECT COUNT(*) 
@@ -448,9 +450,10 @@ class Sponsor_model extends App_Model
                  WHERE st3.sponsor_id = sp.id) AS total_commitment';
             
             $select_fields[] = '
-                (SELECT COALESCE(SUM(amount_paid), 0) 
-                 FROM ' . $this->tbl_sponsor_transactions . ' st4 
-                 WHERE st4.sponsor_id = sp.id) AS total_paid';
+                (SELECT COALESCE(SUM(p.amount), 0) 
+                FROM ' . db_prefix() . 'sponsor_payments p
+                INNER JOIN ' . $this->tbl_sponsor_transactions . ' st4 ON st4.id = p.transaction_id
+                WHERE st4.sponsor_id = sp.id) AS total_paid';
             
             $select_fields[] = '
                 (SELECT COUNT(*) 
@@ -1454,11 +1457,28 @@ private function decode_internal_ids($json)
 
         // Calculate financial totals from transactions table
         if ($this->db->table_exists($this->tbl_sponsor_transactions)) {
-            $this->db->select('SUM(total_amount) as total_commitment, SUM(amount_paid) as total_paid');
+            // $this->db->select('SUM(total_amount) as total_commitment, SUM(amount_paid) as total_paid');
+            // $this->db->from($this->tbl_sponsor_transactions);
+            // $this->db->where('sponsor_id', $sponsor_id);
+            // $totals = $this->db->get()->row_array();
+            // Get total commitment from transactions
+            $this->db->select('SUM(total_amount) as total_commitment');
             $this->db->from($this->tbl_sponsor_transactions);
             $this->db->where('sponsor_id', $sponsor_id);
-            $totals = $this->db->get()->row_array();
-            
+            $commitment_result = $this->db->get()->row_array();
+
+            // Get total paid FRESH from payments table
+            $paid_sql = "SELECT COALESCE(SUM(p.amount), 0) as total_paid
+                        FROM " . db_prefix() . "sponsor_payments p
+                        INNER JOIN " . $this->tbl_sponsor_transactions . " t ON t.id = p.transaction_id
+                        WHERE t.sponsor_id = ?";
+            $paid_result = $this->db->query($paid_sql, [$sponsor_id])->row_array();
+
+            $totals = [
+                'total_commitment' => $commitment_result['total_commitment'] ?? 0,
+                'total_paid' => $paid_result['total_paid'] ?? 0
+            ];
+                        
             if ($totals) {
                 $stats['total_commitment'] = (float)($totals['total_commitment'] ?? 0);
                 $stats['total_paid'] = (float)($totals['total_paid'] ?? 0);

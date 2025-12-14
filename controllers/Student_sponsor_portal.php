@@ -264,7 +264,9 @@
 }
 
 /**
+ * 
  * AJAX endpoint for school students DataTable
+ * Simplified - model now returns sponsor data properly
  */
 public function ajax_get_school_students()
 {
@@ -296,40 +298,17 @@ public function ajax_get_school_students()
         $order_dir = (isset($order[0]['dir']) && strtoupper($order[0]['dir']) === 'DESC') ? 'DESC' : 'ASC';
     }
 
-    // Get paginated students
+    // Get paginated students - model now returns sponsor data from BOTH sources
     $students = $this->school_model->get_school_students_paginated($start, $length, $search, $order_column, $order_dir);
     $total_records = $this->school_model->count_all();
     $filtered_records = empty($search) ? $total_records : $this->school_model->count_filtered_school_students($search);
 
-    // Format data - get school names and sponsor names separately if needed
+    // Format data for DataTables
     $data = [];
     foreach ($students as $s) {
-        // Get school name if not already joined
-        $school_name = '';
-        if (!empty($s['school_name'])) {
-            $school_name = $s['school_name'];
-        } elseif (!empty($s['school_name_id'])) {
-            $school = $this->db->select('name')->from(db_prefix() . 'ssp_school_names')->where('id', $s['school_name_id'])->get()->row();
-            $school_name = $school ? $school->name : '';
-        }
-        
-        // Get sponsor name if not already joined
-        $sponsor_name = '';
-        $sponsor_type = '';
-        if (!empty($s['sponsor_name'])) {
-            $sponsor_name = $s['sponsor_name'];
-            $sponsor_type = $s['sponsor_type'] ?? '';
-        } elseif (!empty($s['sponsor_id'])) {
-            $sponsor = $this->db->select('name, sponsor_type')->from(db_prefix() . 'ssp_sponsors')->where('id', $s['sponsor_id'])->get()->row();
-            if ($sponsor) {
-                $sponsor_name = $sponsor->name;
-                $sponsor_type = $sponsor->sponsor_type ?? '';
-            }
-        }
-        
-        // Get staff active status
+        // Get staff active status if not already in result
         $staff_active = 0;
-        if (!empty($s['staff_active'])) {
+        if (isset($s['staff_active'])) {
             $staff_active = (int)$s['staff_active'];
         } elseif (!empty($s['staff_id'])) {
             $staff = $this->db->select('active')->from(db_prefix() . 'staff')->where('staffid', $s['staff_id'])->get()->row();
@@ -341,13 +320,14 @@ public function ajax_get_school_students()
             'name'               => $s['name'] ?? '',
             'school_internal_id' => !empty($s['school_internal_id']) ? $s['school_internal_id'] : 'Not Set',
             'school_grade'       => $s['school_grade'] ?? '',
-            'school_name'        => $school_name,
+            'school_name'        => $s['school_name'] ?? '',
             'email'              => $s['email'] ?? '',
             'contact_no'         => $s['contact_no'] ?? '',
             'staff_id'           => $s['staff_id'] ?? null,
             'staff_active'       => $staff_active,
-            'sponsor_name'       => $sponsor_name,
-            'sponsor_type'       => $sponsor_type
+            // These now come directly from the model with COALESCE
+            'sponsor_name'       => $s['sponsor_name'] ?? '',
+            'sponsor_type'       => $s['sponsor_type'] ?? ''
         ];
     }
 
@@ -3660,56 +3640,62 @@ private function is_sponsor_user()
     /**
      * Get current sponsor's sponsored students
      */
-    private function get_sponsor_students($sponsor_id)
-    {
-        $students = [];
-        
-        // Get school students sponsored by this sponsor
-        $school_students = $this->db->select('
-            ss.id,
-            ss.name,
-            ss.school_grade,
-            ss.school_internal_id,
-            ss.email,
-            ss.contact_no,
-            ss.city,
-            sn.name as school_name,
-            "school" as student_type
-        ')
-        ->from(db_prefix() . 'sponsor_transactions st')
-        ->join(db_prefix() . 'school_students ss', 'ss.id = st.school_student_id', 'inner')
-        ->join(db_prefix() . 'school_name sn', 'sn.id = ss.school_name_id', 'left')
-        ->where('st.sponsor_id', $sponsor_id)
-        ->where('ss.school_internal_id IS NOT NULL')
-        ->group_by('ss.id')
-        ->get()
-        ->result_array();
-        
-        // Get university students sponsored by this sponsor
-        $university_students = $this->db->select('
-            us.id,
-            us.name,
-            us.university_year_of_study,
-            us.university_internal_id,
-            us.email,
-            us.contact_no,
-            us.city,
-            un.name as university_name,
-            up.name as program_name,
-            "university" as student_type
-        ')
-        ->from(db_prefix() . 'sponsor_transactions st')
-        ->join(db_prefix() . 'university_students us', 'us.id = st.university_student_id', 'inner')
-        ->join(db_prefix() . 'university_name un', 'un.id = us.university_name_id', 'left')
-        ->join(db_prefix() . 'university_program up', 'up.id = us.university_program_id', 'left')
-        ->where('st.sponsor_id', $sponsor_id)
-        ->where('us.university_internal_id IS NOT NULL')
-        ->group_by('us.id')
-        ->get()
-        ->result_array();
-        
-        return array_merge($school_students, $university_students);
-    }
+    /**
+ * Get current sponsor's sponsored students - FIXED VERSION
+ * Removed the internal_id filter that was excluding students
+ */
+private function get_sponsor_students($sponsor_id)
+{
+    $students = [];
+    
+    // Get school students sponsored by this sponsor
+    $school_students = $this->db->select('
+        ss.id,
+        ss.name,
+        ss.school_grade,
+        ss.school_internal_id,
+        ss.email,
+        ss.contact_no,
+        ss.city,
+        sn.name as school_name,
+        "school" as student_type
+    ')
+    ->from(db_prefix() . 'sponsor_transactions st')
+    ->join(db_prefix() . 'school_students ss', 'ss.id = st.school_student_id', 'inner')
+    ->join(db_prefix() . 'school_name sn', 'sn.id = ss.school_name_id', 'left')
+    ->where('st.sponsor_id', $sponsor_id)
+    ->where('st.school_student_id IS NOT NULL')  // ✅ Check transaction has student, not internal_id
+    ->where('st.school_student_id >', 0)         // ✅ Ensure valid student ID
+    ->group_by('ss.id')
+    ->get()
+    ->result_array();
+    
+    // Get university students sponsored by this sponsor
+    $university_students = $this->db->select('
+        us.id,
+        us.name,
+        us.university_year_of_study,
+        us.university_internal_id,
+        us.email,
+        us.contact_no,
+        us.city,
+        un.name as university_name,
+        up.name as program_name,
+        "university" as student_type
+    ')
+    ->from(db_prefix() . 'sponsor_transactions st')
+    ->join(db_prefix() . 'university_students us', 'us.id = st.university_student_id', 'inner')
+    ->join(db_prefix() . 'university_name un', 'un.id = us.university_name_id', 'left')
+    ->join(db_prefix() . 'university_program up', 'up.id = us.university_program_id', 'left')
+    ->where('st.sponsor_id', $sponsor_id)
+    ->where('st.university_student_id IS NOT NULL')  // ✅ Check transaction has student
+    ->where('st.university_student_id >', 0)         // ✅ Ensure valid student ID
+    ->group_by('us.id')
+    ->get()
+    ->result_array();
+    
+    return array_merge($school_students, $university_students);
+}
 
     /**
      * Get sponsor's transaction summary
@@ -4091,54 +4077,57 @@ private function get_recent_transactions_with_payments($sponsor_id, $limit = 10)
     /**
      * Get sponsor students by type (helper method)
      */
-    private function get_sponsor_students_by_type($sponsor_id, $type)
-    {
-        if ($type === 'school') {
-            return $this->db->select('
-                ss.id,
-                ss.name,
-                ss.school_grade,
-                ss.school_internal_id,
-                ss.email,
-                ss.contact_no,
-                ss.city,
-                sn.name as school_name,
-                "school" as student_type
-            ')
-            ->from(db_prefix() . 'sponsor_transactions st')
-            ->join(db_prefix() . 'school_students ss', 'ss.id = st.school_student_id', 'inner')
-            ->join(db_prefix() . 'school_name sn', 'sn.id = ss.school_name_id', 'left')
-            ->where('st.sponsor_id', $sponsor_id)
-            ->where('ss.school_internal_id IS NOT NULL')
-            ->group_by('ss.id')
-            ->get()
-            ->result_array();
-        } else {
-            return $this->db->select('
-                us.id,
-                us.name,
-                us.university_year_of_study,
-                us.university_internal_id,
-                us.email,
-                us.contact_no,
-                us.city,
-                un.name as university_name,
-                up.name as program_name,
-                "university" as student_type
-            ')
-            ->from(db_prefix() . 'sponsor_transactions st')
-            ->join(db_prefix() . 'university_students us', 'us.id = st.university_student_id', 'inner')
-            ->join(db_prefix() . 'university_name un', 'un.id = us.university_name_id', 'left')
-            ->join(db_prefix() . 'university_program up', 'up.id = us.university_program_id', 'left')
-            ->where('st.sponsor_id', $sponsor_id)
-            ->where('us.university_internal_id IS NOT NULL')
-            ->group_by('us.id')
-            ->get()
-            ->result_array();
-        }
+    /**
+ * Get sponsor students by type (helper method) - FIXED VERSION
+ */
+private function get_sponsor_students_by_type($sponsor_id, $type)
+{
+    if ($type === 'school') {
+        return $this->db->select('
+            ss.id,
+            ss.name,
+            ss.school_grade,
+            ss.school_internal_id,
+            ss.email,
+            ss.contact_no,
+            ss.city,
+            sn.name as school_name,
+            "school" as student_type
+        ')
+        ->from(db_prefix() . 'sponsor_transactions st')
+        ->join(db_prefix() . 'school_students ss', 'ss.id = st.school_student_id', 'inner')
+        ->join(db_prefix() . 'school_name sn', 'sn.id = ss.school_name_id', 'left')
+        ->where('st.sponsor_id', $sponsor_id)
+        ->where('st.school_student_id IS NOT NULL')  // ✅ FIXED
+        ->where('st.school_student_id >', 0)         // ✅ FIXED
+        ->group_by('ss.id')
+        ->get()
+        ->result_array();
+    } else {
+        return $this->db->select('
+            us.id,
+            us.name,
+            us.university_year_of_study,
+            us.university_internal_id,
+            us.email,
+            us.contact_no,
+            us.city,
+            un.name as university_name,
+            up.name as program_name,
+            "university" as student_type
+        ')
+        ->from(db_prefix() . 'sponsor_transactions st')
+        ->join(db_prefix() . 'university_students us', 'us.id = st.university_student_id', 'inner')
+        ->join(db_prefix() . 'university_name un', 'un.id = us.university_name_id', 'left')
+        ->join(db_prefix() . 'university_program up', 'up.id = us.university_program_id', 'left')
+        ->where('st.sponsor_id', $sponsor_id)
+        ->where('st.university_student_id IS NOT NULL')  // ✅ FIXED
+        ->where('st.university_student_id >', 0)         // ✅ FIXED
+        ->group_by('us.id')
+        ->get()
+        ->result_array();
     }
-
-
+}
 
 
         /* =================================================================================== */
@@ -9729,14 +9718,11 @@ public function student_detail()
         exit;
     }
 
-    /**
- * AJAX handler for server-side DataTables - University Students
- */
+
 /**
- * AJAX handler for server-side DataTables - University Students
- */
-/**
- * AJAX handler for server-side DataTables - University Students
+ * REPLACE your existing get_university_students_ajax method in your controller
+ * 
+ * FIXED: Now includes sponsor_type in the response data
  */
 public function get_university_students_ajax()
 {
@@ -9787,18 +9773,19 @@ public function get_university_students_ajax()
             }
 
             $data[] = [
-                'id'                     => $s['id'],
-                'name'                   => $s['name'] ?? '',
-                'initials'               => $initials ?: '•',
-                'university_internal_id' => $s['university_internal_id'] ?? 'Not Set',
-                'university_name'        => $s['university_name'] ?? '',
-                'program_name'           => $s['program_name'] ?? '',
+                'id'                       => $s['id'],
+                'name'                     => $s['name'] ?? '',
+                'initials'                 => $initials ?: '•',
+                'university_internal_id'   => $s['university_internal_id'] ?? 'Not Set',
+                'university_name'          => $s['university_name'] ?? '',
+                'program_name'             => $s['program_name'] ?? '',
                 'university_year_of_study' => $s['university_year_of_study'] ?? '',
-                'status'                 => $status,
-                'email'                  => $s['email'] ?? '',
-                'contact_no'             => $s['contact_no'] ?? '',
-                'all_sponsor_names'      => $s['all_sponsor_names'] ?? '',
-                'sponsor_count'          => $s['sponsor_count'] ?? 0
+                'status'                   => $status,
+                'email'                    => $s['email'] ?? '',
+                'contact_no'               => $s['contact_no'] ?? '',
+                'all_sponsor_names'        => $s['all_sponsor_names'] ?? '',
+                'sponsor_type'             => $s['sponsor_type'] ?? '',  // <-- THIS WAS MISSING!
+                'sponsor_count'            => $s['sponsor_count'] ?? 0
             ];
         }
 

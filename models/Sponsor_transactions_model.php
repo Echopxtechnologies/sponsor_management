@@ -639,6 +639,12 @@ public function get_due_email_template($transaction_id)
     $txn = $this->get($transaction_id);
     if (!$txn) return false;
 
+    // ✅ FRESH calculation from payments table - NOT from stale amount_paid
+    $paid_result = $this->db->select('COALESCE(SUM(amount), 0) AS total_paid', false)
+                            ->where('transaction_id', $transaction_id)
+                            ->get($this->pay_tbl)
+                            ->row();
+    $amount_paid = $paid_result ? (float)$paid_result->total_paid : 0.0;
 
     // Get sponsor name
     $sponsor = $this->db->select('name')->where('id', $txn->sponsor_id)->get(db_prefix().'sponsor_records')->row();
@@ -655,8 +661,7 @@ public function get_due_email_template($transaction_id)
     }
 
     $due_date = $txn->next_payment_due ? date('m/d/Y', strtotime($txn->next_payment_due)) : 'Not Set';
-    $amount_due = $txn->total_amount - $txn->amount_paid;
-    // echo $amount_due;
+    $amount_due = $txn->total_amount - $amount_paid;  // ✅ Use fresh calculation
     $currency = strtolower($txn->currency);
 
     $subject = "Reminder: Payment Due on " . $due_date;
@@ -685,7 +690,7 @@ public function get_due_email_template($transaction_id)
                     <td style="border: 1px solid #ddd; padding: 12px;">' . $sponsor_name . '</td>
                     <td style="border: 1px solid #ddd; padding: 12px;">' . $student_name . '</td>
                     <td style="border: 1px solid #ddd; padding: 12px;">' . number_format($txn->total_amount, 2) . '</td>
-                    <td style="border: 1px solid #ddd; padding: 12px;">' . number_format($txn->amount_paid, 2) . ' ' . $currency . '</td>
+                    <td style="border: 1px solid #ddd; padding: 12px;">' . number_format($amount_paid, 2) . ' ' . $currency . '</td>
                     <td style="border: 1px solid #ddd; padding: 12px;">' . number_format($amount_due, 2) . '</td>
                     <td style="border: 1px solid #ddd; padding: 12px;">' . $due_date . '</td>
                 </tr>
