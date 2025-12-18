@@ -660,7 +660,7 @@ public function get_due_email_template($transaction_id)
         $student_name = $student ? $student->name : 'Student';
     }
 
-    $due_date = $txn->next_payment_due ? date('m/d/Y', strtotime($txn->next_payment_due)) : 'Not Set';
+    $due_date = $txn->next_payment_due ? date('d/m/Y', strtotime($txn->next_payment_due)) : 'Not Set';
     $amount_due = $txn->total_amount - $amount_paid;  // ✅ Use fresh calculation
     $currency = strtolower($txn->currency);
 
