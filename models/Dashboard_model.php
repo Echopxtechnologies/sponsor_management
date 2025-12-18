@@ -446,7 +446,7 @@ class Dashboard_model extends App_Model
                 'icon' => 'fa-money',
                 'color' => '#f0ad4e',
                 'title' => 'Payment Received',
-                'description' => "₹" . number_format($payment['amount'], 2) . " from {$payment['sponsor_name']}",
+                'description' => "Amt : " . number_format($payment['amount'], 2) . " from {$payment['sponsor_name']}",
                 'created_at' => $payment['created_at']
             ];
         }
