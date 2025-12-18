@@ -7618,18 +7618,18 @@ private function get_sponsor_students_by_type($sponsor_id, $type)
                 <thead>
                     <tr style="background-color: #e8e8e8;">
                         <th style="border: 1px solid #ddd; padding: 12px; text-align: left; font-weight: bold;">Transaction ID</th>
+                        <th style="border: 1px solid #ddd; padding: 12px; text-align: left; font-weight: bold;">Payment Date</th>
                         <th style="border: 1px solid #ddd; padding: 12px; text-align: left; font-weight: bold;">Payment Amount</th>
                         <th style="border: 1px solid #ddd; padding: 12px; text-align: left; font-weight: bold;">Next Payment</th>
-                        <th style="border: 1px solid #ddd; padding: 12px; text-align: left; font-weight: bold;">Payment Date</th>
                         <th style="border: 1px solid #ddd; padding: 12px; text-align: left; font-weight: bold;">Payment Method</th>
                     </tr>
                 </thead>
                 <tbody>
                     <tr>
                         <td style="border: 1px solid #ddd; padding: 12px;">' . $txn->id . '</td>
+                        <td style="border: 1px solid #ddd; padding: 12px;">' . date('d/m/Y', strtotime($payment->payment_date)) . '</td>
                         <td style="border: 1px solid #ddd; padding: 12px;">' . number_format($payment->amount, 2) . ' ' . $payment->currency . '</td>
                         <td style="border: 1px solid #ddd; padding: 12px;">' . number_format($remaining_amount, 2) . ' ' . $payment->currency . '</td>
-                        <td style="border: 1px solid #ddd; padding: 12px;">' . date('m/d/Y', strtotime($payment->payment_date)) . '</td>
                         <td style="border: 1px solid #ddd; padding: 12px;">' . ($payment->note ?: 'N/A') . '</td>
                     </tr>
                 </tbody>
