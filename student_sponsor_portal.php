@@ -43,55 +43,80 @@ hooks()->add_action('app_admin_head', function () {
     </style>';
 });
 
-/* ---------------- Hide Leads Menu for Sponsor Users ---------------- */
+/* ---------------- Hide Leads Menu AND Navbar for Special Users ---------------- */
 hooks()->add_action('app_admin_head', 'hide_leads_menu_for_special_users');
 
-function hide_leads_menu_for_special_users() {
+function hide_leads_menu_for_special_users()
+{
     if (!is_staff_logged_in()) {
         return;
     }
-    
+
     $CI = &get_instance();
     $staff_id = get_staff_user_id();
-    
+
     // Check if user is a sponsor
     $is_sponsor = $CI->db->select('id, name')
-                         ->where('staff_id', $staff_id)
-                         ->where('entity_type', 'sponsor')
-                         ->where('active', 1)
-                         ->get(db_prefix() . 'sponsor_records')
-                         ->row();
+        ->where('staff_id', $staff_id)
+        ->where('entity_type', 'sponsor')
+        ->where('active', 1)
+        ->get(db_prefix() . 'sponsor_records')
+        ->row();
 
-    // Check if user is a school student - FIXED QUERY
+    // Check if user is a school student
     $is_school_student = $CI->db->select('id, name')
-                         ->where('staff_id', $staff_id)
-                         ->where('entity_type', 'school')  // Changed from 'sponsor'
-                         ->where('staff_active', 1)  // Changed from 'active' to 'staff_active'
-                         ->get(db_prefix() . 'school_students')  // Changed table name
-                         ->row();
+        ->where('staff_id', $staff_id)
+        ->where('entity_type', 'school')
+        ->where('staff_active', 1)
+        ->get(db_prefix() . 'school_students')
+        ->row();
 
     // Check if user is a university student
     $is_university_student = $CI->db->select('id, name')
-                         ->where('staff_id', $staff_id)
-                         ->where('entity_type', 'university')
-                         ->where('active', 1)
-                         ->get(db_prefix() . 'university_students')
-                         ->row();
-    
-    // If user is any of these types, hide the leads menu
+        ->where('staff_id', $staff_id)
+        ->where('entity_type', 'university')
+        ->where('active', 1)
+        ->get(db_prefix() . 'university_students')
+        ->row();
+
+    // If user is any of these types, hide leads menu AND navbar items
     if ($is_sponsor || $is_school_student || $is_university_student) {
         echo '<style>
             /* Hide Leads menu item */
-            li.menu-item-leads,
-            li[class*="menu-item-leads"],
-            a[href*="/admin/leads"] { 
-                display: none !important; 
-            }
+            .menu-item-leads { display: none !important; }
+            #top_search { display: none !important; }
             
-            /* Optional: Hide parent wrapper if it becomes empty */
-            .sidebar ul.sidebar-menu > li:has(.menu-item-leads) {
+            /* Hide entire right navbar (Settings, Newsfeed, Todo, Timers, Notifications) */
+            ul.nav.navbar-nav.navbar-right {
                 display: none !important;
             }
+            
+            /* Alternative: Hide individual navbar items if you want to keep some */
+            /*
+            .header-newsfeed { display: none !important; }
+            .header-todo { display: none !important; }
+            .header-timers { display: none !important; }
+            .header-notifications { display: none !important; }
+            li:has(a[href*="/settings"]) { display: none !important; }
+            */
+            
+            /* Hide Quick Create button (+) */
+            .visible-md.visible-lg li.icon:has(.fa-plus),
+            .visible-md.visible-lg > li:first-child {
+                display: none !important;
+            }
+            
+            /* Hide Dashboard Options button */
+            .screen-options-btn { display: none !important; }
+            .screen-options-area { display: none !important; }
+            
+            /* Hide Setup menu item */
+            #setup-menu-item { display: none !important; }
+            #setup-menu-wrapper { display: none !important; }
+            
+            /* Hide mobile menu extras */
+            .mobile-navbar .header-my-timesheets,
+            .mobile-navbar .header-newsfeed { display: none !important; }
         </style>';
     }
 }
